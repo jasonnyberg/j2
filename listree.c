@@ -49,20 +49,24 @@ LTI *lti_new(char *name)
 }
 
 // return node that owns "name", inserting if requested AND required.
-LTI *lt_get(LTR *ltr,char *name,int insert)
+LTI *lt_get(struct rb_root *ltr,char *name,int insert)
 {
-    LTI **lti = (LTI **) &LTRROOT(ltr);
-    while (*lti)
+    struct rb_node **rbn = &(ltr->rb_node);
+    while (*rbn)
     {
-        int result = strcmp(name,LTINAME(*lti));
-        if (!result) return *lti;
-        else lti=(result<0)? &LTILEFT(*lti):&LTIRIGHT(*lti);
+        int result = strcmp(name,LTINAME(*rbn));
+        if (!result) return (LTI *) *rbn;
+        // else lti=(result<0)? (&LTILEFT(*lti)):(&LTIRIGHT(*lti));
+        else rbn=(result<0)?
+            &((*rbn)->rb_left):&((*rbn)->rb_right);
+        
+        
     }
-    if (push)
+    if (insert)
     {
         LTI *new=lti_new(name);
-        rb_link_node(LTILNK(new),LTIPARENT(lti),lti); // add
-        rb_insert_color(LTILNK(new),ltr); // rebalance
+        rb_link_node(&LTILNK(new),rb_parent(*rbn),rbn); // add
+        rb_insert_color(&LTILNK(new),ltr); // rebalance
         return new;
     }
     else

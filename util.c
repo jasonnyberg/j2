@@ -5,7 +5,6 @@
 #include <string.h>
 #include <fnmatch.h>
 #include "util.h"
-#include "dict.h"
 
 unsigned myid=1;
 ull *STRTOULL_PTR;

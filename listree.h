@@ -21,9 +21,6 @@ extern CLL *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
 #include "rbtree.h"
 
-#define LTR struct rb_root
-#define LTN struct rb_node
-
 typedef struct
 {
     CLL lnk;
@@ -31,39 +28,38 @@ typedef struct
     void *data;
     int len;
     int refs;
-    LTR subs;
+    struct rb_root subs;
 } LTV; // LisTree Value
 
 typedef struct
 {
-    LTN lnk;
+    struct rb_node lnk;
     char *name;
-    CLL lst;
+    CLL cll;
 } LTI; // LisTreeItem
 
-//#define LTRROOT(ltr)            ((LTI *) ((ltr)->rb_node))
-#define LTRROOT(ltr)            (((ltr)->rb_node))
-#define LTRFIRST(ltr)           ((LTI *) (rb_first(((LTR *)(ltr)))))
-#define LTRLAST(ltr)            ((LTI *) (rb_last(((LTR *)(ltr)))))
+#define LTRROOT(rbr)            ((rbr)->rb_node)
+#define LTRFIRST(rbr)           rb_first(rbr)
+#define LTRLAST(rbr)            rb_last(rbr)
 
-#define LTILNK(lti)             (((LTI *) (lti))->lnk)
-#define LTINAME(lti)            (((LTI *) (lti))->name)
-#define LTILST(lti)             (((LTI *) (lti))->lst)
+#define LTILNK(rbn)             (((LTI *) (rbn))->lnk)
+#define LTINAME(rbn)            (((LTI *) (rbn))->name)
+#define LTILST(rbn)             (((LTI *) (rbn))->cll)
 
-#define LTILEFT(lti)            ((LTI *) (((LTI *) (&LTILNK(lti))->rb_left)))
-#define LTIRIGHT(lti)           ((LTI *) (((LTI *) (&LTILNK(lti))->rb_right)))
-#define LTIPARENT(lti)          ((LTI *) ((LTI *) (rb_parent(&LTILNK(lti)))))
-#define LTINEXT(lti)            ((LTI *) ((LTI *) (rb_next(&LTILNK(lti)))))
-#define LTIPREV(lti)            ((LTI *) ((LTI *) (rb_prev(&LTILNK(lti)))))
+#define LTILEFT(rbn)            ((LTI *) ((&LTILNK(rbn))->rb_left))
+#define LTIRIGHT(rbn)           ((LTI *) ((&LTILNK(rbn))->rb_right))
+#define LTIPARENT(rbn)          ((LTI *) rb_parent(&LTILNK(rbn)))
+#define LTINEXT(rbn)            ((LTI *) rb_next(&LTILNK(rbn)))
+#define LTIPREV(rbn)            ((LTI *) rb_prev(&LTILNK(rbn)))
 
-#define LTVLNK(ltv)             (((LTV *) (ltv))->lnk)
-#define LTVFLAGS(ltv)           (((LTV *) (ltv))->flags)
-#define LTVDATA(ltv)            (((LTV *) (ltv))->data)
-#define LTVLEN(ltv)             (((LTV *) (ltv))->len)
-#define LTVREFS(ltv)            (((LTV *) (ltv))->refs)
-#define LTVSUBS(ltv)            (((LTV *) (ltv))->subs)
+#define LTVLNK(ltv)             ((ltv)->lnk)
+#define LTVFLAGS(ltv)           ((ltv)->flags)
+#define LTVDATA(ltv)            ((ltv)->data)
+#define LTVLEN(ltv)             ((ltv)->len)
+#define LTVREFS(ltv)            ((ltv)->refs)
+#define LTVSUBS(ltv)            ((ltv)->subs)
 
-extern LTI *lt_get(LTR *ltr,char *name,int insert);
+extern LTI *lt_get(struct rb_root *ltr,char *name,int insert);
 
 #endif
 

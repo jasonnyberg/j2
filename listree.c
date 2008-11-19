@@ -27,10 +27,10 @@ CLL *CLL_get(CLL *lst,CLL *lnk,int tail,int pop)
     return lnk;
 }
 
-CLL *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
+void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 {
     CLL *result,*lnk=lst->lnk[reverse];
-    while (lnk && !(result=op(lnk,data)))
+    while (lnk && lnk!=lst && !(result=op(lnk,data)))
         lnk=lnk->lnk[reverse];
     return result;
 }
@@ -45,7 +45,13 @@ LTI *lti_new(char *name)
 {
     LTI *lti=NEW(LTI);
     lti->name=strdup(name);
-    CLL_init(&LTILST(lti));
+    CLL_init(&LTICLL(lti));
+}
+
+LTV *ltv_new(char *data)
+{
+    LTV *ltv=NEW(LTV);
+    ltv->data=strdup(data);
 }
 
 // return node that owns "name", inserting if requested AND required.
@@ -73,4 +79,31 @@ LTI *lt_get(struct rb_root *ltr,char *name,int insert)
     {
         return NULL;
     }
+}
+
+void *lt_traverse(struct rb_root *ltr,LT_OP op,void *data)
+{
+    struct rb_node *result,*ltn=rb_first(ltr);
+    while (ltn && !(result=op(ltn,data)))
+        ltn=rb_next(ltn);
+    return NULL;
+}
+
+
+
+void *lt_dump_ltv(CLL *lnk,void *data)
+{
+    printf("  %s\n",LTVDATA((LTV *) lnk));
+    return NULL;
+}
+
+void *lt_dump_rbn(struct rb_node *rbn,void *data)
+{
+    printf("%s:\n",LTINAME(rbn));
+    return CLL_traverse(&LTICLL(rbn),0,lt_dump_ltv,data);
+}
+
+void *lt_dump(struct rb_root *ltr,void *data)
+{
+    return lt_traverse(ltr,lt_dump_rbn,data);
 }

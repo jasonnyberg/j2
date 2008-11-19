@@ -7,12 +7,12 @@
 
 // head=next[0],tail=next[1]
 typedef struct CLL { struct CLL *lnk[2]; } CLL;
-typedef CLL *(*CLL_OP)(CLL *lnk,void *data);
+typedef void *(*CLL_OP)(CLL *lnk,void *data);
 
 extern CLL *CLL_init(CLL *lst);
 extern CLL *CLL_put(CLL *lst,CLL *lnk,int tail);
 extern CLL *CLL_get(CLL *lst,CLL *lnk,int tail,int pop);
-extern CLL *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
+extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
 
 //////////////////////////////////////////////////
@@ -38,13 +38,15 @@ typedef struct
     CLL cll;
 } LTI; // LisTreeItem
 
+typedef void *(*LT_OP)(struct rb_node *ltn,void *data);
+
 #define LTRROOT(rbr)            ((rbr)->rb_node)
 #define LTRFIRST(rbr)           rb_first(rbr)
 #define LTRLAST(rbr)            rb_last(rbr)
 
 #define LTILNK(rbn)             (((LTI *) (rbn))->lnk)
 #define LTINAME(rbn)            (((LTI *) (rbn))->name)
-#define LTILST(rbn)             (((LTI *) (rbn))->cll)
+#define LTICLL(rbn)             (((LTI *) (rbn))->cll)
 
 #define LTILEFT(rbn)            ((LTI *) ((&LTILNK(rbn))->rb_left))
 #define LTIRIGHT(rbn)           ((LTI *) ((&LTILNK(rbn))->rb_right))
@@ -59,7 +61,11 @@ typedef struct
 #define LTVREFS(ltv)            ((ltv)->refs)
 #define LTVSUBS(ltv)            ((ltv)->subs)
 
+extern LTI *lti_new(char *name);
+extern LTV *ltv_new(char *data);
 extern LTI *lt_get(struct rb_root *ltr,char *name,int insert);
+extern void *lt_traverse(struct rb_root *ltr,LT_OP op,void *data);
+extern void *lt_dump(struct rb_root *ltr,void *data);
 
 #endif
 

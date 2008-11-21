@@ -15,6 +15,8 @@ int main()
     CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("456")),0);
     lti=lt_get(root,"aaa",1);
     CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("789")),0);
+    lti=lt_get(root,"aaa",1);
+    CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("abc")),1);
     
     lt_dump(root,NULL);
 }

@@ -1,3 +1,4 @@
+#include "stdio.h"
 #include "util.h"
 #include "listree.h"
 
@@ -46,18 +47,20 @@ LTI *lti_new(char *name)
     LTI *lti=NEW(LTI);
     lti->name=strdup(name);
     CLL_init(&LTICLL(lti));
+    return lti;
 }
 
 LTV *ltv_new(char *data)
 {
     LTV *ltv=NEW(LTV);
     ltv->data=strdup(data);
+    return ltv;
 }
 
 // return node that owns "name", inserting if requested AND required.
-LTI *lt_get(struct rb_root *ltr,char *name,int insert)
+LTI *lt_get(LTR *ltr,char *name,int insert)
 {
-    struct rb_node **rbn = &(ltr->rb_node);
+    LTN **rbn = &(ltr->rb_node);
     while (*rbn)
     {
         int result = strcmp(name,LTINAME(*rbn));
@@ -65,13 +68,11 @@ LTI *lt_get(struct rb_root *ltr,char *name,int insert)
         // else lti=(result<0)? (&LTILEFT(*lti)):(&LTIRIGHT(*lti));
         else rbn=(result<0)?
             &((*rbn)->rb_left):&((*rbn)->rb_right);
-        
-        
     }
     if (insert)
     {
         LTI *new=lti_new(name);
-        rb_link_node(&LTILNK(new),rb_parent(*rbn),rbn); // add
+        rb_link_node(&LTILNK(new),*rbn?rb_parent(*rbn):NULL,rbn); // add
         rb_insert_color(&LTILNK(new),ltr); // rebalance
         return new;
     }
@@ -81,9 +82,9 @@ LTI *lt_get(struct rb_root *ltr,char *name,int insert)
     }
 }
 
-void *lt_traverse(struct rb_root *ltr,LT_OP op,void *data)
+void *lt_traverse(LTR *ltr,LT_OP op,void *data)
 {
-    struct rb_node *result,*ltn=rb_first(ltr);
+    LTN *result,*ltn=rb_first(ltr);
     while (ltn && !(result=op(ltn,data)))
         ltn=rb_next(ltn);
     return NULL;
@@ -97,13 +98,13 @@ void *lt_dump_ltv(CLL *lnk,void *data)
     return NULL;
 }
 
-void *lt_dump_rbn(struct rb_node *rbn,void *data)
+void *lt_dump_rbn(LTN *rbn,void *data)
 {
     printf("%s:\n",LTINAME(rbn));
     return CLL_traverse(&LTICLL(rbn),0,lt_dump_ltv,data);
 }
 
-void *lt_dump(struct rb_root *ltr,void *data)
+void *lt_dump(LTR *ltr,void *data)
 {
     return lt_traverse(ltr,lt_dump_rbn,data);
 }

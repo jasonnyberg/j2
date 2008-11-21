@@ -1,0 +1,14 @@
+/*
+  a.b.c  -> name
+  a.b,c  -> 2nd index?
+  !5  -> run 5 times
+  !name  -> map to items in name, i.e. *name
+
+  a.*.c  -> search for matches, i.e. [a.*.c] $
+  a.b.c -> [x]
+  a.b.* -> [[x] [y] [z]]
+  a.*.* -> [[[d] [e] [f]]  [[g] [h] [i]]  [[j] [k] [l]]
+
+  need syntax for stack vs. queue naming  1@a  vs. 2$b?
+*/
+

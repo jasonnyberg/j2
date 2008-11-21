@@ -21,6 +21,9 @@ extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
 #include "rbtree.h"
 
+#define LTR struct rb_root
+#define LTN struct rb_node
+
 typedef struct
 {
     CLL lnk;
@@ -28,17 +31,17 @@ typedef struct
     void *data;
     int len;
     int refs;
-    struct rb_root subs;
+    LTR subs;
 } LTV; // LisTree Value
 
 typedef struct
 {
-    struct rb_node lnk;
+    LTN lnk;
     char *name;
     CLL cll;
 } LTI; // LisTreeItem
 
-typedef void *(*LT_OP)(struct rb_node *ltn,void *data);
+typedef void *(*LT_OP)(LTN *ltn,void *data);
 
 #define LTRROOT(rbr)            ((rbr)->rb_node)
 #define LTRFIRST(rbr)           rb_first(rbr)
@@ -63,9 +66,9 @@ typedef void *(*LT_OP)(struct rb_node *ltn,void *data);
 
 extern LTI *lti_new(char *name);
 extern LTV *ltv_new(char *data);
-extern LTI *lt_get(struct rb_root *ltr,char *name,int insert);
-extern void *lt_traverse(struct rb_root *ltr,LT_OP op,void *data);
-extern void *lt_dump(struct rb_root *ltr,void *data);
+extern LTI *lt_get(LTR *ltr,char *name,int insert);
+extern void *lt_traverse(LTR *ltr,LT_OP op,void *data);
+extern void *lt_dump(LTR *ltr,void *data);
 
 #endif
 

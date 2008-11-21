@@ -5,13 +5,19 @@
 // Circular list (StaQ) (sentinel implementation)
 //////////////////////////////////////////////////
 
-// head=next[0],tail=next[1]
-typedef struct CLL { struct CLL *lnk[2]; } CLL;
+// head=lnk[0],tail=lnk[1]
+struct CLL { struct CLL *lnk[2]; } __attribute__((aligned(sizeof(long))));
+
+typedef struct CLL CLL;
 typedef void *(*CLL_OP)(CLL *lnk,void *data);
 
 extern CLL *CLL_init(CLL *lst);
-extern CLL *CLL_put(CLL *lst,CLL *lnk,int tail);
-extern CLL *CLL_get(CLL *lst,CLL *lnk,int tail,int pop);
+extern void CLL_destroy(CLL *lst);
+
+extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);
+extern CLL *CLL_pop(CLL *lnk);
+extern CLL *CLL_get(CLL *lst,int pop,int end);
+
 extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
 
@@ -21,54 +27,61 @@ extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
 #include "rbtree.h"
 
-#define LTR struct rb_root
-#define LTN struct rb_node
+#define RBR struct rb_root
+#define RBN struct rb_node
+
+typedef enum { LT_DUP=1<<0, LT_RO=1<<1, LT_CTYPE=1<<2 } LTV_FLAGS;
 
 typedef struct
 {
     CLL lnk;
-    int flags;
+    LTV_FLAGS flags;
     void *data;
     int len;
     int refs;
-    LTR subs;
+    RBR subs;
 } LTV; // LisTree Value
 
 typedef struct
 {
-    LTN lnk;
+    union { RBN rbn; CLL cll; } lnk;
     char *name;
     CLL cll;
 } LTI; // LisTreeItem
 
-typedef void *(*LT_OP)(LTN *ltn,void *data);
+typedef void *(*LT_OP)(RBN *ltn,void *data);
 
-#define LTRROOT(rbr)            ((rbr)->rb_node)
-#define LTRFIRST(rbr)           rb_first(rbr)
-#define LTRLAST(rbr)            rb_last(rbr)
+#define RBRROOT(rbr)   ((rbr)->rb_node)
+#define RBRFIRST(rbr)  rb_first(rbr)
+#define RBRLAST(rbr)   rb_last(rbr)
+        
 
-#define LTILNK(rbn)             (((LTI *) (rbn))->lnk)
-#define LTINAME(rbn)            (((LTI *) (rbn))->name)
-#define LTICLL(rbn)             (((LTI *) (rbn))->cll)
+#define LTILEFT(rbn)   ((LTI *) ((RBN *) (rbn))->rb_left)
+#define LTIRIGHT(rbn)  ((LTI *) ((RBN *) (rbn))->rb_right)
+#define LTIPARENT(rbn) ((LTI *) rb_parent((RBN *) (rbn)))
+#define LTINEXT(rbn)   ((LTI *) rb_next((RBN *) (rbn)))
+#define LTIPREV(rbn)   ((LTI *) rb_prev((RBN *) (rbn)))
 
-#define LTILEFT(rbn)            ((LTI *) ((&LTILNK(rbn))->rb_left))
-#define LTIRIGHT(rbn)           ((LTI *) ((&LTILNK(rbn))->rb_right))
-#define LTIPARENT(rbn)          ((LTI *) rb_parent(&LTILNK(rbn)))
-#define LTINEXT(rbn)            ((LTI *) rb_next(&LTILNK(rbn)))
-#define LTIPREV(rbn)            ((LTI *) rb_prev(&LTILNK(rbn)))
-
-#define LTVLNK(ltv)             ((ltv)->lnk)
-#define LTVFLAGS(ltv)           ((ltv)->flags)
-#define LTVDATA(ltv)            ((ltv)->data)
-#define LTVLEN(ltv)             ((ltv)->len)
-#define LTVREFS(ltv)            ((ltv)->refs)
-#define LTVSUBS(ltv)            ((ltv)->subs)
+extern LTV *ltv_new(char *data);
+extern void ltv_free(CLL *cll);
 
 extern LTI *lti_new(char *name);
-extern LTV *ltv_new(char *data);
-extern LTI *lt_get(LTR *ltr,char *name,int insert);
-extern void *lt_traverse(LTR *ltr,LT_OP op,void *data);
-extern void *lt_dump(LTR *ltr,void *data);
+extern void lti_free(RBN *rbn);
+
+extern LTV *lti_assign(LTI *lti,LTV *ltv)
+
+extern LTI *lt_lookup(RBR *rbr,char *name,int insert);
+extern void *lt_traverse(RBR *rbr,LT_OP op,void *data);
+
+
+
+//////////////////////////////////////////////////
+// Dictionary
+//////////////////////////////////////////////////
+
+
+
+
 
 #endif
 

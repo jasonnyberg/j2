@@ -4,6 +4,26 @@
 
 struct rb_root *root;
 
+
+/* temporary until reflect works */
+void *lt_dump_ltv(CLL *lnk,void *data)
+{
+    printf("  %s%s\n",(char *) data,LTVDATA((LTV *) lnk));
+    return NULL;
+}
+
+void *lt_dump_rbn(LTN *rbn,void *data)
+{
+    printf("%s%s:\n",(char *) data,LTINAME(rbn));
+    return CLL_traverse(&LTICLL(rbn),0,lt_dump_ltv,data);
+}
+
+void *lt_dump(LTR *ltr,void *data)
+{
+    return lt_traverse(ltr,lt_dump_rbn,data);
+}
+
+
 int main()
 {
     LTI *lti;

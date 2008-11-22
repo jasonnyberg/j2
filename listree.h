@@ -34,13 +34,14 @@ typedef enum { LT_DUP=1<<0, LT_RO=1<<1, LT_CTYPE=1<<2 } LTV_FLAGS;
 
 typedef struct
 {
-    CLL lnk;
     LTV_FLAGS flags;
     void *data;
     int len;
     int refs;
     RBR subs;
 } LTV; // LisTree Value
+
+typedef struct { CLL lnk; LTV *ltv; } LTVR;
 
 typedef struct
 {
@@ -62,16 +63,16 @@ typedef void *(*LT_OP)(RBN *ltn,void *data);
 #define LTINEXT(rbn)   ((LTI *) rb_next((RBN *) (rbn)))
 #define LTIPREV(rbn)   ((LTI *) rb_prev((RBN *) (rbn)))
 
-extern LTV *ltv_new(char *data);
-extern void ltv_free(CLL *cll);
+extern LTV *LTV_new(char *data);
+extern void LTV_free(CLL *cll);
+extern LTV *LTV_put(CLL *trash,CLL *cll,LTV *ltv,int end);
+extern LTV *LTV_get(CLL *trash,CLL *cll,int pop,int end);
 
-extern LTI *lti_new(char *name);
-extern void lti_free(RBN *rbn);
+extern LTI *LTI_new(char *name);
+extern void LTI_free(RBN *rbn);
 
-extern LTV *lti_assign(LTI *lti,LTV *ltv)
-
-extern LTI *lt_lookup(RBR *rbr,char *name,int insert);
-extern void *lt_traverse(RBR *rbr,LT_OP op,void *data);
+extern LTI *LT_lookup(RBR *rbr,char *name,int insert);
+extern void *LT_traverse(RBR *rbr,LT_OP op,void *data);
 
 
 

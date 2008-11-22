@@ -6,19 +6,9 @@ typedef struct
     CLL anons;
     CLL stack;
     RBR ltitrash;
-    CLL ltvtrash;
-    CLL vsitrash;
+    CLL ltvrtrash;
+    CLL ltvtrash; // ltvr + ltv
 } EDICT;
-
-
-//////////////////////////////////////////////////
-// Value Stack
-//////////////////////////////////////////////////
-
-typedef struct { CLL lnk; LTV *ltv; } CLL_LTV;
-extern void vs_push(VSI *vsi,LTV *ltv);
-extern LTV *vs_pop(VSI *vsi);
-
 
 //////////////////////////////////////////////////
 // Edict
@@ -27,7 +17,4 @@ extern LTV *vs_pop(VSI *vsi);
 extern EDICT_ENV *edict_init();
 extern void edict_destroy(EDICT_ENV *edict);
 
-
-
-
-
+extern LTV *edict_assign(LTI *lti,LTV *ltv,int end);

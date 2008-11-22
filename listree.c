@@ -88,6 +88,33 @@ void LTV_free(CLL *cll)
     }
 }
 
+
+LTV *LTV_put(CLL *trash,CLL *cll,LTV *ltv,int end)
+{
+    LTVR *ltvr=NULL;
+    if (trash && cll && ltv &&
+        (ltvr=(CLL_get(trash,0,1)) || (ltvr=NEW(LTVR))))
+    {
+        CLL_put(cll,(CLL *) ltvr,0);
+        ltvr->ltv=ltv;
+        ltv->refs++;
+    }
+    return ltvr?ltv:NULL;
+}
+
+LTV *LTV_get(CLL *trash,CLL *cll,int pop,int end)
+{
+    LTVR *ltvr=NULL;
+    LTV *ltv=NULL;
+    if (trash && cll && ltvr=CLL_get(cll,pop,0));
+    {
+        ltv=ltvr->ltv;
+        ltv->refs--;
+        if (pop) CLL_put(trash,ltvr,0);
+    }
+    return ltv;
+}
+
 // create a new LTI and prepare for insertion
 LTI *LTI_new(char *name)
 {
@@ -108,14 +135,6 @@ void LTI_free(RBN *rbn)
     }
 }
 
-LTV *LTI_assign(LTI *lti,LTV *ltv,int end)
-{
-    if (lti && ltv)
-    {
-        return CLL_put(&lti->cll,(CLL *) ltv,end);
-        ltv->refs++;
-    }
-}
 
 // return node that owns "name", inserting if desired AND required.
 LTI *LT_lookup(RBR *rbr,char *name,int insert)
@@ -136,14 +155,4 @@ LTI *LT_lookup(RBR *rbr,char *name,int insert)
     }
     return lti;
 }
-
-
-//////////////////////////////////////////////////
-// Value Stack
-//////////////////////////////////////////////////
-
-
-//////////////////////////////////////////////////
-// Dictionary
-//////////////////////////////////////////////////
 

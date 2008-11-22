@@ -12,7 +12,8 @@ typedef struct CLL CLL;
 typedef void *(*CLL_OP)(CLL *lnk,void *data);
 
 extern CLL *CLL_init(CLL *lst);
-extern void CLL_destroy(CLL *lst);
+extern void CLL_release(CLL *lst,void (*cll_release)(CLL *cll,void *data),void *data);
+
 
 extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);
 extern CLL *CLL_pop(CLL *lnk);
@@ -30,7 +31,7 @@ extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 #define RBR struct rb_root
 #define RBN struct rb_node
 
-typedef enum { LT_DUP=1<<0, LT_RO=1<<1, LT_CTYPE=1<<2 } LTV_FLAGS;
+typedef enum { LT_STR=1<<0, LT_DUP=1<<1, LT_RO=1<<2, LT_CTYPE=1<<3 } LTV_FLAGS;
 
 typedef struct
 {
@@ -41,39 +42,32 @@ typedef struct
     RBR subs;
 } LTV; // LisTree Value
 
-typedef struct { CLL lnk; LTV *ltv; } LTVR;
+typedef struct { CLL cll; LTV *ltv; } LTVR;
 
 typedef struct
 {
-    union { RBN rbn; CLL cll; } lnk;
+    union { RBN rbn; CLL cll; } u;
     char *name;
     CLL cll;
 } LTI; // LisTreeItem
 
 typedef void *(*LT_OP)(RBN *ltn,void *data);
 
-#define RBRROOT(rbr)   ((rbr)->rb_node)
-#define RBRFIRST(rbr)  rb_first(rbr)
-#define RBRLAST(rbr)   rb_last(rbr)
-        
+extern RBR *RBR_init(RBR *rbr);
+extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn,void *data),void *data);
+extern void *RBR_traverse(RBR *rbr,LT_OP op,void *data);
 
-#define LTILEFT(rbn)   ((LTI *) ((RBN *) (rbn))->rb_left)
-#define LTIRIGHT(rbn)  ((LTI *) ((RBN *) (rbn))->rb_right)
-#define LTIPARENT(rbn) ((LTI *) rb_parent((RBN *) (rbn)))
-#define LTINEXT(rbn)   ((LTI *) rb_next((RBN *) (rbn)))
-#define LTIPREV(rbn)   ((LTI *) rb_prev((RBN *) (rbn)))
-
-extern LTV *LTV_new(char *data);
-extern void LTV_free(CLL *cll);
+extern LTV *LTV_new(void *data,int len,int flags);
 extern LTV *LTV_put(CLL *trash,CLL *cll,LTV *ltv,int end);
 extern LTV *LTV_get(CLL *trash,CLL *cll,int pop,int end);
 
 extern LTI *LTI_new(char *name);
-extern void LTI_free(RBN *rbn);
 
 extern LTI *LT_lookup(RBR *rbr,char *name,int insert);
-extern void *LT_traverse(RBR *rbr,LT_OP op,void *data);
 
+
+extern void LTVR_free(CLL *cll,void *data);
+extern void LTI_free(RBN *rbn,void *data);
 
 
 //////////////////////////////////////////////////

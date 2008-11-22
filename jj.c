@@ -1,43 +1,48 @@
-#include "rbtree.h"
-#include "listree.h"
-#include "util.h"
-
-struct rb_root *root;
-
+#include <stdio.h>
+#include "edict.h"
 
 /* temporary until reflect works */
-void *lt_dump_ltv(CLL *lnk,void *data)
+void *LT_dump_ltvr(CLL *lnk,void *data)
 {
-    printf("  %s%s\n",(char *) data,LTVDATA((LTV *) lnk));
+    printf("  %s%s\n",(char *) data,((LTVR *) lnk)->ltv->data);
     return NULL;
 }
 
-void *lt_dump_rbn(LTN *rbn,void *data)
+void *LT_dump_rbn(RBN *rbn,void *data)
 {
-    printf("%s%s:\n",(char *) data,LTINAME(rbn));
-    return CLL_traverse(&LTICLL(rbn),0,lt_dump_ltv,data);
+    printf("%s%s:\n",(char *) data,((LTI *) rbn)->name);
+    return CLL_traverse(&((LTI *) rbn)->cll,0,LT_dump_ltvr,data);
 }
 
-void *lt_dump(LTR *ltr,void *data)
+void *lt_dump(RBR *rbr,void *data)
 {
-    return lt_traverse(ltr,lt_dump_rbn,data);
+    printf("***********************\n");
+    return RBR_traverse(rbr,LT_dump_rbn,data);
 }
 
+
+
+EDICT edict;
 
 int main()
 {
     LTI *lti;
-    root=NEW(struct rb_root);
-
-    lti=lt_get(root,"aaa",1);
-    CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("123")),0);
-    lti=lt_get(root,"bbb",1);
-    CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("456")),0);
-    lti=lt_get(root,"aaa",1);
-    CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("789")),0);
-    lti=lt_get(root,"aaa",1);
-    CLL_put(&LTICLL(lti),&LTVLNK(ltv_new("abc")),1);
+    edict_init(&edict);
     
-    lt_dump(root,NULL);
+    lti=LT_lookup(&edict.root,"aaa",1);
+    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("123",0,LT_STR|LT_DUP),0);
+    lt_dump(&edict.root,"");
+    
+    lti=LT_lookup(&edict.root,"bbb",1);
+    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("456",0,LT_STR|LT_DUP),0);
+    lt_dump(&edict.root,"");
+    
+    lti=LT_lookup(&edict.root,"aaa",1);
+    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("789",0,LT_STR|LT_DUP),0);
+    lt_dump(&edict.root,"");
+    
+    lti=LT_lookup(&edict.root,"aaa",1);
+    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("abc",0,LT_STR|LT_DUP),1);
+    lt_dump(&edict.root,"");
 }
 

@@ -12,7 +12,7 @@ typedef struct CLL CLL;
 typedef void *(*CLL_OP)(CLL *lnk,void *data);
 
 extern CLL *CLL_init(CLL *lst);
-extern void CLL_release(CLL *lst,void (*cll_release)(CLL *cll,void *data),void *data);
+extern void CLL_release(CLL *lst,void (*cll_release)(CLL *cll));
 
 
 extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);
@@ -35,6 +35,7 @@ typedef enum { LT_STR=1<<0, LT_DUP=1<<1, LT_RO=1<<2, LT_CTYPE=1<<3 } LTV_FLAGS;
 
 typedef struct
 {
+    CLL repo[0]; // union without union semantics
     LTV_FLAGS flags;
     void *data;
     int len;
@@ -42,11 +43,17 @@ typedef struct
     RBR subs;
 } LTV; // LisTree Value
 
-typedef struct { CLL cll; LTV *ltv; } LTVR;
+typedef struct
+{
+    CLL repo[0]; // union without union semantics
+    CLL cll;
+    LTV *ltv;
+} LTVR;
 
 typedef struct
 {
-    union { RBN rbn; CLL cll; } u;
+    CLL repo[0]; // union without union semantics
+    RBN rbn;
     char *name;
     CLL cll;
 } LTI; // LisTreeItem
@@ -54,21 +61,28 @@ typedef struct
 typedef void *(*LT_OP)(RBN *ltn,void *data);
 
 extern RBR *RBR_init(RBR *rbr);
-extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn,void *data),void *data);
+extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
 extern void *RBR_traverse(RBR *rbr,LT_OP op,void *data);
 
 extern LTV *LTV_new(void *data,int len,int flags);
-extern LTV *LTV_put(CLL *trash,CLL *cll,LTV *ltv,int end);
-extern LTV *LTV_get(CLL *trash,CLL *cll,int pop,int end);
+extern void LTV_free(LTV *ltv);
+
+extern LTVR *LTVR_new();
+extern void LTVR_free(LTVR *ltvr);
 
 extern LTI *LTI_new(char *name);
+extern void LTI_free(LTI *lti);
+
+extern LTV *LTV_put(CLL *cll,LTV *ltv,int end);
+extern LTV *LTV_get(CLL *cll,int pop,int end);
 
 extern LTI *LT_lookup(RBR *rbr,char *name,int insert);
 
+extern void LTV_release(LTV *ltv);
+extern void LTVR_release(CLL *cll);
+extern void LTI_release(RBN *rbn);
 
-extern void LTVR_free(CLL *cll,void *data);
-extern void LTI_free(RBN *rbn,void *data);
-
+extern CLL ltv_repo,ltvr_repo,lti_repo;
 
 //////////////////////////////////////////////////
 // Dictionary

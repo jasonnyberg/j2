@@ -5,9 +5,6 @@ typedef struct
     RBR root;
     CLL anons;
     CLL stack;
-    RBR ltitrash;
-    CLL ltvrtrash;
-    CLL ltvtrash; // pop an ltvr from ltvrtrash to link an ltv
 } EDICT;
 
 //////////////////////////////////////////////////

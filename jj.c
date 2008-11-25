@@ -30,19 +30,19 @@ int main()
     edict_init(&edict);
     
     lti=LT_lookup(&edict.root,"aaa",1);
-    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("123",0,LT_STR|LT_DUP),0);
+    LTV_put(&lti->cll,LTV_new("123",0,LT_STR|LT_DUP),0);
     lt_dump(&edict.root,"");
     
     lti=LT_lookup(&edict.root,"bbb",1);
-    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("456",0,LT_STR|LT_DUP),0);
+    LTV_put(&lti->cll,LTV_new("456",0,LT_STR|LT_DUP),0);
     lt_dump(&edict.root,"");
     
     lti=LT_lookup(&edict.root,"aaa",1);
-    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("789",0,LT_STR|LT_DUP),0);
+    LTV_put(&lti->cll,LTV_new("789",0,LT_STR|LT_DUP),0);
     lt_dump(&edict.root,"");
     
     lti=LT_lookup(&edict.root,"aaa",1);
-    LTV_put(&edict.ltvrtrash,&lti->cll,LTV_new("abc",0,LT_STR|LT_DUP),1);
+    LTV_put(&lti->cll,LTV_new("abc",0,LT_STR|LT_DUP),1);
     lt_dump(&edict.root,"");
 }
 

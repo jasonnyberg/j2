@@ -3,16 +3,19 @@
 #include "listree.h"
 
 
+CLL ltv_repo,ltvr_repo,lti_repo;
+
+
 //////////////////////////////////////////////////
 // Circular Linked List
 //////////////////////////////////////////////////
 
 CLL *CLL_init(CLL *lst) { return lst->lnk[0]=lst->lnk[1]=lst; }
 
-void CLL_release(CLL *lst,void (*cll_release)(CLL *lnk,void *data),void *data) 
+void CLL_release(CLL *lst,void (*cll_release)(CLL *lnk))
 {
     CLL *cll;
-    while (cll=CLL_get(lst,0,1)) cll_release(cll,data);
+    while (cll=CLL_get(lst,0,1)) cll_release(cll);
 }
 
 CLL *CLL_put(CLL *lst,CLL *lnk,int end)
@@ -53,15 +56,28 @@ void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 // LisTree
 //////////////////////////////////////////////////
 
-RBR *RBR_init(RBR *rbr) { RB_EMPTY_ROOT(rbr); return rbr; }
+RBR *RBR_init(RBR *rbr)
+{
+    static int repo_init=0;
 
-void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn,void *data),void *data)
+    if (!repo_init)
+    {
+        CLL_init(&ltv_repo);
+        CLL_init(&ltvr_repo);
+        CLL_init(&lti_repo);
+    }
+    
+    RB_EMPTY_ROOT(rbr);
+    return rbr;
+}
+
+void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
 {
     RBN *rbn;
     while (rbn=rbr->rb_node)
     {
         rb_erase(rbn,rbr);
-        rbn_release(rbn,data);
+        rbn_release(rbn);
     }
 }
 
@@ -72,48 +88,81 @@ void *RBR_traverse(RBR *rbr,LT_OP op,void *data)
     return result;
 }
 
-// create a new LTV and prepare for insertion
+
+// get a new LTV and prepare for insertion
 LTV *LTV_new(void *data,int len,int flags)
 {
-    LTV *ltv=NEW(LTV);
-    ltv->data=flags&LT_DUP?data:bufdup(data,flags&LT_STR?strlen((char *) data):len);
-    ltv->flags=flags;
+    LTV *ltv=NULL;
+    if (data &&
+        ((ltv=(LTV *) CLL_get(&ltv_repo,0,1)) || (ltv=NEW(LTV))))
+    {
+        ltv->data=flags&LT_DUP?data:bufdup(data,flags&LT_STR?strlen((char *) data):len);
+        ltv->flags=flags;
+    }
     return ltv;
 }
 
-LTV *LTV_put(CLL *trash,CLL *cll,LTV *ltv,int end)
+void LTV_free(LTV *ltv)
 {
-    LTVR *ltvr=NULL;
-    if (trash && cll && ltv &&
-        ((ltvr=(LTVR *) CLL_get(trash,0,1)) || (ltvr=NEW(LTVR))))
+    CLL_put(&ltv_repo,&ltv->repo[0],0);
+}
+
+
+// get a new LTVR
+LTVR *LTVR_new()
+{
+    LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,0,1);
+    if (!ltvr) ltvr=NEW(LTVR);
+    return ltvr;
+}
+
+void LTVR_free(LTVR *ltvr)
+{
+    CLL_put(&ltvr_repo,&ltvr->repo[0],0);
+}
+
+
+// get a new LTI and prepare for insertion
+LTI *LTI_new(char *name)
+{
+    LTI *lti;
+    if (name &&
+        ((lti=(LTI *) CLL_get(&lti_repo,0,1)) || (lti=NEW(LTI))))
+    lti->name=strdup(name);
+    CLL_init(&lti->cll);
+    return lti;
+}
+
+void LTI_free(LTI *lti)
+{
+    CLL_put(&lti_repo,&lti->repo[0],0);
+}
+
+
+
+LTV *LTV_put(CLL *cll,LTV *ltv,int end)
+{
+    LTVR *ltvr=LTVR_new();
+    if (cll && ltv && ltvr)
     {
-        CLL_put(cll,(CLL *) ltvr,0);
+        CLL_put(cll,(CLL *) ltvr,end);
         ltvr->ltv=ltv;
         ltv->refs++;
     }
     return ltvr?ltv:NULL;
 }
 
-LTV *LTV_get(CLL *trash,CLL *cll,int pop,int end)
+LTV *LTV_get(CLL *cll,int pop,int end)
 {
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
-    if (trash && cll && (ltvr=(LTVR *) CLL_get(cll,pop,0)));
+    if (cll && (ltvr=(LTVR *) CLL_get(cll,pop,end)));
     {
         ltv=ltvr->ltv;
         ltv->refs--;
-        if (pop) CLL_put(trash,&ltvr->cll,0);
+        if (pop) LTVR_free(ltvr);
     }
     return ltv;
-}
-
-// create a new LTI and prepare for insertion
-LTI *LTI_new(char *name)
-{
-    LTI *lti=NEW(LTI);
-    lti->name=strdup(name);
-    CLL_init(&lti->cll);
-    return lti;
 }
 
 
@@ -131,41 +180,45 @@ LTI *LT_lookup(RBR *rbr,char *name,int insert)
     }
     if (insert && (lti=LTI_new(name)))
     {
-        rb_link_node(&lti->u.rbn,*rbn?rb_parent(*rbn):NULL,rbn); // add
-        rb_insert_color(&lti->u.rbn,rbr); // rebalance
+        rb_link_node(&lti->rbn,*rbn?rb_parent(*rbn):NULL,rbn); // add
+        rb_insert_color(&lti->rbn,rbr); // rebalance
     }
     return lti;
 }
 
 
 //////////////////////////////////////////////////
-// LT Free Tag Team (frees memory)
+// Tag Team of release methods for LT elements
 //////////////////////////////////////////////////
 
-void LTVR_free(CLL *cll,void *data)
+void LTV_release(LTV *ltv)
+{
+    if (ltv && ltv->refs--<=1)
+    {
+        RBR_release(&ltv->subs,LTI_release);
+        if (ltv->flags&LT_DUP) DELETE(ltv->data);
+        LTV_free(ltv);
+    }
+}
+
+void LTVR_release(CLL *cll)
 {
     LTVR *ltvr=(LTVR *) cll;
     if (ltvr)
     {
-        LTV *ltv=ltvr->ltv;
-        DELETE(ltvr);
-        if (ltv && ltv->refs--<=1)
-        {
-            RBR_release(&ltv->subs,LTI_free,data);
-            if (ltv->flags&LT_DUP) DELETE(ltv->data);
-            DELETE(ltv);
-        }
+        LTV_release(ltvr->ltv);
+        LTVR_free(ltvr);
     }
 }
 
-void LTI_free(RBN *rbn,void *data)
+void LTI_release(RBN *rbn)
 {
     LTI *lti=(LTI *) rbn;
     if (lti)
     {
-        CLL_release(&lti->cll,LTVR_free,data);
+        CLL_release(&lti->cll,LTVR_release);
         DELETE(lti->name);
-        DELETE(lti);
+        LTI_free(lti);
     }
 }
 

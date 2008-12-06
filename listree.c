@@ -1,4 +1,7 @@
-#include "stdio.h"
+#define _GNU_SOURCE
+
+#include <stdio.h>
+#include <string.h>
 #include "util.h"
 #include "listree.h"
 
@@ -117,12 +120,12 @@ void LTVR_free(LTVR *ltvr)
 
 
 // get a new LTI and prepare for insertion
-LTI *LTI_new(char *name)
+LTI *LTI_new(char *name,int len)
 {
     LTI *lti;
     if (name &&
         ((lti=(LTI *) CLL_get(&lti_repo,1,1)) || (lti=NEW(LTI))))
-    lti->name=strdup(name);
+    lti->name=len<0?strdup(name):strndup(name,len);
     CLL_init(&lti->cll);
     return lti;
 }
@@ -163,7 +166,7 @@ LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
             if (!result) return (LTI *) *rbn; // found it!
             else rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right;
         }
-        if (insert && (lti=LTI_new(name)))
+        if (insert && (lti=LTI_new(name,len)))
         {
             rb_link_node(&lti->rbn,*rbn?rb_parent(*rbn):NULL,rbn); // add
             rb_insert_color(&lti->rbn,rbr); // rebalance

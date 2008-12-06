@@ -57,8 +57,8 @@ int jj_test()
     edict_add(&edict,LTV_new("abc",-1,0));
 
     edict_name(&edict,"name1",-1,0);
-    edict_name(&edict,"name2",-1,0);
-    edict_name(&edict,"name3",-1,0);
+    edict_name(&edict,"name2a.name2b",-1,0);
+    edict_name(&edict,"name3a,name3b",-1,0);
     edict_name(&edict,"name4",-1,0);
 
     edict_dump(&edict);

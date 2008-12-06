@@ -71,7 +71,7 @@ extern void LTV_free(LTV *ltv);
 extern LTVR *LTVR_new();
 extern void LTVR_free(LTVR *ltvr);
 
-extern LTI *LTI_new(char *name);
+extern LTI *LTI_new(char *name,int len);
 extern void LTI_free(LTI *lti);
 
 extern LTI *LT_lookup(RBR *rbr,char *name,int len,int insert);

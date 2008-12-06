@@ -65,8 +65,10 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end)
                 root=LTV_get(&lti->cll,0,1);
             else
                 return LTV_put(&lti->cll,LTV_get(&edict->anons,1,0),end);
-            if (!root) LTV_put(&lti->cll,LTV_new("",-1,0),0);
+            if (!root)
+                root=LTV_put(&lti->cll,LTV_new("",-1,0),0);
             len-=(tlen+1);
+            name+=(tlen+1);
         }
     }
     return NULL;

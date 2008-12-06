@@ -21,7 +21,6 @@ extern CLL *CLL_get(CLL *lst,int pop,int end);
 
 extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
-
 //////////////////////////////////////////////////
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////
@@ -33,7 +32,7 @@ extern CLL ltv_repo,ltvr_repo,lti_repo;
 #define RBR struct rb_root
 #define RBN struct rb_node
 
-typedef enum { LT_STR=1<<0, LT_DUP=1<<1, LT_STRDUP=LT_STR|LT_DUP, LT_RO=1<<2, LT_CTYPE=1<<3, } LTV_FLAGS;
+typedef enum { LT_DUP=1<<0, LT_RO=1<<1, LT_CVAR=1<<2, } LTV_FLAGS;
 
 typedef struct
 {
@@ -94,9 +93,6 @@ extern LTV *LTV_get(CLL *cll,int pop,int end);
 extern void LT_init();
 extern LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end);
 extern LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end);
-
-
-
 
 
 #endif

@@ -3,9 +3,17 @@
 #include "edict.h"
 
 /* temporary until reflect works */
+void *CLL_dump(CLL *cll,void *data);
+void *RBR_dump(RBR *rbr,void *data);
+void *RBN_dump(RBN *rbn,void *data);
+void *LTVR_dump(CLL *lnk,void *data);
+void *LTV_dump(LTV *ltv,void *data);
+
+
 void *LTV_dump(LTV *ltv,void *data)
 {
     printf("  %s%s\n",(char *) data,ltv->data);
+    RBR_dump(&ltv->rbr,data);
     return NULL;
 }
 
@@ -31,23 +39,29 @@ void *CLL_dump(CLL *cll,void *data)
     return CLL_traverse(cll,0,LTVR_dump,data);
 }
 
+void edict_dump(EDICT *edict)
+{
+    printf("---------------------\n");
+    CLL_dump(&edict->anons,"anons: ");
+    CLL_dump(&edict->stack,"stack: ");
+    printf("---------------------\n");
+}
 
 EDICT edict;
 
 int jj_test()
 {
-    edict_add(&edict,LTV_new("123",0,LT_STRDUP));
-    edict_add(&edict,LTV_new("456",0,LT_STRDUP));
-    edict_add(&edict,LTV_new("789",0,LT_STRDUP));
-    edict_add(&edict,LTV_new("abc",0,LT_STRDUP));
+    edict_add(&edict,LTV_new("123",-1,0));
+    edict_add(&edict,LTV_new("456",-1,0));
+    edict_add(&edict,LTV_new("789",-1,0));
+    edict_add(&edict,LTV_new("abc",-1,0));
 
-    printf("---------------------\n");
-    CLL_dump(&edict.anons,"anons: ");
-    printf("---------------------\n");
-    CLL_dump(&edict.stack,"stack: ");
-    printf("---------------------\n");
-    
-    printf("***********************\n");
+    edict_name(&edict,"name1",-1,0);
+    edict_name(&edict,"name2",-1,0);
+    edict_name(&edict,"name3",-1,0);
+    edict_name(&edict,"name4",-1,0);
+
+    edict_dump(&edict);
 }
 
 int main()

@@ -13,10 +13,7 @@ int edict_init(EDICT *edict)
     TRY(!edict,-1,done,"edict=0x%x\n",edict);
     TRY(!(CLL_init(&edict->anons)),-1,done,"CLL_init(&edict->anons) failed\n",0);
     TRY(!(CLL_init(&edict->stack)),-1,done,"CLL_init(&edict->stack) failed\n",0);
-
-    edict_add(edict,LTV_new("",0,LT_STRDUP));
-    edict_name(edict,"root",-1,0);
-    
+    LTV_put(&edict->stack,LTV_new("ROOT",-1,0),0);
  done:
     return rval;
 }
@@ -68,6 +65,7 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end)
                 root=LTV_get(&lti->cll,0,1);
             else
                 return LTV_put(&lti->cll,LTV_get(&edict->anons,1,0),end);
+            if (!root) LTV_put(&lti->cll,LTV_new("",-1,0),0);
             len-=(tlen+1);
         }
     }

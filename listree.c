@@ -44,7 +44,7 @@ CLL *CLL_get(CLL *lst,int pop,int end)
 void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 {
     CLL *result,*lnk=lst->lnk[reverse];
-    while (lnk && lnk->lnk[reverse]!=lst && !(result=op(lnk,data)))
+    while (lnk && lnk!=lst && !(result=op(lnk,data)))
         lnk=lnk->lnk[reverse];
     return result;
 }
@@ -57,7 +57,7 @@ void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 //////////////////////////////////////////////////
 
 RBR *RBR_init(RBR *rbr)
-{    
+{
     RB_EMPTY_ROOT(rbr);
     return rbr;
 }
@@ -85,10 +85,11 @@ LTV *LTV_new(void *data,int len,int flags)
 {
     LTV *ltv=NULL;
     if (data &&
-        ((ltv=(LTV *) CLL_get(&ltv_repo,0,1)) || (ltv=NEW(LTV))))
+        ((ltv=(LTV *) CLL_get(&ltv_repo,1,1)) || (ltv=NEW(LTV))))
     {
-        ltv->data=flags&LT_DUP?bufdup(data,flags&LT_STR?strlen((char *) data):len):data;
+        ltv->len=len<0?strlen((char *) data):len;
         ltv->flags=flags;
+        ltv->data=flags&LT_DUP?bufdup(data,ltv->len):data;
     }
     return ltv;
 }
@@ -103,7 +104,7 @@ void LTV_free(LTV *ltv)
 // get a new LTVR
 LTVR *LTVR_new()
 {
-    LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,0,1);
+    LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,1,1);
     if (!ltvr) ltvr=NEW(LTVR);
     return ltvr;
 }
@@ -120,7 +121,7 @@ LTI *LTI_new(char *name)
 {
     LTI *lti;
     if (name &&
-        ((lti=(LTI *) CLL_get(&lti_repo,0,1)) || (lti=NEW(LTI))))
+        ((lti=(LTI *) CLL_get(&lti_repo,1,1)) || (lti=NEW(LTI))))
     lti->name=strdup(name);
     CLL_init(&lti->cll);
     return lti;
@@ -142,10 +143,8 @@ int LT_strcmp(char *name,int len,char *lti_name)
     }
     else
     {
-        char eos=name[len];
-        name[len]=0;
-        result = strcmp(name,lti_name);
-        name[len]=eos;
+        result=strncmp(name,lti_name,len);
+        if (!result && name[len]) result=-1; // handle substring match/string mismatch.
     }
     return result;
 }
@@ -157,7 +156,7 @@ LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
     if (rbr && name)
     {
         RBN **rbn = &(rbr->rb_node);
-        
+
         while (*rbn)
         {
             int result = LT_strcmp(name,len,((LTI *) *rbn)->name);
@@ -221,7 +220,7 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end)
     TRY(!(cll && ltv && (ltvr=LTVR_new())),NULL,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
     TRY(!CLL_put(cll,(CLL *) ltvr,end),NULL,done,"CLL_put(...) failed!\n",0);
     rval=ltvr->ltv=ltv;
-    ltv->refs++;
+    rval->refs++;
  done:
     return rval;
 }

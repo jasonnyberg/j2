@@ -26,12 +26,14 @@ extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////
 
+extern CLL ltv_repo,ltvr_repo,lti_repo;
+
 #include "rbtree.h"
 
 #define RBR struct rb_root
 #define RBN struct rb_node
 
-typedef enum { LT_STR=1<<0, LT_DUP=1<<1, LT_RO=1<<2, LT_CTYPE=1<<3 } LTV_FLAGS;
+typedef enum { LT_STR=1<<0, LT_DUP=1<<1, LT_STRDUP=LT_STR|LT_DUP, LT_RO=1<<2, LT_CTYPE=1<<3, } LTV_FLAGS;
 
 typedef struct
 {
@@ -40,7 +42,7 @@ typedef struct
     void *data;
     int len;
     int refs;
-    RBR subs;
+    RBR rbr;
 } LTV; // LisTree Value
 
 typedef struct
@@ -73,20 +75,25 @@ extern void LTVR_free(LTVR *ltvr);
 extern LTI *LTI_new(char *name);
 extern void LTI_free(LTI *lti);
 
-extern LTV *LTV_put(CLL *cll,LTV *ltv,int end);
-extern LTV *LTV_get(CLL *cll,int pop,int end);
+extern LTI *LT_lookup(RBR *rbr,char *name,int len,int insert);
 
-extern LTI *LT_lookup(RBR *rbr,char *name,int insert);
-
+//////////////////////////////////////////////////
+// Tag Team of release methods for LT elements
+//////////////////////////////////////////////////
 extern void LTV_release(LTV *ltv);
 extern void LTVR_release(CLL *cll);
 extern void LTI_release(RBN *rbn);
 
-extern CLL ltv_repo,ltvr_repo,lti_repo;
-
 //////////////////////////////////////////////////
 // Dictionary
 //////////////////////////////////////////////////
+
+extern LTV *LTV_put(CLL *cll,LTV *ltv,int end);
+extern LTV *LTV_get(CLL *cll,int pop,int end);
+
+extern void LT_init();
+extern LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end);
+extern LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end);
 
 
 

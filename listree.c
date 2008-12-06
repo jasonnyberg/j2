@@ -5,7 +5,6 @@
 
 CLL ltv_repo,ltvr_repo,lti_repo;
 
-
 //////////////////////////////////////////////////
 // Circular Linked List
 //////////////////////////////////////////////////
@@ -15,7 +14,7 @@ CLL *CLL_init(CLL *lst) { return lst->lnk[0]=lst->lnk[1]=lst; }
 void CLL_release(CLL *lst,void (*cll_release)(CLL *lnk))
 {
     CLL *cll;
-    while (cll=CLL_get(lst,0,1)) cll_release(cll);
+    while (cll=CLL_get(lst,1,0)) cll_release(cll);
 }
 
 CLL *CLL_put(CLL *lst,CLL *lnk,int end)
@@ -45,7 +44,8 @@ CLL *CLL_get(CLL *lst,int pop,int end)
 void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 {
     CLL *result,*lnk=lst->lnk[reverse];
-    while (lnk && lnk!=lst && !(result=op(lnk,data))) lnk=lnk->lnk[reverse];
+    while (lnk && lnk->lnk[reverse]!=lst && !(result=op(lnk,data)))
+        lnk=lnk->lnk[reverse];
     return result;
 }
 
@@ -57,16 +57,7 @@ void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 //////////////////////////////////////////////////
 
 RBR *RBR_init(RBR *rbr)
-{
-    static int repo_init=0;
-
-    if (!repo_init)
-    {
-        CLL_init(&ltv_repo);
-        CLL_init(&ltvr_repo);
-        CLL_init(&lti_repo);
-    }
-    
+{    
     RB_EMPTY_ROOT(rbr);
     return rbr;
 }
@@ -96,7 +87,7 @@ LTV *LTV_new(void *data,int len,int flags)
     if (data &&
         ((ltv=(LTV *) CLL_get(&ltv_repo,0,1)) || (ltv=NEW(LTV))))
     {
-        ltv->data=flags&LT_DUP?data:bufdup(data,flags&LT_STR?strlen((char *) data):len);
+        ltv->data=flags&LT_DUP?bufdup(data,flags&LT_STR?strlen((char *) data):len):data;
         ltv->flags=flags;
     }
     return ltv;
@@ -104,6 +95,7 @@ LTV *LTV_new(void *data,int len,int flags)
 
 void LTV_free(LTV *ltv)
 {
+    ZERO(*ltv);
     CLL_put(&ltv_repo,&ltv->repo[0],0);
 }
 
@@ -118,6 +110,7 @@ LTVR *LTVR_new()
 
 void LTVR_free(LTVR *ltvr)
 {
+    ZERO(*ltvr);
     CLL_put(&ltvr_repo,&ltvr->repo[0],0);
 }
 
@@ -135,53 +128,47 @@ LTI *LTI_new(char *name)
 
 void LTI_free(LTI *lti)
 {
+    ZERO(*lti);
     CLL_put(&lti_repo,&lti->repo[0],0);
 }
 
 
-
-LTV *LTV_put(CLL *cll,LTV *ltv,int end)
+int LT_strcmp(char *name,int len,char *lti_name)
 {
-    LTVR *ltvr=LTVR_new();
-    if (cll && ltv && ltvr)
+    int result;
+    if (len==-1)
     {
-        CLL_put(cll,(CLL *) ltvr,end);
-        ltvr->ltv=ltv;
-        ltv->refs++;
+        result=strcmp(name,lti_name);
     }
-    return ltvr?ltv:NULL;
-}
-
-LTV *LTV_get(CLL *cll,int pop,int end)
-{
-    LTVR *ltvr=NULL;
-    LTV *ltv=NULL;
-    if (cll && (ltvr=(LTVR *) CLL_get(cll,pop,end)));
+    else
     {
-        ltv=ltvr->ltv;
-        ltv->refs--;
-        if (pop) LTVR_free(ltvr);
+        char eos=name[len];
+        name[len]=0;
+        result = strcmp(name,lti_name);
+        name[len]=eos;
     }
-    return ltv;
+    return result;
 }
-
 
 // return node that owns "name", inserting if desired AND required.
-LTI *LT_lookup(RBR *rbr,char *name,int insert)
+LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
 {
-    RBN **rbn = &(rbr->rb_node);
     LTI *lti=NULL;
-    
-    while (*rbn)
+    if (rbr && name)
     {
-        int result = strcmp(name,((LTI *) *rbn)->name);
-        if (!result) return (LTI *) *rbn; // found it!
-        else rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right;
-    }
-    if (insert && (lti=LTI_new(name)))
-    {
-        rb_link_node(&lti->rbn,*rbn?rb_parent(*rbn):NULL,rbn); // add
-        rb_insert_color(&lti->rbn,rbr); // rebalance
+        RBN **rbn = &(rbr->rb_node);
+        
+        while (*rbn)
+        {
+            int result = LT_strcmp(name,len,((LTI *) *rbn)->name);
+            if (!result) return (LTI *) *rbn; // found it!
+            else rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right;
+        }
+        if (insert && (lti=LTI_new(name)))
+        {
+            rb_link_node(&lti->rbn,*rbn?rb_parent(*rbn):NULL,rbn); // add
+            rb_insert_color(&lti->rbn,rbr); // rebalance
+        }
     }
     return lti;
 }
@@ -195,7 +182,7 @@ void LTV_release(LTV *ltv)
 {
     if (ltv && ltv->refs--<=1)
     {
-        RBR_release(&ltv->subs,LTI_release);
+        RBR_release(&ltv->rbr,LTI_release);
         if (ltv->flags&LT_DUP) DELETE(ltv->data);
         LTV_free(ltv);
     }
@@ -221,4 +208,71 @@ void LTI_release(RBN *rbn)
         LTI_free(lti);
     }
 }
+
+
+//////////////////////////////////////////////////
+// Basic LT insert/remove
+//////////////////////////////////////////////////
+
+LTV *LTV_put(CLL *cll,LTV *ltv,int end)
+{
+    LTV *rval=NULL;
+    LTVR *ltvr;
+    TRY(!(cll && ltv && (ltvr=LTVR_new())),NULL,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
+    TRY(!CLL_put(cll,(CLL *) ltvr,end),NULL,done,"CLL_put(...) failed!\n",0);
+    rval=ltvr->ltv=ltv;
+    ltv->refs++;
+ done:
+    return rval;
+}
+
+LTV *LTV_get(CLL *cll,int pop,int end)
+{
+    LTV *rval=NULL;
+    LTVR *ltvr=NULL;
+    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),NULL,done,"cll/ltvr: 0x%x/0x%x\n",cll,ltvr);
+    rval=ltvr->ltv;
+    rval->refs--;
+    if (pop) LTVR_free(ltvr);
+ done:
+    return rval;
+}
+
+void LT_init()
+{
+    CLL_init(&ltv_repo);
+    CLL_init(&ltvr_repo);
+    CLL_init(&lti_repo);
+}
+
+LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end)
+{
+    LTV *rval=NULL;
+    LTI *lti;
+    TRY(!(rbr && ltv && name),NULL,done,"rbr/ltv/name: %p,%p,%p\n",rbr,ltv,name);
+    TRY(!(lti=LT_lookup(rbr,name,len,1)),NULL,done,"LT_lookup failed\n",0);
+    TRY(!(rval=LTV_put(&lti->cll,ltv,end)),NULL,done,"edict_enlist_ltv(...) failed\n",0);
+ done:
+    return rval;
+}
+
+LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end)
+{
+    LTV *rval=NULL;
+    LTI *lti;
+    TRY(!(rbr && name),NULL,done,"rbr/name: %p,%p\n",rbr,name);
+    if (lti=LT_lookup(rbr,name,len,0))
+    {
+        rval=LTV_get(&lti->cll,pop,end);
+        if (pop && !CLL_get(&lti->cll,0,0))
+        {
+            rb_erase(&lti->rbn,rbr);
+            LTI_release(&lti->rbn);
+        }
+    }
+ done:
+    return rval;
+}
+
+
 

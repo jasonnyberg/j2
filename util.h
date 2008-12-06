@@ -47,13 +47,13 @@ typedef unsigned long long ull;
 
 extern void try_error();
 
-#define TRY(cond,fail_status,exitpoint,msg,args...)                                              \
+#define TRY(cond,fail_rval,exitpoint,msg,args...)                                                \
     {                                                                                            \
         if ((cond))                                                                              \
         {                                                                                        \
-            status = fail_status;                                                                \
+            rval = fail_rval;                                                                    \
+            if (strlen(msg)) printf("TRY_ERR in %s: " msg,__func__,args);                        \
             try_error();                                                                         \
-            if (strlen(msg)) printf("TRY_ERR %d in %s: " msg,status,__func__,args);              \
             goto exitpoint;                                                                      \
         }                                                                                        \
     }

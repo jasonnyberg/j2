@@ -147,7 +147,7 @@ int LT_strcmp(char *name,int len,char *lti_name)
     else
     {
         result=strncmp(name,lti_name,len);
-        if (!result && name[len]) result=-1; // handle substring match/string mismatch.
+        if (!result && lti_name[len]) result=1; // handle substring match/string mismatch.
     }
     return result;
 }

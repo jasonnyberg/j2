@@ -5,6 +5,8 @@
 #include "util.h"
 #include "listree.h"
 
+//#define PEDANTIC(msg) msg
+#define PEDANTIC(msg) ""
 
 CLL ltv_repo,ltvr_repo,lti_repo;
 
@@ -232,7 +234,7 @@ LTV *LTV_get(CLL *cll,int pop,int end)
 {
     LTV *rval=NULL;
     LTVR *ltvr=NULL;
-    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),NULL,done,"cll/ltvr: 0x%x/0x%x\n",cll,ltvr);
+    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),NULL,done,PEDANTIC("cll/ltvr: 0x%x/0x%x\n"),cll,ltvr);
     rval=ltvr->ltv;
     rval->refs--;
     if (pop) LTVR_free(ltvr);

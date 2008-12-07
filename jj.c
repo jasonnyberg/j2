@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "util.h"
 #include "edict.h"
 
@@ -12,7 +13,7 @@ void *LTV_dump(LTV *ltv,void *data);
 
 void *LTV_dump(LTV *ltv,void *data)
 {
-    printf("  %s%s\n",(char *) data,ltv->data);
+    printf("%s:%s\n",(char *) data,ltv->data);
     RBR_dump(&ltv->rbr,data);
     return NULL;
 }
@@ -25,8 +26,9 @@ void *LTVR_dump(CLL *lnk,void *data)
 
 void *RBN_dump(RBN *rbn,void *data)
 {
-    printf("%s%s:\n",(char *) data,((LTI *) rbn)->name);
-    return CLL_traverse(&((LTI *) rbn)->cll,0,LTVR_dump,data);
+    char *prefix=alloca(strlen(data)+strlen(((LTI *) rbn)->name)+1);
+    sprintf(prefix,"%s.%s",(char *) data,((LTI *) rbn)->name);
+    return CLL_traverse(&((LTI *) rbn)->cll,0,LTVR_dump,prefix);
 }
 
 void *RBR_dump(RBR *rbr,void *data)
@@ -42,8 +44,8 @@ void *CLL_dump(CLL *cll,void *data)
 void edict_dump(EDICT *edict)
 {
     printf("---------------------\n");
-    CLL_dump(&edict->anons,"anons: ");
-    CLL_dump(&edict->stack,"stack: ");
+    CLL_dump(&edict->anons,"anons:");
+    CLL_dump(&edict->stack,"stack:");
     printf("---------------------\n");
 }
 

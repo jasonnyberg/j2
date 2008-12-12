@@ -158,19 +158,19 @@ int LT_strcmp(char *name,int len,char *lti_name)
 LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
 {
     LTI *lti=NULL;
+    
     if (rbr && name)
     {
-        RBN **rbn = &(rbr->rb_node);
-
+        RBN *parent=NULL,**rbn = &(rbr->rb_node);
         while (*rbn)
         {
             int result = LT_strcmp(name,len,((LTI *) *rbn)->name);
             if (!result) return (LTI *) *rbn; // found it!
-            else rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right;
+            else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
         }
         if (insert && (lti=LTI_new(name,len)))
         {
-            rb_link_node(&lti->rbn,*rbn?rb_parent(*rbn):NULL,rbn); // add
+            rb_link_node(&lti->rbn,parent,rbn); // add
             rb_insert_color(&lti->rbn,rbr); // rebalance
         }
     }

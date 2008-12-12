@@ -3,8 +3,9 @@
 #include "util.h"
 #include "edict.h"
 
-#define GVITEM(type,id,label) printf("\t\"%x\" [label=\"" type "%s\"];\n",id,label)
-#define GVEDGE(id,child) printf("\t\"%x\" -> \"%x\"\n",id,child)
+#define GVITEM(type,id,label,props) printf("\t\"%x\" [label=\"" type "%s\"] %s;\n",id,label,props)
+#define GVEDGE(parent,child,props) printf("\t\"%x\" -> \"%x\" %s\n",parent,child,props)
+#define GVGRP(parent,child) printf("\tsubgraph \"cluster%x\" { \"%x\" }\n",parent,child)
 
 /* temporary until reflect works */
 void *CLL_dump(CLL *cll,void *data);
@@ -13,42 +14,34 @@ void *RBN_dump(RBN *rbn,void *data);
 void *LTVR_dump(CLL *lnk,void *data);
 void *LTV_dump(LTV *ltv,void *data);
 
-int terse=1;
-
 void *LTV_dump(LTV *ltv,void *data)
 {
-    GVITEM("LTV",ltv,"");
-    GVEDGE(data,ltv);
+    GVITEM("LTV",ltv,"","");
+    GVEDGE(data,ltv,"");
     
-    GVITEM("",ltv->data,ltv->data);
-    GVEDGE(ltv,ltv->data);
+    GVITEM("",ltv->data,ltv->data,"[shape=ellipse]");
+    GVEDGE(ltv,ltv->data,"");
     
-    if (!terse) RBR_dump(&ltv->rbr,ltv);
-    else RBR_traverse(&ltv->rbr,RBN_dump,ltv);
+    RBR_dump(&ltv->rbr,ltv);
     return NULL;
 }
 
 void *LTVR_dump(CLL *ltvr,void *data)
 {
-    GVITEM("LTVR",ltvr,"");
-    GVEDGE(data,ltvr);
-    if (!terse) LTV_dump(((LTVR *) ltvr)->ltv,ltvr);
-    else
-    {
-        LTV *ltv=((LTVR *) ltvr)->ltv;
-        GVITEM("",ltv->data,ltv->data);
-        GVEDGE(ltvr,ltv->data);
-        RBR_traverse(&ltv->rbr,RBN_dump,ltvr);
-    }
+    GVITEM("LTVR",ltvr,"","");
+    GVEDGE(ltvr,ltvr->lnk[0],"");
+    LTV_dump(((LTVR *) ltvr)->ltv,ltvr);
+    GVGRP(data,ltvr);
     return NULL;
 }
 
 void *RBN_dump(RBN *rbn,void *data)
 {
-    GVITEM("",rbn,((LTI *) rbn)->name);
-    GVEDGE(data,rbn);
-    if (!terse) CLL_dump(&((LTI *) rbn)->cll,rbn);
-    else CLL_traverse(&((LTI *) rbn)->cll,0,LTVR_dump,rbn);
+    GVITEM("",rbn,((LTI *) rbn)->name,"");
+    if (rb_parent(rbn)) GVEDGE(rb_parent(rbn),rbn,"");
+    CLL_dump(&((LTI *) rbn)->cll,rbn);
+    GVGRP(data,rbn);
+    GVGRP(rbn,&((LTI *) rbn)->cll);
     return NULL;
 }
 
@@ -56,8 +49,10 @@ void *RBR_dump(RBR *rbr,void *data)
 {
     if (rbr->rb_node)
     {
-        GVITEM("RBR",rbr,"");
-        GVEDGE(data,rbr);
+        GVITEM("RBR",rbr,"","");
+        GVEDGE(data,rbr,"");
+        GVEDGE(rbr,rbr->rb_node,"");
+        GVGRP(rbr,rbr);
         RBR_traverse(rbr,RBN_dump,rbr);
     }
     return NULL;
@@ -65,19 +60,26 @@ void *RBR_dump(RBR *rbr,void *data)
 
 void *CLL_dump(CLL *cll,void *data)
 {
-    GVITEM("CLL",cll,"");
-    GVEDGE(data,cll);
-    CLL_traverse(cll,0,LTVR_dump,cll);
+    if (cll->lnk[0]!=cll)
+    {
+        GVITEM("CLL",cll,"","");
+        GVEDGE(data,cll,"");
+        GVEDGE(cll,cll->lnk[0],"");
+        GVGRP(cll,cll);
+        CLL_traverse(cll,0,LTVR_dump,cll);
+    }
     return NULL;
 }
 
 void edict_dump(EDICT *edict)
 {
-    printf("digraph iftree\n{\n\tgraph [concentrate=true]; node [shape=record]; edge [];\n");
-    GVITEM("EDICT",NULL,"");
-    printf("root=\"%s\"\n",NULL);
-    CLL_dump(&edict->anons,NULL);
-    CLL_dump(&edict->stack,NULL);
+    printf("digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
+    GVITEM("EDICT",-1,"","");
+    printf("root=\"%x\"\n",-1);
+    CLL_dump(&edict->anons,(void *) -1);
+    CLL_dump(&edict->stack,(void *) -1);
+    GVGRP((void *) -1,&edict->anons);
+    GVGRP((void *) -1,&edict->stack);
     printf("}\n");
 }
 
@@ -111,9 +113,7 @@ int main()
     LTI *lti;
     edict_init(&edict);
     jj_test();
-    edict_dump(&edict);
     jj_test();
     edict_dump(&edict);
     edict_destroy(&edict);
 }
-

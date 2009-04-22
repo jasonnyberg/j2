@@ -49,7 +49,7 @@ typedef struct
     CLL repo[0]; // union without union semantics
     CLL cll;
     LTV *ltv;
-} LTVR;
+} LTVR; // LisTree Value Reference
 
 typedef struct
 {

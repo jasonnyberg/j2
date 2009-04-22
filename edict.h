@@ -4,14 +4,16 @@ typedef struct
 {
     CLL anons;
     CLL stack;
-    CLL input;
+    CLL tokens;
+    CLL ifiles;
+    CLL ofiles;
 } EDICT;
 
 //////////////////////////////////////////////////
 // Edict
 //////////////////////////////////////////////////
 
-extern int edict_init();
+extern int edict_init(EDICT *edict,LTV *root)
 extern int edict_destroy(EDICT *edict);
 
 extern LTV *edict_add(EDICT *edict,LTV *ltv);

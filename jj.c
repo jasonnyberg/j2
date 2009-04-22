@@ -111,7 +111,8 @@ int jj_test()
 int main()
 {
     LTI *lti;
-    edict_init(&edict);
+    LTV *root=LTV_new("ROOT",-1,0);
+    edict_init(&edict,root);
     jj_test();
     jj_test();
     edict_dump(&edict);

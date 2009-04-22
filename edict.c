@@ -6,7 +6,7 @@
 // Edict
 //////////////////////////////////////////////////
 
-int edict_init(EDICT *edict)
+int edict_init(EDICT *edict,LTV *root)
 {
     int rval=0;
     LT_init();
@@ -14,7 +14,7 @@ int edict_init(EDICT *edict)
     TRY(!(CLL_init(&edict->anons)),-1,done,"CLL_init(&edict->anons) failed\n",0);
     TRY(!(CLL_init(&edict->stack)),-1,done,"CLL_init(&edict->stack) failed\n",0);
     TRY(!(CLL_init(&edict->input)),-1,done,"CLL_init(&edict->input) failed\n",0);
-    LTV_put(&edict->stack,LTV_new("ROOT",-1,0),0);
+    LTV_put(&edict->stack,root,0);
  done:
     return rval;
 }
@@ -46,7 +46,7 @@ LTV *edict_add(EDICT *edict,LTV *ltv)
 
 LTV *edict_rem(EDICT *edict)
 {
-    return LTV_get(&edict->anons,1,0);
+    return LTV_get(&edict->anons,1,0); // cleanup: LTV_release(LTV *)
 }
 
 LTV *edict_name(EDICT *edict,char *name,int len,int end)
@@ -104,46 +104,84 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end)
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
 
+#define LIT_DELIMIT "'[(){}"
 
-#if 0
+enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_COMMENT, DELIMIT_MAX };
+char delimiter[DELIMIT_MAX][256];
+int edict_bytecode_count;
+
+#define DICT_BYTECODE(dict,opcode,fn)                                                                     \
+    {                                                                                                     \
+        edict_bytecodes.bytecode[(int) *opcode]=(edict_extension) ((unsigned) *fn);                       \
+        if (!strchr(delimiter[DELIMIT_EXP_START],*opcode))                                                \
+        {                                                                                                 \
+            delimiter[DELIMIT_EXP_START][edict_bytecode_count++]=*opcode;                                 \
+            delimiter[DELIMIT_EXP_START][edict_bytecode_count]=(char) NULL;                               \
+            stpcpy(stpcpy(delimiter[DELIMIT_SIMPLE_LIT_END],WHITESPACE),delimiter[DELIMIT_EXP_START]);    \
+            stpcpy(stpcpy(delimiter[DELIMIT_EXP_END],LIT_DELIMIT),delimiter[DELIMIT_SIMPLE_LIT_END]);     \
+        }                                                                                                 \
+    }
+
 
 int edict_balance(char *str,char *start_end)
 {
-    int i,nest=0;
-
-    for(i=0;str[i];i++)
+    for(int i=0,nest=0;str[i];i++)
         if (str[i]==start_end[0]) nest++;
         else if (str[i]==start_end[1] && --nest==0)
-            return i+1; // balanced
-    return 0;
+            return ++i; // balanced
+    return 0; // not balanced
 }
 
-int edict_delimit(char **str)
-{
-    int pos;
 
-    if (str && *str && **str && *(*str+=strspn(*str,WHITESPACE))) // not end of string
+
+int edict_thread()
+{
+    int len=0;
+    static char *buf=NULL;
+    char *token=NULL;
+
+    while (1)
     {
-        switch (**str)
+        if (!buf)
+            token=buf=edict_readline();
+
+        while (**token && *(*token+=strspn(*token,WHITESPACE))) // not end of string
         {
-            case '\'': return strcspn(*str,delimiter[DELIMIT_SIMPLE_LIT_END]);
-            case '[': return jli_balance(*str,"[]"); // lit
-            case '(':
-            case ')':
-            case '{':
-            case '}':
-            case '<':
-            case '>':
-                return 1;
-            default:
-                pos=strspn(*str,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
-                return pos+strcspn(*str+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+            switch (**token)
+            {
+                case '[': len=edict_balance(*token,"[]"); // lit
+                case '\'': return strcspn(*token,delimiter[DELIMIT_SIMPLE_LIT_END]);
+                case '(':
+                case ')':
+                case '{':
+                case '}':
+                case '<':
+                case '>':
+                    return 1;
+                default:
+                    token=strspn(*buf,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
+                    return pos+strcspn(*buf+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+            }
         }
     }
+    else
+
+    done:
     return 0;
 }
 
-#endif
+
+int edict_thread(EDICT *edict)
+{
+    int len=0;
+    char *token=NULL;
+
+    while(len=edict_delimit(&token))
+        edict_evaluate(edict,token,len);
+    
+    return 0;
+}
+
 
 /*
 void *edict_pop(EDICT *edict,char *name,int len,int end)

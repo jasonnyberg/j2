@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include "util.h"
 #include "edict.h"
 
@@ -10,10 +11,13 @@ int edict_init(EDICT *edict,LTV *root)
 {
     int rval=0;
     LT_init();
-    TRY(!edict,-1,done,"edict=0x%x\n",edict);
-    TRY(!(CLL_init(&edict->anons)),-1,done,"CLL_init(&edict->anons) failed\n",0);
-    TRY(!(CLL_init(&edict->stack)),-1,done,"CLL_init(&edict->stack) failed\n",0);
-    TRY(!(CLL_init(&edict->input)),-1,done,"CLL_init(&edict->input) failed\n",0);
+    TRY(!edict,-1,done,"\n");
+    TRY(!(CLL_init(&edict->anons)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->stack)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->input)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->tokens)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->ifiles)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->ofiles)),-1,done,"\n");
     LTV_put(&edict->stack,root,0);
  done:
     return rval;
@@ -22,7 +26,7 @@ int edict_init(EDICT *edict,LTV *root)
 int edict_destroy(EDICT *edict)
 {
     int rval;
-    TRY(!edict,-1,done,"edict=0x%x\n",edict);
+    TRY(!edict,-1,done,"\n");
     CLL_release(&edict->anons,LTVR_release);
     CLL_release(&edict->stack,LTVR_release);
     CLL_release(&edict->input,LTVR_release);
@@ -123,34 +127,55 @@ int edict_bytecode_count;
     }
 
 
-int edict_balance(char *str,char *start_end)
+int edict_balance(char *str,char *start_end,int *nest)
 {
-    for(int i=0,nest=0;str[i];i++)
+    int i;
+    for(i=0,nest=0;str&&str[i];i++)
         if (str[i]==start_end[0]) nest++;
         else if (str[i]==start_end[1] && --nest==0)
-            return ++i; // balanced
-    return 0; // not balanced
+            break; // balanced
+    return ++i;
 }
 
+
+char *edict_getline()
+{
+    char *buf=NULL,*rbuf=NULL;
+    size_t bufsz=0;
+    int len=0,totlen=0;
+    int nest=1;
+
+    while ((len=getline(&buf,&bufsz,stdin))>0)
+    {
+        rbuf=realloc(rbuf,totlen+len);
+        strcpy(rbuf+totlen,buf);
+        totlen+=len;
+        if (edict_balance(buf,"[]",&nest) && nest>1)
+            break;
+    }
+
+    return rbuf;
+}
 
 
 int edict_thread()
 {
     int len=0;
     static char *buf=NULL;
+    int pos;
     char *token=NULL;
 
     while (1)
     {
         if (!buf)
-            token=buf=edict_readline();
+            token=buf=edict_getline();
 
-        while (**token && *(*token+=strspn(*token,WHITESPACE))) // not end of string
+        while (*token && (token+=strspn(token,WHITESPACE))) // not end of string
         {
-            switch (**token)
+            switch (*token)
             {
-                case '[': len=edict_balance(*token,"[]"); // lit
-                case '\'': return strcspn(*token,delimiter[DELIMIT_SIMPLE_LIT_END]);
+                case '[': len=edict_balance(token,"[]",0); // lit
+                case '\'': return strcspn(token,delimiter[DELIMIT_SIMPLE_LIT_END]);
                 case '(':
                 case ')':
                 case '{':
@@ -159,28 +184,27 @@ int edict_thread()
                 case '>':
                     return 1;
                 default:
-                    token=strspn(*buf,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
-                    return pos+strcspn(*buf+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+                    token+=strspn(buf,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
+                    return pos+strcspn(buf+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
             }
+
         }
     }
-    else
 
     done:
     return 0;
 }
 
-
-int edict_thread(EDICT *edict)
+void edict_test()
 {
-    int len=0;
-    char *token=NULL;
-
-    while(len=edict_delimit(&token))
-        edict_evaluate(edict,token,len);
-    
-    return 0;
+    char *buf;
+    while (buf=edict_getline())
+    {
+        printf("%s\n",buf);
+        fflush(stdout);
+    }
 }
+
 
 
 /*

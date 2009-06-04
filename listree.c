@@ -86,7 +86,7 @@ void *RBR_traverse(RBR *rbr,LT_OP op,void *data)
 
 
 // get a new LTV and prepare for insertion
-LTV *LTV_new(void *data,int len,int flags)
+LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 {
     LTV *ltv=NULL;
     if (data &&

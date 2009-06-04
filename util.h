@@ -1,8 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include "stdio.h"
-#include "string.h"
+#include <stdio.h>
+#include <string.h>
 
 //#define mymalloc(len) mymalloc2((len),(__FILE__),(__LINE__))
 //#define myfree(p) myfree2((p),(__FILE__),(__LINE__))
@@ -41,22 +41,29 @@
 #define CODE_BGWITE     "\e[47m" // set white background
 #define CODE_BGDEFLT    "\e[49m" // set default background color
 
-extern int RESULT;
+static int RESULT;
 
 typedef unsigned long long ull;
 
 extern void try_error();
 
-#define TRY(cond,fail_rval,exitpoint,msg,args...)                                                \
-    {                                                                                            \
-        if ((cond))                                                                              \
-        {                                                                                        \
-            rval = fail_rval;                                                                    \
-            if (strlen(msg)) printf("TRY_ERR in %s: " msg,__func__,args);                        \
-            try_error();                                                                         \
-            goto exitpoint;                                                                      \
-        }                                                                                        \
+static int status;
+
+/** run sequential steps without nesting, with error reporting, and with support for unrolling */
+#define TRY(cond,fail_status,exitpoint,args...)                                                                          \
+    {                                                                                                                    \
+        if ((cond))                                                                                                      \
+        {                                                                                                                \
+            status = (int) fail_status;                                                                                   \
+            try_error();                                                                                                 \
+            printf(CODE_RED "TRY_ERR in %s: " #cond "=%d: Jumping to " #exitpoint ": ",__func__,status);                 \
+            printf(args); printf(CODE_RESET);                                                                            \
+            goto exitpoint;                                                                                              \
+        }                                                                                                                \
     }
+
+/** A version of TRY that also reports what it's doing as well as just errors */
+#define TRYLOG(cond,fail_status,exitpoint,args...) { printf("%s: " #cond "\n",__func__); TRY(cond,fail_status,exitpoint,args) }
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 

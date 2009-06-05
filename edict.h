@@ -2,10 +2,9 @@
 
 typedef struct
 {
-    CLL anons;
-    CLL stack;
-    CLL ifiles;
-    CLL ofiles;
+    CLL code;
+    CLL anon;
+    CLL dict;
 } EDICT;
 
 //////////////////////////////////////////////////

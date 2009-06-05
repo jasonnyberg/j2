@@ -13,11 +13,11 @@ int edict_init(EDICT *edict,LTV *root)
     int rval=0;
     LT_init();
     TRY(!edict,-1,done,"\n");
-    TRY(!(CLL_init(&edict->anons)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->stack)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->ifiles)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->ofiles)),-1,done,"\n");
-    LTV_put(&edict->stack,root,0);
+    TRY(!(CLL_init(&edict->code)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
+    LTV_put(&edict->dict,root,0);
+    LTV_put(&edict->code,LTV_new(stdin,0,LT_FILE),0);
  done:
     return rval;
 }
@@ -26,10 +26,9 @@ int edict_destroy(EDICT *edict)
 {
     int rval;
     TRY(!edict,-1,done,"\n");
-    CLL_release(&edict->anons,LTVR_release);
-    CLL_release(&edict->stack,LTVR_release);
-    CLL_release(&edict->ifiles,LTVR_release);
-    CLL_release(&edict->ofiles,LTVR_release);
+    CLL_release(&edict->code,LTVR_release);
+    CLL_release(&edict->anon,LTVR_release);
+    CLL_release(&edict->dict,LTVR_release);
  done:
     return rval;
 }
@@ -45,17 +44,17 @@ int edict_delimit(char *str,int rlen)
 
 LTV *edict_add(EDICT *edict,LTV *ltv)
 {
-    return LTV_put(&edict->anons,ltv,0);
+    return LTV_put(&edict->anon,ltv,0);
 }
 
 LTV *edict_rem(EDICT *edict)
 {
-    return LTV_get(&edict->anons,1,0); // cleanup: LTV_release(LTV *)
+    return LTV_get(&edict->anon,1,0); // cleanup: LTV_release(LTV *)
 }
 
 LTV *edict_name(EDICT *edict,char *name,int len,int end)
 {
-    LTV *root=LTV_get(&edict->stack,0,0);
+    LTV *root=LTV_get(&edict->dict,0,0);
     if (len<0) len=strlen(name);
     while(len>0 && root)
     {
@@ -68,7 +67,7 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end)
             else if (name[tlen]==',')
                 root=LTV_get(&lti->cll,0,1);
             else
-                return LTV_put(&lti->cll,LTV_get(&edict->anons,1,0),end);
+                return LTV_put(&lti->cll,LTV_get(&edict->anon,1,0),end);
             if (!root)
                 root=LTV_put(&lti->cll,LTV_new("",-1,0),0);
             len-=(tlen+1);
@@ -81,7 +80,7 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end)
 
 LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end)
 {
-    LTV *root=LTV_get(&edict->stack,0,0);
+    LTV *root=LTV_get(&edict->dict,0,0);
     if (len<0) len=strlen(name);
     while(len>0 && root)
     {
@@ -94,7 +93,7 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end)
             else if (name[tlen]==',')
                 root=LTV_get(&lti->cll,0,1);
             else
-                return LTV_put(&edict->anons,LTV_get(&lti->cll,pop,end),0);
+                return LTV_put(&edict->anon,LTV_get(&lti->cll,pop,end),0);
             len-=(tlen+1);
             name+=(tlen+1);
         }
@@ -137,9 +136,34 @@ int edict_balance(char *str,char *start_end,int *nest)
     return i; // unbalanced
 }
 
-
-int edict_delimit(char **str)
+ 
+int edict_getline(EDICT *edict,FILE *stream)
 {
+    char *rbuf=NULL;
+    char *buf=NULL;
+    size_t bufsz;
+    ssize_t len=0,totlen=0;
+    int nest=1;
+    
+    printf("jj> ");
+    while ((len=getline(&buf,&bufsz,stream))>0)
+    {
+        rbuf=realloc(rbuf,totlen+len+1);
+        strcpy(rbuf+totlen,buf);
+        RELEASE(buf);
+        edict_balance(rbuf+totlen,"[]",&nest);
+        totlen+=len;
+        if (nest==1) break;
+        else printf("... ");
+    }
+
+    if (len<0)
+    return LTV_put(edict->code,LTV_new(rbuf,totlen,0),0);
+}
+
+int edict_read(EDICT *edict,char **token,int *len)
+{
+    LTV *ltv;
     int pos;
 
     if (str && *str && **str && *(*str+=strspn(*str,WHITESPACE))) // not end of string
@@ -163,47 +187,26 @@ int edict_delimit(char **str)
     return 0;
 }
 
-int edict_parse(EDICT *edict,char *input)
+
+int edict_eval(EDICT *edict,char *token,int len)
 {
-    int len;
-    
-    for (;input && (len=jli_delimit(&input));input+=len)
-        if (!input || jli_evaluate(dict,input,len))
-            break;
-    
-    RELEASE(buf);
     return 0;
 }
 
-int edict_getline(EDICT *edict)
+int edict_thread(EDICT *edict)
 {
-    char *buf=NULL,*rbuf=NULL;
-    size_t bufsz;
-    ssize_t len=0,totlen=0;
-    int nest=1;
-
-    printf("jj> ");
-    while ((len=getline(&buf,&bufsz,stdin))>0)
+    int status,len;
+    char *token;
+    
+    while (1)
     {
-        rbuf=realloc(rbuf,totlen+len+1);
-        strcpy(rbuf+totlen,buf);
-        RELEASE(buf);
-        edict_balance(rbuf+totlen,"[]",&nest);
-        totlen+=len;
-        if (nest==1) break;
-        else printf("... ");
+        TRY((status=edict_read(edict,&token,&len)),status,done,"\n");
+        TRY((status=edict_eval(edict,token,len)),status,done,"\n");
     }
     
-    return LTV_put(edict->anons,LTV_new(rbuf,totlen,0),0);
+ done:
+    return status;
 }
-
-void edict_test()
-{
-    char *buf;
-    while (buf=edict_getline())
-        edict_parse(NULL,buf);
-}
-
 
 
 /*

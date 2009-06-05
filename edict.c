@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdlib.h>
 #include "util.h"
 #include "edict.h"
@@ -14,8 +15,6 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!edict,-1,done,"\n");
     TRY(!(CLL_init(&edict->anons)),-1,done,"\n");
     TRY(!(CLL_init(&edict->stack)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->input)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->tokens)),-1,done,"\n");
     TRY(!(CLL_init(&edict->ifiles)),-1,done,"\n");
     TRY(!(CLL_init(&edict->ofiles)),-1,done,"\n");
     LTV_put(&edict->stack,root,0);
@@ -29,7 +28,8 @@ int edict_destroy(EDICT *edict)
     TRY(!edict,-1,done,"\n");
     CLL_release(&edict->anons,LTVR_release);
     CLL_release(&edict->stack,LTVR_release);
-    CLL_release(&edict->input,LTVR_release);
+    CLL_release(&edict->ifiles,LTVR_release);
+    CLL_release(&edict->ofiles,LTVR_release);
  done:
     return rval;
 }
@@ -108,7 +108,7 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end)
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
 
-#define LIT_DELIMIT "'[(){}"
+#define LIT_DELIMIT "'[(){}<>"
 
 enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_COMMENT, DELIMIT_MAX };
 char delimiter[DELIMIT_MAX][256];
@@ -130,79 +130,78 @@ int edict_bytecode_count;
 int edict_balance(char *str,char *start_end,int *nest)
 {
     int i;
-    for(i=0,nest=0;str&&str[i];i++)
-        if (str[i]==start_end[0]) nest++;
-        else if (str[i]==start_end[1] && --nest==0)
-            break; // balanced
-    return ++i;
+    for(i=0;str&&str[i];i++)
+        if (str[i]==start_end[0]) (*nest)++;
+        else if (str[i]==start_end[1] && --(*nest)==0)
+            return ++i; // balanced
+    return i; // unbalanced
 }
 
 
-char *edict_getline()
+int edict_delimit(char **str)
 {
-    char *buf=NULL,*rbuf=NULL;
-    size_t bufsz=0;
-    int len=0,totlen=0;
-    int nest=1;
-
-    while ((len=getline(&buf,&bufsz,stdin))>0)
-    {
-        rbuf=realloc(rbuf,totlen+len);
-        strcpy(rbuf+totlen,buf);
-        totlen+=len;
-        if (edict_balance(buf,"[]",&nest) && nest>1)
-            break;
-    }
-
-    return rbuf;
-}
-
-
-int edict_thread()
-{
-    int len=0;
-    static char *buf=NULL;
     int pos;
-    char *token=NULL;
 
-    while (1)
+    if (str && *str && **str && *(*str+=strspn(*str,WHITESPACE))) // not end of string
     {
-        if (!buf)
-            token=buf=edict_getline();
-
-        while (*token && (token+=strspn(token,WHITESPACE))) // not end of string
+        switch (**str)
         {
-            switch (*token)
-            {
-                case '[': len=edict_balance(token,"[]",0); // lit
-                case '\'': return strcspn(token,delimiter[DELIMIT_SIMPLE_LIT_END]);
-                case '(':
-                case ')':
-                case '{':
-                case '}':
-                case '<':
-                case '>':
-                    return 1;
-                default:
-                    token+=strspn(buf,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
-                    return pos+strcspn(buf+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
-            }
-
+            case '\'': return strcspn(*str,delimiter[DELIMIT_SIMPLE_LIT_END]);
+            case '[': return jli_balance(*str,"[]",0); // lit
+            case '(':
+            case ')':
+            case '{':
+            case '}':
+            case '<':
+            case '>':
+                return 1;
+            default: // expression
+                pos=strspn(*str,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
+                return pos+strcspn(*str+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
         }
     }
-
-    done:
     return 0;
+}
+
+int edict_parse(EDICT *edict,char *input)
+{
+    int len;
+    
+    for (;input && (len=jli_delimit(&input));input+=len)
+        if (!input || jli_evaluate(dict,input,len))
+            break;
+    
+    RELEASE(buf);
+    return 0;
+}
+
+int edict_getline(EDICT *edict)
+{
+    char *buf=NULL,*rbuf=NULL;
+    size_t bufsz;
+    ssize_t len=0,totlen=0;
+    int nest=1;
+
+    printf("jj> ");
+    while ((len=getline(&buf,&bufsz,stdin))>0)
+    {
+        rbuf=realloc(rbuf,totlen+len+1);
+        strcpy(rbuf+totlen,buf);
+        RELEASE(buf);
+        edict_balance(rbuf+totlen,"[]",&nest);
+        totlen+=len;
+        if (nest==1) break;
+        else printf("... ");
+    }
+    
+    return LTV_put(edict->anons,LTV_new(rbuf,totlen,0),0);
 }
 
 void edict_test()
 {
     char *buf;
     while (buf=edict_getline())
-    {
-        printf("%s\n",buf);
-        fflush(stdout);
-    }
+        edict_parse(NULL,buf);
 }
 
 

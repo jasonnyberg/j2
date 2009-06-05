@@ -4,8 +4,6 @@ typedef struct
 {
     CLL anons;
     CLL stack;
-    CLL input;
-    CLL tokens;
     CLL ifiles;
     CLL ofiles;
 } EDICT;

@@ -158,20 +158,23 @@ int edict_getline(EDICT *edict,FILE *stream)
     }
 
     if (len<0)
-    return LTV_put(edict->code,LTV_new(rbuf,totlen,0),0);
+        ;
+    else
+        return LTV_put(&edict->code,LTV_new(rbuf,totlen,0),0);
 }
 
 int edict_read(EDICT *edict,char **token,int *len)
 {
-    LTV *ltv;
+    LTV *ltv=LTV_get(&edict->code,0,0);
+    char *buf;
     int pos;
 
-    if (str && *str && **str && *(*str+=strspn(*str,WHITESPACE))) // not end of string
+    if (buf && *buf && *(buf+=strspn(buf,WHITESPACE))) // not end of string
     {
-        switch (**str)
+        switch (*buf)
         {
-            case '\'': return strcspn(*str,delimiter[DELIMIT_SIMPLE_LIT_END]);
-            case '[': return jli_balance(*str,"[]",0); // lit
+            case '\'': return strcspn(buf,delimiter[DELIMIT_SIMPLE_LIT_END]);
+            case '[': return edict_balance(buf,"[]",0); // lit
             case '(':
             case ')':
             case '{':
@@ -180,8 +183,8 @@ int edict_read(EDICT *edict,char **token,int *len)
             case '>':
                 return 1;
             default: // expression
-                pos=strspn(*str,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
-                return pos+strcspn(*str+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+                pos=strspn(buf,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
+                return pos+strcspn(buf+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
         }
     }
     return 0;

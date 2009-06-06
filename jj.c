@@ -76,10 +76,10 @@ void edict_dump(EDICT *edict)
     printf("digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
     GVITEM("EDICT",-1,"","");
     printf("root=\"%x\"\n",-1);
-    CLL_dump(&edict->anons,(void *) -1);
-    CLL_dump(&edict->stack,(void *) -1);
-    GVGRP((void *) -1,&edict->anons);
-    GVGRP((void *) -1,&edict->stack);
+    CLL_dump(&edict->anon,(void *) -1);
+    CLL_dump(&edict->code,(void *) -1);
+    GVGRP((void *) -1,&edict->anon);
+    GVGRP((void *) -1,&edict->code);
     printf("}\n");
 }
 
@@ -117,5 +117,5 @@ int main()
     jj_test();
     edict_dump(&edict);
     edict_destroy(&edict);
-    edict_test();
+    edict_thread(&edict);
 }

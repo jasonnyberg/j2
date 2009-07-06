@@ -16,8 +16,8 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!(CLL_init(&edict->code)),-1,done,"\n");
     TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
-    LTV_put(&edict->dict,root,0);
-    LTV_put(&edict->code,LTV_new(stdin,0,LT_FILE),0);
+    LTV_put(&edict->dict,root,0,NULL);
+    LTV_put(&edict->code,LTV_new(stdin,0,LT_FILE),0,NULL);
  done:
     return rval;
 }
@@ -42,19 +42,20 @@ int edict_delimit(char *str,int rlen)
     return rlen<len?rlen:len;
 }
 
-LTV *edict_add(EDICT *edict,LTV *ltv)
+LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata)
 {
-    return LTV_put(&edict->anon,ltv,0);
+    return LTV_put(&edict->anon,ltv,0,metadata);
 }
 
-LTV *edict_rem(EDICT *edict)
+LTV *edict_rem(EDICT *edict,void **metadata)
 {
-    return LTV_get(&edict->anon,1,0); // cleanup: LTV_release(LTV *)
+    return LTV_get(&edict->anon,1,0,metadata); // cleanup: LTV_release(LTV *)
 }
 
-LTV *edict_name(EDICT *edict,char *name,int len,int end)
+LTV *edict_name(EDICT *edict,char *name,int len,int end,void *metadata)
 {
-    LTV *root=LTV_get(&edict->dict,0,0);
+    void *md;
+    LTV *root=LTV_get(&edict->dict,0,0,&md);
     if (len<0) len=strlen(name);
     while(len>0 && root)
     {
@@ -63,13 +64,13 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end)
         if ((lti=LT_lookup(&root->rbr,name,tlen,1)))
         {
             if (name[tlen]=='.')
-                root=LTV_get(&lti->cll,0,0);
+                root=LTV_get(&lti->cll,0,0,&md);
             else if (name[tlen]==',')
-                root=LTV_get(&lti->cll,0,1);
+                root=LTV_get(&lti->cll,0,1,&md);
             else
-                return LTV_put(&lti->cll,LTV_get(&edict->anon,1,0),end);
+                return LTV_put(&lti->cll,LTV_get(&edict->anon,1,0,&md),end,metadata);
             if (!root)
-                root=LTV_put(&lti->cll,LTV_new("",-1,0),0);
+                root=LTV_put(&lti->cll,LTV_new("",-1,0),0,NULL);
             len-=(tlen+1);
             name+=(tlen+1);
         }
@@ -78,9 +79,10 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end)
 }
 
 
-LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end)
+LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
 {
-    LTV *root=LTV_get(&edict->dict,0,0);
+    void *md;
+    LTV *root=LTV_get(&edict->dict,0,0,&metadata);
     if (len<0) len=strlen(name);
     while(len>0 && root)
     {
@@ -89,11 +91,11 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end)
         if ((lti=LT_lookup(&root->rbr,name,tlen,0)))
         {
             if (name[tlen]=='.')
-                root=LTV_get(&lti->cll,0,0);
+                root=LTV_get(&lti->cll,0,0,&md);
             else if (name[tlen]==',')
-                root=LTV_get(&lti->cll,0,1);
+                root=LTV_get(&lti->cll,0,1,&md);
             else
-                return LTV_put(&edict->anon,LTV_get(&lti->cll,pop,end),0);
+                return LTV_put(&edict->anon,LTV_get(&lti->cll,pop,end,&md),0,metadata);
             len-=(tlen+1);
             name+=(tlen+1);
         }
@@ -137,7 +139,7 @@ int edict_balance(char *str,char *start_end,int *nest)
 }
 
  
-int edict_getline(EDICT *edict,FILE *stream)
+LTV *edict_getline(EDICT *edict,FILE *stream)
 {
     char *rbuf=NULL;
     char *buf=NULL;
@@ -157,42 +159,58 @@ int edict_getline(EDICT *edict,FILE *stream)
         else printf("... ");
     }
 
-    if (len<0)
-        ;
-    else
-        return LTV_put(&edict->code,LTV_new(rbuf,totlen,0),0);
+    return len<0? NULL:LTV_put(&edict->code,LTV_new(rbuf,totlen,0),0,(void *) 0);
 }
 
 int edict_read(EDICT *edict,char **token,int *len)
 {
-    LTV *ltv=LTV_get(&edict->code,0,0);
-    char *buf;
-    int pos;
+    void *md;
+    void *offset;
+    LTV *ltv;
 
-    if (buf && *buf && *(buf+=strspn(buf,WHITESPACE))) // not end of string
+    *len=0;
+    
+    while (!(ltv=LTV_get(&edict->code,1,0,&offset)))
+        edict_getline(edict,stdin);
+    
+    if (ltv)
     {
-        switch (*buf)
+        *token=ltv->data+(long) offset;
+        if (**token && *(*token+=strspn(*token,WHITESPACE))) // not end of string
         {
-            case '\'': return strcspn(buf,delimiter[DELIMIT_SIMPLE_LIT_END]);
-            case '[': return edict_balance(buf,"[]",0); // lit
-            case '(':
-            case ')':
-            case '{':
-            case '}':
-            case '<':
-            case '>':
-                return 1;
-            default: // expression
-                pos=strspn(buf,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
-                return pos+strcspn(buf+pos,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+            switch (**token)
+            {
+                case '\'':
+                    *len=strcspn(*token,delimiter[DELIMIT_SIMPLE_LIT_END]);
+                    break;
+                case '[':
+                    *len=edict_balance(*token,"[]",0); // lit
+                    break;
+                case '(':
+                case ')':
+                case '{':
+                case '}':
+                case '<':
+                case '>':
+                    *len=1;
+                    break;
+                default: // expression
+                    offset=(void *) strspn(*token,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
+                    *len=((int) offset)+strcspn(*token+(int) offset,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+                    break;
+            }
+            
+            LTV_put(&edict->code,ltv,0,(void *) (*token-(char *) ltv->data)+*len);
         }
     }
+    
     return 0;
 }
 
 
 int edict_eval(EDICT *edict,char *token,int len)
 {
+    printf("%d:%s\n",len,token);
     return 0;
 }
 

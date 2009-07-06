@@ -5,8 +5,8 @@
 #include "util.h"
 #include "listree.h"
 
-//#define PEDANTIC(msg) msg
-#define PEDANTIC(msg) ""
+//#define PEDANTIC(alt,args...) args
+#define PEDANTIC(alt,args...) alt
 
 CLL ltv_repo,ltvr_repo,lti_repo;
 
@@ -107,17 +107,20 @@ void LTV_free(LTV *ltv)
 
 
 // get a new LTVR
-LTVR *LTVR_new()
+LTVR *LTVR_new(void *metadata)
 {
     LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,1,1);
-    if (!ltvr) ltvr=NEW(LTVR);
+    if (ltvr || (ltvr=NEW(LTVR)))
+        ltvr->metadata=metadata;
     return ltvr;
 }
 
-void LTVR_free(LTVR *ltvr)
+void *LTVR_free(LTVR *ltvr)
 {
+    void *metadata=ltvr->metadata;
     ZERO(*ltvr);
     CLL_put(&ltvr_repo,&ltvr->repo[0],0);
+    return metadata;
 }
 
 
@@ -218,25 +221,26 @@ void LTI_release(RBN *rbn)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-LTV *LTV_put(CLL *cll,LTV *ltv,int end)
+LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata)
 {
     LTV *rval=NULL;
     LTVR *ltvr;
-    TRY(!(cll && ltv && (ltvr=LTVR_new())),NULL,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
-    TRY(!CLL_put(cll,(CLL *) ltvr,end),NULL,done,"CLL_put(...) failed!\n",0);
+    TRY(!(cll && ltv && (ltvr=LTVR_new(metadata))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
+    TRY(!CLL_put(cll,(CLL *) ltvr,end),0,done,"CLL_put(...) failed!\n",0);
     rval=ltvr->ltv=ltv;
     rval->refs++;
  done:
     return rval;
 }
 
-LTV *LTV_get(CLL *cll,int pop,int end)
+LTV *LTV_get(CLL *cll,int pop,int end,void **metadata)
 {
     LTV *rval=NULL;
     LTVR *ltvr=NULL;
-    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),NULL,done,PEDANTIC("cll/ltvr: 0x%x/0x%x\n"),cll,ltvr);
+    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),0,done,PEDANTIC("\n","cll/ltvr: 0x%x/0x%x\n",cll,ltvr));
     rval=ltvr->ltv;
     rval->refs--;
+    *metadata=ltvr->metadata;
     if (pop) LTVR_free(ltvr);
  done:
     return rval;
@@ -249,25 +253,25 @@ void LT_init()
     CLL_init(&lti_repo);
 }
 
-LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end)
+LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata)
 {
     LTV *rval=NULL;
     LTI *lti;
-    TRY(!(rbr && ltv && name),NULL,done,"rbr/ltv/name: %p,%p,%p\n",rbr,ltv,name);
-    TRY(!(lti=LT_lookup(rbr,name,len,1)),NULL,done,"LT_lookup failed\n",0);
-    TRY(!(rval=LTV_put(&lti->cll,ltv,end)),NULL,done,"edict_enlist_ltv(...) failed\n",0);
+    TRY(!(rbr && ltv && name),0,done,"rbr/ltv/name: %p,%p,%p\n",rbr,ltv,name);
+    TRY(!(lti=LT_lookup(rbr,name,len,1)),0,done,"LT_lookup failed\n",0);
+    TRY(!(rval=LTV_put(&lti->cll,ltv,end,metadata)),0,done,"edict_enlist_ltv(...) failed\n",0);
  done:
     return rval;
 }
 
-LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end)
+LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end,void **metadata)
 {
     LTV *rval=NULL;
     LTI *lti;
-    TRY(!(rbr && name),NULL,done,"rbr/name: %p,%p\n",rbr,name);
+    TRY(!(rbr && name),0,done,"rbr/name: %p,%p\n",rbr,name);
     if (lti=LT_lookup(rbr,name,len,0))
     {
-        rval=LTV_get(&lti->cll,pop,end);
+        rval=LTV_get(&lti->cll,pop,end,metadata);
         if (pop && !CLL_get(&lti->cll,0,0))
         {
             rb_erase(&lti->rbn,rbr);

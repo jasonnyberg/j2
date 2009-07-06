@@ -14,10 +14,10 @@ typedef struct
 extern int edict_init(EDICT *edict,LTV *root);
 extern int edict_destroy(EDICT *edict);
 
-extern LTV *edict_add(EDICT *edict,LTV *ltv);
-extern LTV *edict_rem(EDICT *edict);
-extern LTV *edict_name(EDICT *edict,char *name,int len,int end);
-extern LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end);
+extern LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata);
+extern LTV *edict_rem(EDICT *edict,void **metadata);
+extern LTV *edict_name(EDICT *edict,char *name,int len,int end,void *metadata);
+extern LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata);
 
 /*
 extern LTV *edict_add(RBR *rbr,LTV *ltv);

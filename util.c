@@ -27,14 +27,24 @@ void *mymalloc(int size)
     if (r)
     {
         bzero(r,size);
-        Gmymalloc+=size;
+        Gmymalloc+=1;
     }
+    //printf(CODE_RED "%d\n" CODE_RESET,Gmymalloc);
+    return r;
+}
+
+void *myrealloc(void *buf, int newsize)
+{
+    char *r=realloc(buf,newsize);
+    if (r)
+        Gmymalloc+=1;
+    //printf(CODE_RED "%d\n" CODE_RESET,Gmymalloc);
     return r;
 }
 
 void myfree(void *p,int size)
 {
-    if (p) Gmymalloc-=size;
+    if (p) Gmymalloc-=1;
     free(p);
 }
 

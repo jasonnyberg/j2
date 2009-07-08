@@ -115,7 +115,7 @@ int main()
     edict_init(&edict,root);
     jj_test();
     jj_test();
-    edict_dump(&edict);
+    //edict_dump(&edict);
     edict_thread(&edict);
     edict_destroy(&edict);
 }

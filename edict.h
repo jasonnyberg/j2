@@ -1,10 +1,16 @@
 #include "listree.h"
 
+#define LIT_DELIMIT "'[(){}<>"
+
+enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_MAX };
+
 typedef struct
 {
     CLL code;
     CLL anon;
     CLL dict;
+    char delimiter[DELIMIT_MAX][256];
+    int edict_bytecode_count;
 } EDICT;
 
 //////////////////////////////////////////////////

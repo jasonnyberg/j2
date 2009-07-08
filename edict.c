@@ -18,6 +18,10 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
     LTV_put(&edict->dict,root,0,NULL);
     LTV_put(&edict->code,LTV_new(stdin,0,LT_FILE),0,NULL);
+
+    strcpy(edict->delimiter[DELIMIT_SIMPLE_LIT_END],WHITESPACE);
+    strcpy(edict->delimiter[DELIMIT_EXP_END],WHITESPACE);
+
  done:
     return rval;
 }
@@ -109,13 +113,7 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
 
-#define LIT_DELIMIT "'[(){}<>"
-
-enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_COMMENT, DELIMIT_MAX };
-char delimiter[DELIMIT_MAX][256];
-int edict_bytecode_count;
-
-#define DICT_BYTECODE(dict,opcode,fn)                                                                     \
+#define DICT_BYTECODE(edict,opcode,fn)                                                                    \
     {                                                                                                     \
         edict_bytecodes.bytecode[(int) *opcode]=(edict_extension) ((unsigned) *fn);                       \
         if (!strchr(delimiter[DELIMIT_EXP_START],*opcode))                                                \
@@ -178,13 +176,14 @@ int edict_read(EDICT *edict,char **token,int *len)
         *token=ltv->data+(long) offset;
         if (**token && *(*token+=strspn(*token,WHITESPACE))) // not end of string
         {
+            int nest=0;
             switch (**token)
             {
                 case '\'':
-                    *len=strcspn(*token,delimiter[DELIMIT_SIMPLE_LIT_END]);
+                    *len=strcspn(*token,edict->delimiter[DELIMIT_SIMPLE_LIT_END]);
                     break;
                 case '[':
-                    *len=edict_balance(*token,"[]",0); // lit
+                    *len=edict_balance(*token,"[]",&nest); // lit
                     break;
                 case '(':
                 case ')':
@@ -195,8 +194,8 @@ int edict_read(EDICT *edict,char **token,int *len)
                     *len=1;
                     break;
                 default: // expression
-                    offset=(void *) strspn(*token,delimiter[DELIMIT_EXP_START]); // skip over EXP_START
-                    *len=((int) offset)+strcspn(*token+(int) offset,delimiter[DELIMIT_EXP_END]); // skip until EXP_END
+                    offset=(void *) strspn(*token,edict->delimiter[DELIMIT_EXP_START]); // skip over EXP_START
+                    *len=((int) offset)+strcspn(*token+(int) offset,edict->delimiter[DELIMIT_EXP_END]); // skip until EXP_END
                     break;
             }
             

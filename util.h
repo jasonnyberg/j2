@@ -49,15 +49,19 @@ extern void try_error();
 
 static int status;
 
+#define FORMAT_LEN(format,args...) (strlen(format))
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
 #define TRY(cond,fail_status,exitpoint,args...)                                                                          \
     {                                                                                                                    \
         if ((cond))                                                                                                      \
         {                                                                                                                \
-            status = (int) fail_status;                                                                                   \
+            status = (int) fail_status;                                                                                  \
             try_error();                                                                                                 \
-            printf(CODE_RED "TRY_ERR in %s: " #cond "=%d: Jumping to " #exitpoint ": ",__func__,status);                 \
-            printf(args); printf(CODE_RESET);                                                                            \
+            if (FORMAT_LEN(args))                                                                                        \
+            {                                                                                                            \
+                printf(CODE_RED "TRY_ERR in %s: " #cond "=%d: Jumping to " #exitpoint ": ",__func__,status);             \
+                printf(args); printf(CODE_RESET);                                                                        \
+            }                                                                                                            \
             goto exitpoint;                                                                                              \
         }                                                                                                                \
     }

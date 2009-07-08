@@ -237,7 +237,7 @@ LTV *LTV_get(CLL *cll,int pop,int end,void **metadata)
 {
     LTV *rval=NULL;
     LTVR *ltvr=NULL;
-    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),0,done,PEDANTIC("\n","cll/ltvr: 0x%x/0x%x\n",cll,ltvr));
+    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),0,done,PEDANTIC("","cll/ltvr: 0x%x/0x%x\n",cll,ltvr));
     rval=ltvr->ltv;
     rval->refs--;
     *metadata=ltvr->metadata;

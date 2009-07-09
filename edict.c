@@ -8,36 +8,6 @@
 // Edict
 //////////////////////////////////////////////////
 
-int edict_init(EDICT *edict,LTV *root)
-{
-    int rval=0;
-    LT_init();
-    TRY(!edict,-1,done,"\n");
-    TRY(!(CLL_init(&edict->code)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
-    LTV_put(&edict->dict,root,0,NULL);
-    //LTV_put(&edict->code,LTV_new(fopen("/tmp/jj.in","r"),0,LT_FILE),0,NULL);
-
-    strcpy(edict->delimiter[DELIMIT_SIMPLE_LIT_END],LIT_DELIMIT);
-    strcpy(edict->delimiter[DELIMIT_EXP_END],LIT_DELIMIT);
-
- done:
-    return rval;
-}
-
-int edict_destroy(EDICT *edict)
-{
-    int rval;
-    TRY(!edict,-1,done,"\n");
-    CLL_release(&edict->code,LTVR_release);
-    CLL_release(&edict->anon,LTVR_release);
-    CLL_release(&edict->dict,LTVR_release);
- done:
-    return rval;
-}
-
-
 #define EDICT_NAMESEP ".,"
 
 int edict_delimit(char *str,int rlen)
@@ -112,19 +82,6 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
 // PARSER
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
-
-#define DICT_BYTECODE(edict,opcode,fn)                                                                    \
-    {                                                                                                     \
-        edict_bytecodes.bytecode[(int) *opcode]=(edict_extension) ((unsigned) *fn);                       \
-        if (!strchr(delimiter[DELIMIT_EXP_START],*opcode))                                                \
-        {                                                                                                 \
-            delimiter[DELIMIT_EXP_START][edict_bytecode_count++]=*opcode;                                 \
-            delimiter[DELIMIT_EXP_START][edict_bytecode_count]=(char) NULL;                               \
-            stpcpy(stpcpy(delimiter[DELIMIT_SIMPLE_LIT_END],WHITESPACE),delimiter[DELIMIT_EXP_START]);    \
-            stpcpy(stpcpy(delimiter[DELIMIT_EXP_END],LIT_DELIMIT),delimiter[DELIMIT_SIMPLE_LIT_END]);     \
-        }                                                                                                 \
-    }
-
 
 int edict_balance(char *str,char *start_end,int *nest)
 {
@@ -202,7 +159,7 @@ int edict_read(EDICT *edict,char **token,int *len)
         switch (**token)
         {
             case '\'':
-                *len=strcspn((*token)+1,edict->delimiter[DELIMIT_SIMPLE_LIT_END])+1;
+                *len=strcspn((*token)+1,LIT_DELIMIT)+1;
                 break;
             case '[':
                 *len=edict_balance(*token,"[]",&nest); // lit
@@ -216,7 +173,7 @@ int edict_read(EDICT *edict,char **token,int *len)
                 *len=1;
                 break;
             default: // expression
-                *len=strcspn(*token,edict->delimiter[DELIMIT_EXP_END]);
+                *len=strcspn(*token,LIT_DELIMIT);
                 break;
         }
             
@@ -260,7 +217,6 @@ int edict_thread(EDICT *edict)
  done:
     return status;
 }
-
 
 /*
 void *edict_pop(EDICT *edict,char *name,int len,int end)
@@ -306,4 +262,51 @@ LTV *edict_get_nth_item(EDICT *edict,int n)
 {
 }
 */
+
+int edict_bytecode(EDICT *edict,char bc,edict_bcf bcf)
+{
+    edict->bc[edict->numbc++]=bc;
+    edict->bcf[bc]=bcf;
+    return 0;
+}
+
+int edict_bytecodes(EDICT *edict)
+{
+    int i;
+    
+    for (i=0;i<256;i++)
+        edict->bcf[i]=edict_reference;
+
+    edict_bytecode(edict,'[',edict_literal);
+}
+
+
+int edict_init(EDICT *edict,LTV *root)
+{
+    int rval=0;
+    BZERO(*edict);
+    LT_init();
+    TRY(!edict,-1,done,"\n");
+    TRY(!(CLL_init(&edict->code)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
+    LTV_put(&edict->dict,root,0,NULL);
+    edict_bytecodes(edict);
+    //LTV_put(&edict->code,LTV_new(fopen("/tmp/jj.in","r"),0,LT_FILE),0,NULL);
+
+ done:
+    return rval;
+}
+
+int edict_destroy(EDICT *edict)
+{
+    int rval;
+    TRY(!edict,-1,done,"\n");
+    CLL_release(&edict->code,LTVR_release);
+    CLL_release(&edict->anon,LTVR_release);
+    CLL_release(&edict->dict,LTVR_release);
+ done:
+    return rval;
+}
+
 

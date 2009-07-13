@@ -4,7 +4,7 @@
 
 enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_MAX };
 
-typedef int (*edict_bytecode)(EDICT *edict,char *token);
+typedef int (*edict_bytecode)(EDICT *edict,char *token,char *name,int len);
 
 typedef struct
 {
@@ -23,6 +23,7 @@ typedef struct
 
 extern int edict_init(EDICT *edict,LTV *root);
 extern int edict_destroy(EDICT *edict);
+extern int edict_repl(EDICT *edict);
 
 extern LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata);
 extern LTV *edict_rem(EDICT *edict,void **metadata);

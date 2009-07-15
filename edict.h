@@ -4,19 +4,20 @@
 
 enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_MAX };
 
-typedef int (*edict_bytecode)(EDICT *edict,char *token,char *name,int len);
-
-typedef struct
+typedef struct EDICT
 {
     CLL code;
     CLL anon;
     CLL dict;
     int numbc;
     char bc[256];
-    edict_bytecode bcf[256];
 } EDICT;
 
-                         
+typedef int (*edict_bc_impl)(struct EDICT *edict,char *name,int len);
+int numbc;
+char edict_bc[256];
+edict_bc_impl edict_bcf[256];
+
 //////////////////////////////////////////////////
 // Edict
 //////////////////////////////////////////////////

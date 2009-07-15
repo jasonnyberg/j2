@@ -53,10 +53,10 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end,void *metadata)
 }
 
 
-LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
+LTV *edict_get(EDICT *edict,char *name,int len,int pop,int end,void **metadata)
 {
     void *md;
-    LTV *root=LTV_get(&edict->dict,0,0,&metadata);
+    LTV *root=LTV_get(&edict->dict,0,0,&md);
     if (len<0) len=strlen(name);
     while(len>0 && root)
     {
@@ -69,12 +69,19 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
             else if (name[tlen]==',')
                 root=LTV_get(&lti->cll,0,1,&md);
             else
-                return LTV_put(&edict->anon,LTV_get(&lti->cll,pop,end,&md),0,metadata);
+                return LTV_get(&lti->cll,pop,end,metadata);
             len-=(tlen+1);
             name+=(tlen+1);
         }
     }
     return NULL;
+}
+
+LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
+{
+    void *md;
+    LTV *ltv=edict_get(edict,name,len,pop,end,&md);
+    return ltv?LTV_put(&edict->anon,ltv,0,metadata):NULL;
 }
 
 ///////////////////////////////////////////////////////
@@ -147,7 +154,7 @@ int edict_repl(EDICT *edict)
             {
                 fclose(ltv->data);
                 LTV_release(ltv);
-                goto getcode;
+                goto read;
             }
         }
 
@@ -186,27 +193,32 @@ int edict_repl(EDICT *edict)
             LTV_release(ltv);
         }
 
- eval:
         if (len)
         {
-            int i,ops;
-            int edict_ref() { edict_ref(edict,token,len,0,0,NULL); }
-            int edict_ops() { for (i=0;i<ops;i++) TRY((status=edict->bcf(edict,token+ops,len-ops)),status,done,"\n"); }
+            int i,ops,status=0;
+            int bc_ref()
+            {
+                return !edict_ref(edict,token,len,0,0,NULL);
+            }
+            int bc_ops()
+            {
+                for (i=0;i<ops;i++)
+                    if (edict_bcf[token[i]](edict,token+ops,len-ops))
+                        break;
+                return status;
+            }
 
             switch (token[0])
             {
-                case '\'': edict_add(&edict,LTV_new(token+1,len,0),NULL); break;
-                case '[': edict_add(&edict,LTV_new(token+1,len-1,0),NULL); break;
+                case '\'': edict_add(edict,LTV_new(token+1,len,LT_DUP),NULL); break;
+                case '[': edict_add(edict,LTV_new(token+1,len-1,LT_DUP),NULL); break;
                 default:
-                    TRY((ops=strspn(token,edict->bc))<=len,0,done,"Invalid token\n");
-                    TRY((status=ops?edict_ops():edict_ref()),status,done,"\n");
+                    TRY((ops=strspn(token,edict_bc))>len,0,done,"Invalid token\n");
+                    TRY((status=ops?bc_ops():bc_ref()),status,done,"\n");
                     break;
             }
+            edict_dump(edict);
         }
-
- print:
-
- loop:
     } while (1);
     
  done:
@@ -215,12 +227,33 @@ int edict_repl(EDICT *edict)
 
 int strnprint(char *str,int len) { while(len--) putchar(*str++); }
 
-int edict_exec_enter(EDICT *edict,char *name,int len)
+int bc_name(EDICT *edict,char *name,int len)
 {
+    edict_name(edict,name,len,0,NULL);
+    return 0;
 }
 
-int edict_exec_leave(EDICT *edict,char *name,int len)
+int bc_kill(EDICT *edict,char *name,int len)
 {
+    void *md;
+    LTV_release(edict_get(edict,name,len,1,0,&md));
+    return 0;
+}
+
+int bc_exec_enter(EDICT *edict,char *name,int len)
+{
+    printf("edict_exec_enter: ");
+    strnprint(name,len);
+    printf("\n");
+    return 0;
+}
+
+int bc_exec_leave(EDICT *edict,char *name,int len)
+{
+    printf("edict_exec_leave: ");
+    strnprint(name,len);
+    printf("\n");
+    return 0;
 }
 
 /*
@@ -238,11 +271,11 @@ LTV *edict_getitems(EDICT *edict,LTV *repos,int display)
 LTV *edict_get_nth_item(EDICT *edict,int n)
 */
 
-int edict_bytecode(EDICT *edict,char bc,edict_bcf bcf)
+int edict_bytecode(EDICT *edict,char bc,edict_bc_impl bcf)
 {
-    edict->bc[edict->numbc++]=bc;
-    edict->bc[edict->numbc]=0;
-    edict->bcf[bc]=bcf;
+    edict_bc[numbc++]=bc;
+    edict_bc[numbc]=0;
+    edict_bcf[bc]=bcf;
     return 0;
 }
 
@@ -251,12 +284,12 @@ int edict_bytecodes(EDICT *edict)
     int i;
     
     for (i=0;i<256;i++)
-        edict->bcf[i]=edict_reference;
+        edict_bcf[i]=0;
     
-    edict_bytecode(edict,'@',edict_name);
-    edict_bytecode(edict,'/',edict_kill);
-    edict_bytecode(edict,'(',edict_exec_enter);
-    edict_bytecode(edict,')',edict_exec_leave);
+    edict_bytecode(edict,'@',bc_name);
+    edict_bytecode(edict,'/',bc_kill);
+    edict_bytecode(edict,'(',bc_exec_enter);
+    edict_bytecode(edict,')',bc_exec_leave);
 }
 
 

@@ -3,9 +3,11 @@
 #include "util.h"
 #include "edict.h"
 
-#define GVITEM(type,id,label,props) printf("\t\"%x\" [label=\"" type "%s\"] %s;\n",id,label,props)
-#define GVEDGE(parent,child,props) printf("\t\"%x\" -> \"%x\" %s\n",parent,child,props)
-#define GVGRP(parent,child) printf("\tsubgraph \"cluster%x\" { \"%x\" }\n",parent,child)
+FILE *dumpfile;
+
+#define GVITEM(type,id,label,props) fprintf(dumpfile,"\t\"%x\" [label=\"" type "%s\"] %s;\n",id,label,props)
+#define GVEDGE(parent,child,props) fprintf(dumpfile,"\t\"%x\" -> \"%x\" %s\n",parent,child,props)
+#define GVGRP(parent,child) fprintf(dumpfile,"\tsubgraph \"cluster%x\" { \"%x\" }\n",parent,child)
 
 /* temporary until reflect works */
 void *CLL_dump(CLL *cll,void *data);
@@ -18,10 +20,8 @@ void *LTV_dump(LTV *ltv,void *data)
 {
     GVITEM("LTV",ltv,"","");
     GVEDGE(data,ltv,"");
-    
     GVITEM("",ltv->data,ltv->data,"[shape=ellipse]");
     GVEDGE(ltv,ltv->data,"");
-    
     RBR_dump(&ltv->rbr,ltv);
     return NULL;
 }
@@ -71,16 +71,23 @@ void *CLL_dump(CLL *cll,void *data)
     return NULL;
 }
 
-void edict_dump(EDICT *edict)
+int edict_dump(EDICT *edict)
 {
-    printf("digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
+    int status;
+    dumpfile=fopen("/tmp/jj.out","w");
+    fprintf(dumpfile,"digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
     GVITEM("EDICT",-1,"","");
-    printf("root=\"%x\"\n",-1);
-    CLL_dump(&edict->anon,(void *) -1);
-    CLL_dump(&edict->code,(void *) -1);
+    fprintf(dumpfile,"root=\"%x\"\n",-1);
+    TRYLOG(CLL_dump(&edict->anon,(void *) -1),0,done,"\n");
+    TRYLOG(CLL_dump(&edict->dict,(void *) -1),0,done,"\n");
+    //TRYLOG(CLL_dump(&edict->code,(void *) -1),0,done,"\n");
     GVGRP((void *) -1,&edict->anon);
     GVGRP((void *) -1,&edict->code);
-    printf("}\n");
+    fprintf(dumpfile,"}\n");
+    fclose(dumpfile);
+
+ done:
+    return status;
 }
 
 

@@ -57,7 +57,7 @@ static int status;
         {                                                                                                                \
             status = (int) fail_status;                                                                                  \
             try_error();                                                                                                 \
-            if (FORMAT_LEN(args))                                                                                        \
+            if (status && FORMAT_LEN(args))                                                                                        \
             {                                                                                                            \
                 printf(CODE_RED "TRY_ERR in %s: " #cond "=%d: Jumping to " #exitpoint ": ",__func__,status);             \
                 printf(args); printf(CODE_RESET);                                                                        \

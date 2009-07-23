@@ -1,6 +1,11 @@
 #!/bin/bash
 
-touch /tmp/jj.out /tmp/jj.png
-okular /tmp/jj.png &
-while inotifywait /tmp/jj.out; do dot -Tpng /tmp/jj.out -o /tmp/jj.png; done &
-build/jj
+viewer() { touch /tmp/jj.out /tmp/jj.png; kview /tmp/jj.png; }
+draw() { dot -Tpng /tmp/jj.out -o /tmp/jj.png; }
+changing() { inotifywait /tmp/jj.out; }
+
+run() {
+  viewer &
+  while changing; do draw; done &
+  build/jj
+}

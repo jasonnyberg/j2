@@ -225,7 +225,6 @@ int edict_repl(EDICT *edict)
     return status;
 }
 
-int strnprint(char *str,int len) { while(len--) putchar(*str++); }
 
 int bc_name(EDICT *edict,char *name,int len)
 {

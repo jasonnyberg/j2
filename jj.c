@@ -82,7 +82,7 @@ int edict_dump(EDICT *edict)
     TRYLOG(CLL_dump(&edict->dict,(void *) -1),0,done,"\n");
     //TRYLOG(CLL_dump(&edict->code,(void *) -1),0,done,"\n");
     GVGRP((void *) -1,&edict->anon);
-    GVGRP((void *) -1,&edict->code);
+    //GVGRP((void *) -1,&edict->code);
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
 

@@ -16,6 +16,21 @@ char *STRTOLL_TAIL;
 static int Gmymalloc=0;
 static int Gerrs;
 
+int strnprint(char *str,int len)
+{
+    char s;
+    for (s=*str;len--;s=*++str)
+        switch(s)
+        {
+            case '\\': puts("\\\\"); break;
+            case '\t': puts("\\t"); break;
+            case '\r': puts("\\r"); break;
+            case '\n': puts("\\n"); break;
+            case '\"': puts("\""); break;
+            default: putchar(s); break;
+        }
+}
+
 void try_error()
 {
     Gerrs++;

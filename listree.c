@@ -185,7 +185,7 @@ LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
 
 void LTV_release(LTV *ltv)
 {
-    if (ltv && ltv->refs--<=1)
+    if (ltv && ltv->refs--<=1 && !(ltv->flags&LT_RO))
     {
         RBR_release(&ltv->rbr,LTI_release);
         if (ltv->flags&LT_DUP) DELETE(ltv->data);

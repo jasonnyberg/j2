@@ -86,7 +86,7 @@ extern void *mybzero(void *p,int size);
 #define DELETE(var) (myfree(var,0))
 #define RELEASE(var) (DELETE(var),var=NULL)
 
-extern int strnprint(char *str,int len);
+extern int fstrnprint(FILE *ofile,char *str,int len);
 
 extern char *bufdup(char *buf,int len);
 

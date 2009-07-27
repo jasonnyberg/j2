@@ -16,18 +16,21 @@ char *STRTOLL_TAIL;
 static int Gmymalloc=0;
 static int Gerrs;
 
-int strnprint(char *str,int len)
+int fstrnprint(FILE *ofile,char *str,int len)
 {
     char s;
+    if (len==-1)
+        len=strlen(str);
+    
     for (s=*str;len--;s=*++str)
         switch(s)
         {
-            case '\\': puts("\\\\"); break;
-            case '\t': puts("\\t"); break;
-            case '\r': puts("\\r"); break;
-            case '\n': puts("\\n"); break;
-            case '\"': puts("\""); break;
-            default: putchar(s); break;
+            case '\\': fputs("\\\\",ofile); break;
+            case '\t': fputs("\\t",ofile); break;
+            case '\r': fputs("\\r",ofile); break;
+            case '\n': fputs("\\n",ofile); break;
+            case '\"': fputs("\"",ofile); break;
+            default: fputc(s,ofile); break;
         }
 }
 

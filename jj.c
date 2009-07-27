@@ -5,7 +5,7 @@
 
 FILE *dumpfile;
 
-#define GVITEM(type,id,label,props) fprintf(dumpfile,"\t\"%x\" [label=\"" type "%s\"] %s;\n",id,label,props)
+#define GVITEM(type,id,label,len,props) fprintf(dumpfile,"\t\"%x\" [label=\"" type,id),fstrnprint(dumpfile,label,len),fprintf(dumpfile,"\"] %s;\n",props)
 #define GVEDGE(parent,child,props) fprintf(dumpfile,"\t\"%x\" -> \"%x\" %s\n",parent,child,props)
 #define GVGRP(parent,child) fprintf(dumpfile,"\tsubgraph \"cluster%x\" { \"%x\" }\n",parent,child)
 
@@ -18,9 +18,9 @@ void *LTV_dump(LTV *ltv,void *data);
 
 void *LTV_dump(LTV *ltv,void *data)
 {
-    GVITEM("LTV",ltv,"","");
+    GVITEM("LTV",ltv,"",0,"");
     GVEDGE(data,ltv,"");
-    GVITEM("",ltv->data,ltv->data,"[shape=ellipse]");
+    GVITEM("",ltv->data,ltv->data,ltv->len,"[shape=ellipse]");
     GVEDGE(ltv,ltv->data,"");
     RBR_dump(&ltv->rbr,ltv);
     return NULL;
@@ -28,8 +28,8 @@ void *LTV_dump(LTV *ltv,void *data)
 
 void *LTVR_dump(CLL *ltvr,void *data)
 {
-    GVITEM("LTVR",ltvr,"","");
-    GVEDGE(ltvr,ltvr->lnk[0],"");
+    GVITEM("LTVR",ltvr,"",0,"");
+    GVEDGE(ltvr,ltvr->lnk[0],"[color=green]");
     LTV_dump(((LTVR *) ltvr)->ltv,ltvr);
     GVGRP(data,ltvr);
     return NULL;
@@ -37,8 +37,8 @@ void *LTVR_dump(CLL *ltvr,void *data)
 
 void *RBN_dump(RBN *rbn,void *data)
 {
-    GVITEM("",rbn,((LTI *) rbn)->name,"");
-    if (rb_parent(rbn)) GVEDGE(rb_parent(rbn),rbn,"");
+    GVITEM("",rbn,((LTI *) rbn)->name,-1,"");
+    if (rb_parent(rbn)) GVEDGE(rb_parent(rbn),rbn,"[color=blue]");
     CLL_dump(&((LTI *) rbn)->cll,rbn);
     GVGRP(data,rbn);
     GVGRP(rbn,&((LTI *) rbn)->cll);
@@ -49,9 +49,9 @@ void *RBR_dump(RBR *rbr,void *data)
 {
     if (rbr->rb_node)
     {
-        GVITEM("RBR",rbr,"","");
+        GVITEM("RBR",rbr,"",0,"");
         GVEDGE(data,rbr,"");
-        GVEDGE(rbr,rbr->rb_node,"");
+        GVEDGE(rbr,rbr->rb_node,"[color=red]");
         GVGRP(rbr,rbr);
         RBR_traverse(rbr,RBN_dump,rbr);
     }
@@ -62,9 +62,9 @@ void *CLL_dump(CLL *cll,void *data)
 {
     if (cll->lnk[0]!=cll)
     {
-        GVITEM("CLL",cll,"","");
-        GVEDGE(data,cll,"");
-        GVEDGE(cll,cll->lnk[0],"");
+        GVITEM("CLL",cll,"",0,"");
+        GVEDGE(data,cll,"[color=green]");
+        GVEDGE(cll,cll->lnk[0],"[color=green]");
         GVGRP(cll,cll);
         CLL_traverse(cll,0,LTVR_dump,cll);
     }
@@ -74,12 +74,12 @@ void *CLL_dump(CLL *cll,void *data)
 int edict_dump(EDICT *edict)
 {
     int status;
-    dumpfile=fopen("/tmp/jj.out","w");
+    dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
-    GVITEM("EDICT",-1,"","");
+    GVITEM("EDICT",-1,"",0,"");
     fprintf(dumpfile,"root=\"%x\"\n",-1);
-    TRYLOG(CLL_dump(&edict->anon,(void *) -1),0,done,"\n");
-    TRYLOG(CLL_dump(&edict->dict,(void *) -1),0,done,"\n");
+    TRY(CLL_dump(&edict->anon,(void *) -1),0,done,"\n");
+    TRY(CLL_dump(&edict->dict,(void *) -1),0,done,"\n");
     //TRYLOG(CLL_dump(&edict->code,(void *) -1),0,done,"\n");
     GVGRP((void *) -1,&edict->anon);
     //GVGRP((void *) -1,&edict->code);

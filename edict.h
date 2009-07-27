@@ -10,6 +10,7 @@ typedef struct EDICT
     CLL anon;
     CLL dict;
     int numbc;
+    LTV *nil;
     char bc[256];
 } EDICT;
 

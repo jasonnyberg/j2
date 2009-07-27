@@ -64,6 +64,7 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,int end,void **metadata)
         int tlen=edict_delimit(name,len);
         if ((lti=LT_lookup(&root->rbr,name,tlen,0)))
         {
+            pop=pop && !(root->flags&LT_RO);
             if (name[tlen]=='.')
                 root=LTV_get(&lti->cll,0,0,&md);
             else if (name[tlen]==',')
@@ -73,6 +74,7 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,int end,void **metadata)
             len-=(tlen+1);
             name+=(tlen+1);
         }
+        else return edict->nil;
     }
     return NULL;
 }
@@ -211,7 +213,7 @@ int edict_repl(EDICT *edict)
             switch (token[0])
             {
                 case '\'': edict_add(edict,LTV_new(token+1,len,LT_DUP),NULL); break;
-                case '[': edict_add(edict,LTV_new(token+1,len-1,LT_DUP),NULL); break;
+                case '[': edict_add(edict,LTV_new(token+1,len-2,LT_DUP),NULL); break;
                 default:
                     TRY((ops=strspn(token,edict_bc))>len,0,done,"Invalid token\n");
                     TRY((status=ops?bc_ops():bc_ref()),status,done,"\n");
@@ -242,7 +244,7 @@ int bc_kill(EDICT *edict,char *name,int len)
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
     printf("edict_exec_enter: ");
-    strnprint(name,len);
+    fstrnprint(stdout,name,len);
     printf("\n");
     return 0;
 }
@@ -250,7 +252,7 @@ int bc_exec_enter(EDICT *edict,char *name,int len)
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     printf("edict_exec_leave: ");
-    strnprint(name,len);
+    fstrnprint(stdout,name,len);
     printf("\n");
     return 0;
 }
@@ -302,6 +304,8 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
     LTV_put(&edict->dict,root,0,NULL);
+    edict->nil=LTV_new("nil",3,LT_RO);
+    edict_add(edict,edict->nil,NULL);
     edict_bytecodes(edict);
     //LTV_put(&edict->code,LTV_new(fopen("/tmp/jj.in","r"),0,LT_FILE),0,NULL);
 

@@ -25,8 +25,9 @@ a:f3 -> 2 [lhead=clusterA]
 #endif
 
 #define GVITEM(id,label,props) fprintf(dumpfile,"subgraph cluster%x [label=" #label "] %s\n",id,props)
-#define GVMEMB(pid,id) fprintf(dumpfile,"subgraph cluster%x { subgraph cluster%x }",pid,id)
-#define GVDATA(id,label,len,props) fprintf(dumpfile,"%x [label=\"" id),fstrnprint(dumpfile,label,len),fprintf(dumpfile,"\"]\n")
+#define GVSUBG(pid,id) fprintf(dumpfile,"subgraph cluster%x { subgraph cluster%x }",pid,id)
+#define GVMEMB(pid,id) fprintf(dumpfile,"subgraph cluster%x { %x }",pid,id)
+#define GVDATA(id,data,len,props) fprintf(dumpfile,"%x [label=\"" id),fstrnprint(dumpfile,data,len),fprintf(dumpfile,"\"]\n")
 #define GVEDGE(parent,child,props) fprintf(dumpfile,"%x -> %x %s\n",parent,child,props)
 
 /* temporary until reflect works */
@@ -39,14 +40,15 @@ void *LTV_dump(LTV *ltv,void *data);
 void *LTV_dump(LTV *ltv,void *data)
 {
     GVITEM(ltv,"LTV","");
-
+    GVSUBG(ltv,&ltv->rbr);
+    GVMEMB(ltv,ltv->data);
+    GVDATA(ltv,ltv->data,ltv->len,"[shape=ellipse]");
+    GVEDGE(ltv->data,
 
 
 
 
     
-    GVEDGE(data,ltv,"");
-    GVITEM("",ltv->data,ltv->data,ltv->len,"[shape=ellipse]");
     GVEDGE(ltv,ltv->data,"");
     RBR_dump(&ltv->rbr,ltv);
     return NULL;

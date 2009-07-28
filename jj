@@ -1,11 +1,14 @@
 #!/bin/bash
 
-viewer() { touch /tmp/jj.out /tmp/jj.png; kview /tmp/jj.png; }
-draw() { dot -Tpng /tmp/jj.out -o /tmp/jj.png; }
-changing() { inotifywait /tmp/jj.out; }
+viewer() { touch /tmp/jj.dot /tmp/jj.png; kview /tmp/jj.png; }
+draw() { dot -Tpng /tmp/jj.dot -o /tmp/jj.png; }
+changing() { inotifywait /tmp/jj.dot; }
 
-run() {
+monitor() {
   viewer &
   while changing; do draw; done &
-  build/jj
+}
+
+run() {
+  make -C build; build/jj
 }

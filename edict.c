@@ -305,7 +305,6 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
     LTV_put(&edict->dict,root,0,NULL);
     edict->nil=LTV_new("nil",3,LT_RO);
-    edict_add(edict,edict->nil,NULL);
     edict_bytecodes(edict);
     //LTV_put(&edict->code,LTV_new(fopen("/tmp/jj.in","r"),0,LT_FILE),0,NULL);
 

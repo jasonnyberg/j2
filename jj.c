@@ -5,9 +5,29 @@
 
 FILE *dumpfile;
 
-#define GVITEM(type,id,label,len,props) fprintf(dumpfile,"\t\"%x\" [label=\"" type,id),fstrnprint(dumpfile,label,len),fprintf(dumpfile,"\"] %s;\n",props)
-#define GVEDGE(parent,child,props) fprintf(dumpfile,"\t\"%x\" -> \"%x\" %s\n",parent,child,props)
-#define GVGRP(parent,child) fprintf(dumpfile,"\tsubgraph \"cluster%x\" { \"%x\" }\n",parent,child)
+#if 0
+digraph iftree
+{
+compound=true
+	ordering=out concentrate=true
+	node [shape=record]
+edge []
+subgraph clusterA { label=aaa 111 subgraph clusterB }
+subgraph clusterB { color=red label=bbb 2 3 4 }
+subgraph clusterC { color=white xxx label=ccc 333 444 }
+
+ subgraph clusterC ->  subgraph clusterA
+444 -> 2 [lhead=clusterB]
+a [shape=record label="<f1>a|<f2>b|<f3>c"]
+a:f1 -> a:f2
+a:f3 -> 2 [lhead=clusterA]
+}
+#endif
+
+#define GVITEM(id,label,props) fprintf(dumpfile,"subgraph cluster%x [label=" #label "] %s\n",id,props)
+#define GVMEMB(pid,id) fprintf(dumpfile,"subgraph cluster%x { subgraph cluster%x }",pid,id)
+#define GVDATA(id,label,len,props) fprintf(dumpfile,"%x [label=\"" id),fstrnprint(dumpfile,label,len),fprintf(dumpfile,"\"]\n")
+#define GVEDGE(parent,child,props) fprintf(dumpfile,"%x -> %x %s\n",parent,child,props)
 
 /* temporary until reflect works */
 void *CLL_dump(CLL *cll,void *data);
@@ -18,7 +38,13 @@ void *LTV_dump(LTV *ltv,void *data);
 
 void *LTV_dump(LTV *ltv,void *data)
 {
-    GVITEM("LTV",ltv,"",0,"");
+    GVITEM(ltv,"LTV","");
+
+
+
+
+
+    
     GVEDGE(data,ltv,"");
     GVITEM("",ltv->data,ltv->data,ltv->len,"[shape=ellipse]");
     GVEDGE(ltv,ltv->data,"");

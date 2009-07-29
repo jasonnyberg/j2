@@ -16,10 +16,10 @@ CLL ltv_repo,ltvr_repo,lti_repo;
 
 CLL *CLL_init(CLL *lst) { return lst->lnk[0]=lst->lnk[1]=lst; }
 
-void CLL_release(CLL *lst,void (*cll_release)(CLL *lnk))
+void CLL_release(CLL *lst,void (*op)(CLL *lnk))
 {
     CLL *cll;
-    while (cll=CLL_get(lst,1,0)) cll_release(cll);
+    while (cll=CLL_get(lst,1,0)) op(cll);
 }
 
 CLL *CLL_put(CLL *lst,CLL *lnk,int end)
@@ -48,7 +48,7 @@ CLL *CLL_get(CLL *lst,int pop,int end)
 
 void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
 {
-    CLL *result,*lnk=lst->lnk[reverse];
+    CLL *result=NULL,*lnk=lst->lnk[reverse];
     while (lnk && lnk!=lst && !(result=op(lnk,data)))
         lnk=lnk->lnk[reverse];
     return result;
@@ -79,7 +79,7 @@ void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
 
 void *RBR_traverse(RBR *rbr,LT_OP op,void *data)
 {
-    RBN *result,*rbn=rb_first(rbr);
+    RBN *result=NULL,*rbn=rb_first(rbr);
     while (rbn && !(result=op(rbn,data))) rbn=rb_next(rbn);
     return result;
 }
@@ -185,7 +185,7 @@ LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
 
 void LTV_release(LTV *ltv)
 {
-    if (ltv && ltv->refs--<=1 && !(ltv->flags&LT_RO))
+    if (ltv && !ltv->refs && !(ltv->flags&LT_RO))
     {
         RBR_release(&ltv->rbr,LTI_release);
         if (ltv->flags&LT_DUP) DELETE(ltv->data);
@@ -237,9 +237,9 @@ LTV *LTV_get(CLL *cll,int pop,int end,void **metadata)
     LTVR *ltvr=NULL;
     TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),0,done,PEDANTIC("","cll/ltvr: 0x%x/0x%x\n",cll,ltvr));
     rval=ltvr->ltv;
-    rval->refs--;
+    rval->refs-=pop;
     *metadata=ltvr->metadata;
-    if (pop) LTVR_free(ltvr);
+    if (pop) LTVR_free(&ltvr->cll);
  done:
     return rval;
 }

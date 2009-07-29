@@ -13,8 +13,8 @@ char *STRTOULL_TAIL;
 long long *STRTOLL_PTR;
 char *STRTOLL_TAIL;
 
-static int Gmymalloc=0;
-static int Gerrs;
+int Gmymalloc=0;
+int Gerrs;
 
 int fstrnprint(FILE *ofile,char *str,int len)
 {

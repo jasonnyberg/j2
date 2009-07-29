@@ -60,7 +60,7 @@ typedef struct
     CLL cll;
 } LTI; // LisTreeItem
 
-typedef void *(*LT_OP)(RBN *ltn,void *data);
+typedef void *(*LT_OP)(RBN *rbn,void *data);
 
 extern RBR *RBR_init(RBR *rbr);
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));

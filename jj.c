@@ -24,93 +24,68 @@ a:f3 -> 2 [lhead=clusterA]
 }
 #endif
 
-#define GVITEM(id,label,props) fprintf(dumpfile,"subgraph cluster%x [label=" #label "] %s\n",id,props)
-#define GVSUBG(pid,id) fprintf(dumpfile,"subgraph cluster%x { subgraph cluster%x }",pid,id)
-#define GVMEMB(pid,id) fprintf(dumpfile,"subgraph cluster%x { %x }",pid,id)
-#define GVDATA(id,data,len,props) fprintf(dumpfile,"%x [label=\"" id),fstrnprint(dumpfile,data,len),fprintf(dumpfile,"\"]\n")
-#define GVEDGE(parent,child,props) fprintf(dumpfile,"%x -> %x %s\n",parent,child,props)
-
 /* temporary until reflect works */
 void *CLL_dump(CLL *cll,void *data);
-void *RBR_dump(RBR *rbr,void *data);
 void *RBN_dump(RBN *rbn,void *data);
-void *LTVR_dump(CLL *lnk,void *data);
-void *LTV_dump(LTV *ltv,void *data);
+void *LTV_dump(LTV *ltv);
 
-void *LTV_dump(LTV *ltv,void *data)
+void *LTV_dump(LTV *ltv)
 {
-    GVITEM(ltv,"LTV","");
-    GVSUBG(ltv,&ltv->rbr);
-    GVMEMB(ltv,ltv->data);
-    GVDATA(ltv,ltv->data,ltv->len,"[shape=ellipse]");
-    GVEDGE(ltv->data,
-
-
-
-
-    
-    GVEDGE(ltv,ltv->data,"");
-    RBR_dump(&ltv->rbr,ltv);
-    return NULL;
-}
-
-void *LTVR_dump(CLL *ltvr,void *data)
-{
-    GVITEM("LTVR",ltvr,"",0,"");
-    GVEDGE(ltvr,ltvr->lnk[0],"[color=green]");
-    LTV_dump(((LTVR *) ltvr)->ltv,ltvr);
-    GVGRP(data,ltvr);
+    fprintf(dumpfile,"%d [style=filled label=\"",ltv);
+    fstrnprint(dumpfile,ltv->data,ltv->len);
+    fprintf(dumpfile,"\"]\n");
+    if (ltv->rbr.rb_node)
+    {
+        fprintf(dumpfile,"%d -> %d\n",ltv,ltv->rbr.rb_node);
+        RBR_traverse(&ltv->rbr,RBN_dump,&ltv->rbr);
+    }
     return NULL;
 }
 
 void *RBN_dump(RBN *rbn,void *data)
 {
-    GVITEM("",rbn,((LTI *) rbn)->name,-1,"");
-    if (rb_parent(rbn)) GVEDGE(rb_parent(rbn),rbn,"[color=blue]");
-    CLL_dump(&((LTI *) rbn)->cll,rbn);
-    GVGRP(data,rbn);
-    GVGRP(rbn,&((LTI *) rbn)->cll);
-    return NULL;
-}
-
-void *RBR_dump(RBR *rbr,void *data)
-{
-    if (rbr->rb_node)
+    LTI *lti=(LTI *) rbn; // each RBN is really an LTI
+    CLL *lnk;
+    //fprintf(dumpfile,"subgraph clusterRBN%d { %d }\n",data,lti);
+    fprintf(dumpfile,"%d [label=%s shape=ellipse]\n",lti,lti->name);
+    if (rb_parent(rbn))
+        fprintf(dumpfile,"%d -> %d\n",rb_parent(rbn),rbn);
+    if (lnk=CLL_get(&lti->cll,0,0))
     {
-        GVITEM("RBR",rbr,"",0,"");
-        GVEDGE(data,rbr,"");
-        GVEDGE(rbr,rbr->rb_node,"[color=red]");
-        GVGRP(rbr,rbr);
-        RBR_traverse(rbr,RBN_dump,rbr);
+        fprintf(dumpfile,"%d -> %d\n",rbn,lnk);
+        CLL_traverse(&lti->cll,0,CLL_dump,&lti->cll);
     }
     return NULL;
 }
 
 void *CLL_dump(CLL *cll,void *data)
 {
-    if (cll->lnk[0]!=cll)
-    {
-        GVITEM("CLL",cll,"",0,"");
-        GVEDGE(data,cll,"[color=green]");
-        GVEDGE(cll,cll->lnk[0],"[color=green]");
-        GVGRP(cll,cll);
-        CLL_traverse(cll,0,LTVR_dump,cll);
-    }
+    LTVR *ltvr=(LTVR *) cll; // each CLL node is really an LTVR
+    fprintf(dumpfile,"%d [label=\"\" shape=diamond style=filled height=.1 width=.1]\n",cll);
+    if (ltvr->ltv) fprintf(dumpfile,"%d -> %d\n",cll,ltvr->ltv);
+    if (cll->lnk[1]!=data)
+        fprintf(dumpfile,"%d -> %d\n",cll->lnk[1],cll);
+    LTV_dump(ltvr->ltv);
     return NULL;
 }
+
+
+extern int Gmymalloc;
 
 int edict_dump(EDICT *edict)
 {
     int status;
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
-    GVITEM("EDICT",-1,"",0,"");
-    fprintf(dumpfile,"root=\"%x\"\n",-1);
-    TRY(CLL_dump(&edict->anon,(void *) -1),0,done,"\n");
-    TRY(CLL_dump(&edict->dict,(void *) -1),0,done,"\n");
+    //fprintf(dumpfile,"root=\"%d\"\n",-1);
+    fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
+    fprintf(dumpfile,"%d [label=anon]\n",&edict->anon);
+    TRY(CLL_traverse(&edict->anon,0,CLL_dump,NULL),0,finish,"\n");
+    fprintf(dumpfile,"%d [label=dict]\n",&edict->dict);
+    TRY(CLL_traverse(&edict->dict,0,CLL_dump,NULL),0,finish,"\n");
     //TRYLOG(CLL_dump(&edict->code,(void *) -1),0,done,"\n");
-    GVGRP((void *) -1,&edict->anon);
     //GVGRP((void *) -1,&edict->code);
+ finish:
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
 

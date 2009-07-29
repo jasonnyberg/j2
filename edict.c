@@ -131,14 +131,20 @@ LTV *edict_getline(EDICT *edict,FILE *stream)
 
 int edict_repl(EDICT *edict)
 {
+    int status;
+    void *offset;
+    LTV *ltv;
+    char *token;
+    int len;
+        
     do
     {
-        int status=0;
-        void *offset=0;
-        LTV *ltv=NULL;
-        char *token=NULL;
-        int len=0;
-    
+        status=0;
+        offset=0;
+        ltv=NULL;
+        token=NULL;
+        len=0;
+        
  read:
         if (!(ltv=LTV_get(&edict->code,1,0,&offset)))
         {
@@ -219,8 +225,9 @@ int edict_repl(EDICT *edict)
                     TRY((status=ops?bc_ops():bc_ref()),status,done,"\n");
                     break;
             }
-            edict_dump(edict);
         }
+        
+        edict_dump(edict);
     } while (1);
     
  done:
@@ -237,7 +244,9 @@ int bc_name(EDICT *edict,char *name,int len)
 int bc_kill(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_release(edict_get(edict,name,len,1,0,&md));
+    len?
+        LTV_release(edict_get(edict,name,len,1,0,&md)):
+        LTV_release(LTV_get(&edict->anon,1,0,&md));
     return 0;
 }
 

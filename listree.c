@@ -198,6 +198,7 @@ void LTVR_release(CLL *cll)
     LTVR *ltvr=(LTVR *) cll;
     if (ltvr)
     {
+        ltvr->ltv->refs--;
         LTV_release(ltvr->ltv);
         LTVR_free(ltvr);
     }
@@ -239,7 +240,7 @@ LTV *LTV_get(CLL *cll,int pop,int end,void **metadata)
     rval=ltvr->ltv;
     rval->refs-=pop;
     *metadata=ltvr->metadata;
-    if (pop) LTVR_free(&ltvr->cll);
+    if (pop) LTVR_free(ltvr);
  done:
     return rval;
 }

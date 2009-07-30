@@ -128,7 +128,7 @@ LTI *LTI_new(char *name,int len)
 {
     LTI *lti;
     if (name && ((lti=(LTI *) CLL_get(&lti_repo,1,1)) || (lti=NEW(LTI))))
-    lti->name=len<0?strdup(name):strndup(name,len);
+    lti->name=bufdup(name,len);
     CLL_init(&lti->cll);
     return lti;
 }

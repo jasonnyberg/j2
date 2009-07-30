@@ -271,11 +271,8 @@ LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end,void **metadata)
     if (lti=LT_lookup(rbr,name,len,0))
     {
         rval=LTV_get(&lti->cll,pop,end,metadata);
-        if (pop && !CLL_get(&lti->cll,0,0))
-        {
-            rb_erase(&lti->rbn,rbr);
-            LTI_release(&lti->rbn);
-        }
+        if (pop && CLL_EMPTY(&lti->cll))
+            RBN_release(rbr,&lti->rbn,LTI_release);
     }
  done:
     return rval;

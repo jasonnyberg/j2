@@ -54,9 +54,6 @@ void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
     return result;
 }
 
-#define CLL_EMPTY(lst) (CLL_get(lst,NULL,0,0))
-
-
 //////////////////////////////////////////////////
 // LisTree
 //////////////////////////////////////////////////
@@ -67,14 +64,17 @@ RBR *RBR_init(RBR *rbr)
     return rbr;
 }
 
+void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn))
+{
+    rb_erase(rbn,rbr);
+    rbn_release(rbn);
+}
+
 void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
 {
     RBN *rbn;
     while (rbn=rbr->rb_node)
-    {
-        rb_erase(rbn,rbr);
-        rbn_release(rbn);
-    }
+        RBN_release(rbr,rbn,rbn_release);
 }
 
 void *RBR_traverse(RBR *rbr,LT_OP op,void *data)

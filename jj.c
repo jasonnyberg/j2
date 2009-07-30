@@ -31,9 +31,16 @@ void *LTV_dump(LTV *ltv);
 
 void *LTV_dump(LTV *ltv)
 {
-    fprintf(dumpfile,"%d [style=filled label=\"",ltv);
-    fstrnprint(dumpfile,ltv->data,ltv->len);
-    fprintf(dumpfile,"\"]\n");
+    if (ltv->len)
+    {
+        fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
+        fstrnprint(dumpfile,ltv->data,ltv->len);
+        fprintf(dumpfile,"\"]\n");
+    }
+    else
+    {
+        fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.1]\n",ltv);
+    }
     if (ltv->rbr.rb_node)
     {
         fprintf(dumpfile,"%d -> %d\n",ltv,ltv->rbr.rb_node);
@@ -61,7 +68,7 @@ void *RBN_dump(RBN *rbn,void *data)
 void *CLL_dump(CLL *cll,void *data)
 {
     LTVR *ltvr=(LTVR *) cll; // each CLL node is really an LTVR
-    fprintf(dumpfile,"%d [label=\"\" shape=diamond style=filled height=.1 width=.1]\n",cll);
+    fprintf(dumpfile,"%d [label=\"\" shape=point]\n",cll);
     if (ltvr->ltv) fprintf(dumpfile,"%d -> %d\n",cll,ltvr->ltv);
     if (cll->lnk[1]!=data)
         fprintf(dumpfile,"%d -> %d\n",cll->lnk[1],cll);

@@ -70,7 +70,12 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,int end,void **metadata)
             else if (name[tlen]==',')
                 root=LTV_get(&lti->cll,0,1,&md);
             else
-                return LTV_get(&lti->cll,pop,end,metadata);
+            {
+                LTV *rval=LTV_get(&lti->cll,pop,end,metadata);
+                if (CLL_EMPTY(&lti->cll))
+                    RBN_release(&root->rbr,&lti->rbn,LTI_release);
+                return rval;
+            }
             len-=(tlen+1);
             name+=(tlen+1);
         }

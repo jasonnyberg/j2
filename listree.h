@@ -21,6 +21,8 @@ extern CLL *CLL_get(CLL *lst,int pop,int end);
 
 extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
+#define CLL_EMPTY(lst) (!CLL_get((lst),0,0))
+
 //////////////////////////////////////////////////
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////

@@ -227,6 +227,15 @@ int edict_repl(EDICT *edict)
             {
                 case '\'': edict_add(edict,LTV_new(token+1,len,LT_DUP),NULL); break;
                 case '[': edict_add(edict,LTV_new(token+1,len-2,LT_DUP),NULL); break;
+                case '(':
+                case ')':
+                case '{':
+                case '}':
+                case '<':
+                case '>':
+                    ops=1;
+                    TRY((status=bc_ops()),status,done,"\n");
+                    break;
                 default:
                     TRY((ops=strspn(token,edict->bc))>len,0,done,"Invalid token\n");
                     TRY((status=ops?bc_ops():bc_ref()),status,done,"\n");

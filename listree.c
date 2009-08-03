@@ -93,7 +93,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
     {
         ltv->len=len<0?strlen((char *) data):len;
         ltv->flags=flags;
-        ltv->data=flags&LT_DUP?bufdup(data,ltv->len):data;
+        ltv->data=flags&LT_DUP?ltv->flags|=LT_DEL,bufdup(data,ltv->len):data;
     }
     return ltv;
 }
@@ -188,7 +188,7 @@ void LTV_release(LTV *ltv)
     if (ltv && !ltv->refs && !(ltv->flags&LT_RO))
     {
         RBR_release(&ltv->rbr,LTI_release);
-        if (ltv->flags&LT_DUP) DELETE(ltv->data);
+        if (ltv->flags&LT_DEL) DELETE(ltv->data);
         LTV_free(ltv);
     }
 }

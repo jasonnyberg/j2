@@ -42,7 +42,10 @@ LTV *edict_name(EDICT *edict,char *name,int len,int end,void *metadata)
             else if (name[tlen]==',')
                 root=LTV_get(&lti->cll,0,1,&md);
             else
-                return LTV_put(&lti->cll,LTV_get(&edict->anon,1,0,&md),end,metadata);
+            {
+                LTV *ltv=LTV_get(&edict->anon,1,0,&md);
+                return LTV_put(&lti->cll,ltv?ltv:edict->nil,end,metadata);
+            }
             if (!root)
                 root=LTV_put(&lti->cll,LTV_new("",-1,0),0,NULL);
             len-=(tlen+1);
@@ -72,7 +75,7 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,int end,void **metadata)
             else
             {
                 LTV *rval=LTV_get(&lti->cll,pop,end,metadata);
-                if (CLL_EMPTY(&lti->cll))
+                if (pop && CLL_EMPTY(&lti->cll))
                     RBN_release(&root->rbr,&lti->rbn,LTI_release);
                 return rval;
             }
@@ -88,7 +91,7 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
 {
     void *md;
     LTV *ltv=edict_get(edict,name,len,pop,end,&md);
-    return ltv?LTV_put(&edict->anon,ltv,0,metadata):NULL;
+    return LTV_put(&edict->anon,ltv?ltv:edict->nil,0,metadata);
 }
 
 ///////////////////////////////////////////////////////
@@ -130,7 +133,7 @@ LTV *edict_getline(EDICT *edict,FILE *stream)
         else printf("... ");
     }
     
-    return totlen?LTV_new(rbuf,totlen,0):NULL;
+    return totlen?LTV_new(rbuf,totlen,LT_DEL):NULL;
 }
 
 
@@ -180,7 +183,7 @@ int edict_repl(EDICT *edict)
             switch (*token)
             {
                 case '\'':
-                    len=strcspn((token)+1,WHITESPACE)+1;
+                    len=strcspn((token)+1,edict->bcdel)+1;
                     break;
                 case '[':
                     len=edict_balance(token,"[]",&nest); // lit
@@ -194,17 +197,16 @@ int edict_repl(EDICT *edict)
                     len=1;
                     break;
                 default: // expression
-                    len=strcspn(token,LIT_DELIMIT);
+                    len=strspn(token,edict->bc); // ops
+                    len+=strcspn(token+len,edict->bcdel); // name
                     break;
             }
-            
+        }
+        
+        if (len)
             LTV_put(&edict->code,ltv,0,(void *) (token-(char *) ltv->data)+len);
-        }
         else
-        {
-            DELETE(ltv->data);
             LTV_release(ltv);
-        }
 
         if (len)
         {
@@ -216,7 +218,7 @@ int edict_repl(EDICT *edict)
             int bc_ops()
             {
                 for (i=0;i<ops;i++)
-                    if (edict_bcf[token[i]](edict,token+ops,len-ops))
+                    if (edict->bcf[token[i]](edict,token+ops,len-ops))
                         break;
                 return status;
             }
@@ -226,7 +228,7 @@ int edict_repl(EDICT *edict)
                 case '\'': edict_add(edict,LTV_new(token+1,len,LT_DUP),NULL); break;
                 case '[': edict_add(edict,LTV_new(token+1,len-2,LT_DUP),NULL); break;
                 default:
-                    TRY((ops=strspn(token,edict_bc))>len,0,done,"Invalid token\n");
+                    TRY((ops=strspn(token,edict->bc))>len,0,done,"Invalid token\n");
                     TRY((status=ops?bc_ops():bc_ref()),status,done,"\n");
                     break;
             }
@@ -257,18 +259,13 @@ int bc_kill(EDICT *edict,char *name,int len)
 
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
-    printf("edict_exec_enter: ");
-    fstrnprint(stdout,name,len);
-    printf("\n");
-    return 0;
+    return bc_name(edict,"continuation",-1);
 }
 
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
-    printf("edict_exec_leave: ");
-    fstrnprint(stdout,name,len);
-    printf("\n");
-    return 0;
+    void *md;
+    return !LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,0,&md),0,NULL);
 }
 
 /*
@@ -288,9 +285,10 @@ LTV *edict_get_nth_item(EDICT *edict,int n)
 
 int edict_bytecode(EDICT *edict,char bc,edict_bc_impl bcf)
 {
-    edict_bc[numbc++]=bc;
-    edict_bc[numbc]=0;
-    edict_bcf[bc]=bcf;
+    edict->bc[edict->numbc++]=bc;
+    edict->bc[edict->numbc]=0;
+    edict->bcf[bc]=bcf;
+    stpcpy(stpcpy(edict->bcdel,LIT_DELIMIT),edict->bc);
     return 0;
 }
 
@@ -299,7 +297,7 @@ int edict_bytecodes(EDICT *edict)
     int i;
     
     for (i=0;i<256;i++)
-        edict_bcf[i]=0;
+        edict->bcf[i]=0;
     
     edict_bytecode(edict,'@',bc_name);
     edict_bytecode(edict,'/',bc_kill);
@@ -336,5 +334,4 @@ int edict_destroy(EDICT *edict)
  done:
     return rval;
 }
-
 

@@ -73,9 +73,10 @@ void *mybzero(void *buf,int size)
 
 char *bufdup(char *buf,int len)
 {
+    // always null terminate whether string or not
     char *newbuf;
     if (len<0) len=strlen(buf);
-    newbuf=mymalloc(len);
+    newbuf=mymalloc(len+1);
     memcpy(newbuf,buf,len);
     newbuf[len]=0;
     return newbuf;

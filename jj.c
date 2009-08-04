@@ -54,7 +54,7 @@ void *RBN_dump(RBN *rbn,void *data)
     LTI *lti=(LTI *) rbn; // each RBN is really an LTI
     CLL *lnk;
     //fprintf(dumpfile,"subgraph clusterRBN%d { %d }\n",data,lti);
-    fprintf(dumpfile,"%d [label=%s shape=ellipse]\n",lti,lti->name);
+    fprintf(dumpfile,"%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
     if (rb_parent(rbn))
         fprintf(dumpfile,"%d -> %d\n",rb_parent(rbn),rbn);
     if (lnk=CLL_get(&lti->cll,0,0))
@@ -86,8 +86,6 @@ int edict_dump(EDICT *edict)
     fprintf(dumpfile,"digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
     //fprintf(dumpfile,"root=\"%d\"\n",-1);
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
-    fprintf(dumpfile,"%d [label=anon]\n",&edict->anon);
-    TRY(CLL_traverse(&edict->anon,0,CLL_dump,NULL),0,finish,"\n");
     fprintf(dumpfile,"%d [label=dict]\n",&edict->dict);
     TRY(CLL_traverse(&edict->dict,0,CLL_dump,NULL),0,finish,"\n");
     //TRYLOG(CLL_dump(&edict->code,(void *) -1),0,done,"\n");

@@ -47,13 +47,11 @@ LTV *edict_nameltv(EDICT *edict,char *name,int len,int end,void *metadata,LTV *l
 
 LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata)
 {
-    //return LTV_put(&edict->anon,ltv,0,metadata);
     return edict_nameltv(edict,"",0,0,metadata,ltv);
 }
 
 LTV *edict_rem(EDICT *edict,void **metadata)
 {
-    //return LTV_get(&edict->anon,1,0,metadata); // cleanup: LTV_release(LTV *)
     return edict_get(edict,"",0,1,0,metadata); // cleanup: LTV_release(LTV *)
 }
 
@@ -241,7 +239,7 @@ int edict_repl(EDICT *edict)
 int bc_slit(EDICT *edict,char *name,int len)
 {
     edict_add(edict,LTV_new(name,len,LT_DUP),NULL);
-    return 1;
+    return 0;
 }
 
 int bc_lit(EDICT *edict,char *name,int len)
@@ -252,29 +250,27 @@ int bc_lit(EDICT *edict,char *name,int len)
 int bc_name(EDICT *edict,char *name,int len)
 {
     edict_name(edict,name,len,0,NULL);
-    return 0;
+    return 1;
 }
 
 int bc_kill(EDICT *edict,char *name,int len)
 {
     void *md;
-    len?
-        LTV_release(edict_get(edict,name,len,1,0,&md)):
-        LTV_release(edict_rem(edict,&md));
-    return 0;
+    LTV_release(edict_get(edict,name,len,1,0,&md));
+    return 1;
 }
 
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
     bc_name(edict,"continuation",-1);
-    return 1;
+    return 0;
 }
 
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     void *md;
     LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,0,&md),0,NULL);
-    return 1;
+    return 0;
 }
 
 /*
@@ -324,7 +320,6 @@ int edict_init(EDICT *edict,LTV *root)
     LT_init();
     TRY(!edict,-1,done,"\n");
     TRY(!(CLL_init(&edict->code)),-1,done,"\n");
-    TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
     LTV_put(&edict->dict,root,0,NULL);
     edict->nil=LTV_new("nil",3,LT_RO);
@@ -340,7 +335,6 @@ int edict_destroy(EDICT *edict)
     int rval;
     TRY(!edict,-1,done,"\n");
     CLL_release(&edict->code,LTVR_release);
-    CLL_release(&edict->anon,LTVR_release);
     CLL_release(&edict->dict,LTVR_release);
  done:
     return rval;

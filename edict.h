@@ -1,9 +1,5 @@
 #include "listree.h"
 
-#define LIT_DELIMIT WHITESPACE "'[(){}<>"
-
-enum { DELIMIT_SIMPLE_LIT_END, DELIMIT_EXP_START, DELIMIT_EXP_END, DELIMIT_MAX };
-
 struct EDICT;
 
 typedef int (*edict_bc_impl)(struct EDICT *edict,char *name,int len);

@@ -143,15 +143,18 @@ int edict_repl(EDICT *edict)
     void *offset;
     LTV *ltv;
     char *token;
-    int len;
-        
+    int skip;
+    int len,ops;
+
     do
     {
         status=0;
         offset=0;
         ltv=NULL;
         token=NULL;
-        len=0;
+        len=ops=0;
+
+        edict_dump(edict);
         
  read:
         if (!(ltv=LTV_get(&edict->code,1,0,&offset)))
@@ -163,7 +166,7 @@ int edict_repl(EDICT *edict)
             LTV *newltv=edict_getline(edict,ltv->data);
             if (newltv)
             {
-                LTV_put(&edict->code,ltv,0,NULL);
+                LTV_put(&edict->code,ltv,0,strspn((char *) ltv->data,WHITESPACE));
                 ltv=newltv;
             }
             else
@@ -177,16 +180,18 @@ int edict_repl(EDICT *edict)
         TRY(!ltv,-1,done,"\n");
 
         token=ltv->data+(long) offset;
-        if (*token && *(token+=strspn(token,WHITESPACE))) // not end of string
+        if (*token) // not end of string
         {
             int nest=0;
             switch (*token)
             {
                 case '\'':
-                    len=strcspn((token)+1,edict->bcdel)+1;
+                    len=strcspn((token+1)+1,edict->bcdel);
+                    ops=1;
                     break;
                 case '[':
-                    len=edict_balance(token,"[]",&nest); // lit
+                    len=edict_balance(token,"[]",&nest);
+                    ops=1;
                     break;
                 case '(':
                 case ')':
@@ -194,62 +199,47 @@ int edict_repl(EDICT *edict)
                 case '}':
                 case '<':
                 case '>':
-                    len=1;
+                    len=ops=1;
                     break;
                 default: // expression
-                    len=strspn(token,edict->bc); // ops
-                    len+=strcspn(token+len,edict->bcdel); // name
+                    ops=strspn(token,edict->bc);
+                    len=ops+strcspn(token+ops,edict->bcdel);
                     break;
             }
         }
-        
-        if (len)
-            LTV_put(&edict->code,ltv,0,(void *) (token-(char *) ltv->data)+len);
-        else
-            LTV_release(ltv);
+
+        offset+=len+strspn(token+len,WHITESPACE);
+
+        if (offset < ltv->len)
+            LTV_put(&edict->code,ltv,0,(void *) offset);
 
         if (len)
         {
-            int i,ops,status=0;
-            int bc_ref()
-            {
-                return !edict_ref(edict,token,len,0,0,NULL);
-            }
-            int bc_ops()
-            {
-                for (i=0;i<ops;i++)
-                    if (edict->bcf[token[i]](edict,token+ops,len-ops))
-                        break;
-                return status;
-            }
-
-            switch (token[0])
-            {
-                case '\'': edict_add(edict,LTV_new(token+1,len,LT_DUP),NULL); break;
-                case '[': edict_add(edict,LTV_new(token+1,len-2,LT_DUP),NULL); break;
-                case '(':
-                case ')':
-                case '{':
-                case '}':
-                case '<':
-                case '>':
-                    ops=1;
-                    TRY((status=bc_ops()),status,done,"\n");
-                    break;
-                default:
-                    TRY((ops=strspn(token,edict->bc))>len,0,done,"Invalid token\n");
-                    TRY((status=ops?bc_ops():bc_ref()),status,done,"\n");
-                    break;
-            }
+            int i;
+            if (ops)
+                for (i=0;i<ops && i<len && edict->bcf[token[i]](edict,token+ops,len-ops);i++);
+            else
+                edict_ref(edict,token,len,0,0,NULL);
         }
-        
-        edict_dump(edict);
+
+        if (offset >= ltv->len)
+            LTV_release(ltv);
     } while (1);
     
  done:
     return status;
 }
 
+int bc_slit(EDICT *edict,char *name,int len)
+{
+    edict_add(edict,LTV_new(name,len,LT_DUP),NULL);
+    return 1;
+}
+
+int bc_lit(EDICT *edict,char *name,int len)
+{
+    return bc_slit(edict,name,len-1);
+}
 
 int bc_name(EDICT *edict,char *name,int len)
 {
@@ -268,13 +258,15 @@ int bc_kill(EDICT *edict,char *name,int len)
 
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
-    return bc_name(edict,"continuation",-1);
+    bc_name(edict,"continuation",-1);
+    return 1;
 }
 
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     void *md;
-    return !LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,0,&md),0,NULL);
+    LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,0,&md),0,NULL);
+    return 1;
 }
 
 /*
@@ -297,7 +289,7 @@ int edict_bytecode(EDICT *edict,char bc,edict_bc_impl bcf)
     edict->bc[edict->numbc++]=bc;
     edict->bc[edict->numbc]=0;
     edict->bcf[bc]=bcf;
-    stpcpy(stpcpy(edict->bcdel,LIT_DELIMIT),edict->bc);
+    stpcpy(stpcpy(edict->bcdel,WHITESPACE),edict->bc);
     return 0;
 }
 
@@ -308,6 +300,8 @@ int edict_bytecodes(EDICT *edict)
     for (i=0;i<256;i++)
         edict->bcf[i]=0;
     
+    edict_bytecode(edict,'\'',bc_slit);
+    edict_bytecode(edict,'[',bc_lit);
     edict_bytecode(edict,'@',bc_name);
     edict_bytecode(edict,'/',bc_kill);
     edict_bytecode(edict,'(',bc_exec_enter);

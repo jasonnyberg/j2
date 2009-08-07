@@ -99,38 +99,13 @@ int edict_dump(EDICT *edict)
 }
 
 
-
 EDICT edict;
-
-int jj_test()
-{
-    edict_add(&edict,LTV_new("123",-1,0),NULL);
-    edict_add(&edict,LTV_new("456",-1,0),NULL);
-    edict_add(&edict,LTV_new("789",-1,0),NULL);
-    edict_add(&edict,LTV_new("abc",-1,0),NULL);
-    edict_add(&edict,LTV_new("xyz",-1,0),NULL);
-
-    edict_name(&edict,"name1",-1,0,NULL);
-    edict_name(&edict,"name2a.name2b",-1,0,NULL);
-    edict_name(&edict,"name3a,name3b",-1,0,NULL);
-    edict_name(&edict,"name4",-1,0,NULL);
-    
-    edict_ref(&edict,"name2a.name2b",-1,0,0,NULL);
-    edict_ref(&edict,"name2a.name2b",-1,0,0,NULL);
-    edict_ref(&edict,"name2a.name2b",-1,0,0,NULL);
-    edict_ref(&edict,"name2a.name2b",-1,0,0,NULL);
-    edict_name(&edict,"name5",-1,0,NULL);
-    edict_name(&edict,"name6",-1,0,NULL);
-}
 
 int main()
 {
     LTI *lti;
     LTV *root=LTV_new("ROOT",-1,0);
     edict_init(&edict,root);
-    //jj_test();
-    //jj_test();
-    //edict_dump(&edict);
     edict_repl(&edict);
     edict_destroy(&edict);
 }

@@ -16,28 +16,58 @@ int edict_delimit(char *str,int rlen)
     return rlen<len?rlen:len;
 }
 
-LTV *edict_nameltv(EDICT *edict,char *name,int len,int end,void *metadata,LTV *ltv)
+LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
 {
     void *md;
     int tlen;
     LTI *lti;
+    int end;
     LTV *root=LTV_get(&edict->dict,0,0,&md);
     
     if (len<0) len=strlen(name);
     do
     {
         tlen=edict_delimit(name,len);
-        if ((lti=LT_lookup(&root->rbr,name,tlen,1)))
+        end=(*name=='-');
+        if ((lti=LT_lookup(&root->rbr,name+end,tlen-end,0)))
         {
-            if (name[tlen]=='.')
-                root=LTV_get(&lti->cll,0,0,&md);
-            else if (name[tlen]==',')
-                root=LTV_get(&lti->cll,0,1,&md);
-            else
+            pop=pop && !(root->flags&LT_RO);
+            if (name[tlen]!='.')
+            {
+                LTV *rval=LTV_get(&lti->cll,pop,end,metadata);
+                if (pop && CLL_EMPTY(&lti->cll))
+                    RBN_release(&root->rbr,&lti->rbn,LTI_release);
+                return rval;
+            }
+            root=LTV_get(&lti->cll,0,end,&md);
+            len-=(tlen+1);
+            name+=(tlen+1);
+        }
+        else return edict->nil;
+    } while(len>0 && root);
+    return NULL;
+}
+
+LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
+{
+    void *md;
+    int tlen;
+    LTI *lti;
+    int end;
+    LTV *root=LTV_get(&edict->dict,0,0,&md);
+    
+    if (len<0) len=strlen(name);
+    do
+    {
+        tlen=edict_delimit(name,len);
+        end=(*name=='-');
+        if ((lti=LT_lookup(&root->rbr,name+end,tlen-end,1)))
+        {
+            if (name[tlen]!='.')
                 return LTV_put(&lti->cll,ltv?ltv:edict->nil,end,metadata);
             
-            if (!root)
-                root=LTV_put(&lti->cll,LTV_new("",-1,0),0,NULL);
+            if (!(root=LTV_get(&lti->cll,0,end,&md)))
+                root=LTV_put(&lti->cll,LTV_new("",-1,0),end,NULL);
             len-=(tlen+1);
             name+=(tlen+1);
         }
@@ -47,56 +77,24 @@ LTV *edict_nameltv(EDICT *edict,char *name,int len,int end,void *metadata,LTV *l
 
 LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata)
 {
-    return edict_nameltv(edict,"",0,0,metadata,ltv);
+    return edict_nameltv(edict,"",0,metadata,ltv);
 }
 
 LTV *edict_rem(EDICT *edict,void **metadata)
 {
-    return edict_get(edict,"",0,1,0,metadata); // cleanup: LTV_release(LTV *)
+    return edict_get(edict,"",0,1,metadata); // cleanup: LTV_release(LTV *)
 }
 
-LTV *edict_name(EDICT *edict,char *name,int len,int end,void *metadata)
+LTV *edict_name(EDICT *edict,char *name,int len,void *metadata)
 {
     void *md;
-    return edict_nameltv(edict,name,len,end,metadata,edict_rem(edict,&md));
+    return edict_nameltv(edict,name,len,metadata,edict_rem(edict,&md));
 }
 
-LTV *edict_get(EDICT *edict,char *name,int len,int pop,int end,void **metadata)
+LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
 {
     void *md;
-    LTV *root=LTV_get(&edict->dict,0,0,&md);
-    if (len<0) len=strlen(name);
-    do
-    {
-        LTI *lti;
-        int tlen=edict_delimit(name,len);
-        if ((lti=LT_lookup(&root->rbr,name,tlen,0)))
-        {
-            pop=pop && !(root->flags&LT_RO);
-            if (name[tlen]=='.')
-                root=LTV_get(&lti->cll,0,0,&md);
-            else if (name[tlen]==',')
-                root=LTV_get(&lti->cll,0,1,&md);
-            else
-            {
-                LTV *rval=LTV_get(&lti->cll,pop,end,metadata);
-                if (pop && CLL_EMPTY(&lti->cll))
-                    RBN_release(&root->rbr,&lti->rbn,LTI_release);
-                return rval;
-            }
-            len-=(tlen+1);
-            name+=(tlen+1);
-        }
-        else return edict->nil;
-    } while(len>0 && root);
-    
-    return NULL;
-}
-
-LTV *edict_ref(EDICT *edict,char *name,int len,int pop,int end,void *metadata)
-{
-    void *md;
-    LTV *ltv=edict_get(edict,name,len,pop,end,&md);
+    LTV *ltv=edict_get(edict,name,len,pop,&md);
     return edict_add(edict,ltv?ltv:edict->nil,metadata);
 }
 
@@ -225,7 +223,7 @@ int edict_repl(EDICT *edict)
             if (ops)
                 for (i=0;i<ops && i<len && edict->bcf[token[i]](edict,token+ops,len-ops);i++);
             else
-                edict_ref(edict,token,len,0,0,NULL);
+                edict_ref(edict,token,len,0,NULL);
         }
 
         if ((int) offset >= ltv->len)
@@ -249,14 +247,14 @@ int bc_lit(EDICT *edict,char *name,int len)
 
 int bc_name(EDICT *edict,char *name,int len)
 {
-    edict_name(edict,name,len,0,NULL);
+    edict_name(edict,name,len,NULL);
     return 1;
 }
 
 int bc_kill(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_release(edict_get(edict,name,len,1,0,&md));
+    LTV_release(edict_get(edict,name,len,1,&md));
     return 1;
 }
 
@@ -269,7 +267,7 @@ int bc_exec_enter(EDICT *edict,char *name,int len)
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,0,&md),0,NULL);
+    LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,&md),0,NULL);
     return 0;
 }
 

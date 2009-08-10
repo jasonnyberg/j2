@@ -31,6 +31,9 @@ void *LTV_dump(LTV *ltv);
 
 void *LTV_dump(LTV *ltv)
 {
+    if (ltv->flags & LT_VIS) return NULL;
+    else ltv->flags |= LT_VIS;
+    
     if (ltv->len)
     {
         fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
@@ -46,6 +49,9 @@ void *LTV_dump(LTV *ltv)
         fprintf(dumpfile,"%d -> %d\n",ltv,ltv->rbr.rb_node);
         RBR_traverse(&ltv->rbr,RBN_dump,&ltv->rbr);
     }
+
+    ltv->flags &= ~LT_VIS;
+          
     return NULL;
 }
 

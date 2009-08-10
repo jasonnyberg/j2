@@ -266,7 +266,7 @@ int bc_kill(EDICT *edict,char *name,int len)
 int bc_namespace_enter(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_put(&edict->dict,edict_get(edict,name,len,1,&md),0,NULL);
+    LTV_put(&edict->dict,edict_rem(edict,&md),0,NULL);
     return 0;
 }
 

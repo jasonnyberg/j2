@@ -34,7 +34,7 @@ extern CLL ltv_repo,ltvr_repo,lti_repo;
 #define RBR struct rb_root
 #define RBN struct rb_node
 
-typedef enum { LT_DUP=1<<0, LT_DEL=1<<1, LT_RO=1<<2, LT_FILE=1<<3, LT_CVAR=1<<4, } LTV_FLAGS;
+typedef enum { LT_DUP=1<<0, LT_DEL=1<<1, LT_RO=1<<2, LT_FILE=1<<3, LT_CVAR=1<<4, LT_VIS=1<<5 } LTV_FLAGS;
 
 typedef struct
 {

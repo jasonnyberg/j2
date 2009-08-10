@@ -18,19 +18,22 @@ int edict_delimit(char *str,int rlen)
 
 LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
 {
-    void *md;
-    int tlen;
-    LTI *lti;
-    int end;
-    LTV *root=LTV_get(&edict->dict,0,0,&md);
-    
-    if (len<0) len=strlen(name);
-    do
+    void *internal_get(CLL *cll,void *data)
     {
-        tlen=edict_delimit(name,len);
-        end=(*name=='-');
-        if ((lti=LT_lookup(&root->rbr,name+end,tlen-end,0)))
+        void *md;
+        int tlen;
+        LTI *lti;
+        int end;
+        LTVR *ltvr=(LTVR *) cll; // each CLL node is really an LTVR
+        LTV *root=ltvr->ltv;
+        
+        if (len<0) len=strlen(name);
+        do
         {
+            tlen=edict_delimit(name,len);
+            end=(*name=='-');
+            if (!(lti=LT_lookup(&root->rbr,name+end,tlen-end,0)))
+                break;
             pop=pop && !(root->flags&LT_RO);
             if (name[tlen]!='.')
             {
@@ -42,10 +45,12 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
             root=LTV_get(&lti->cll,0,end,&md);
             len-=(tlen+1);
             name+=(tlen+1);
-        }
-        else return edict->nil;
-    } while(len>0 && root);
-    return NULL;
+        } while(len>0 && root);
+        return NULL;
+    }
+
+    LTV *result=CLL_traverse(&edict->dict,0,internal_get,NULL);
+    return result?result:edict->nil;
 }
 
 LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
@@ -55,7 +60,7 @@ LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
     LTI *lti;
     int end;
     LTV *root=LTV_get(&edict->dict,0,0,&md);
-    
+        
     if (len<0) len=strlen(name);
     do
     {
@@ -258,6 +263,20 @@ int bc_kill(EDICT *edict,char *name,int len)
     return 1;
 }
 
+int bc_namespace_enter(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV_put(&edict->dict,edict_get(edict,name,len,1,&md),0,NULL);
+    return 0;
+}
+
+int bc_namespace_leave(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV_release(LTV_get(&edict->dict,1,0,&md));
+    return 0;
+}
+
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
     bc_name(edict,"continuation",-1);
@@ -306,6 +325,8 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'[',bc_lit);
     edict_bytecode(edict,'@',bc_name);
     edict_bytecode(edict,'/',bc_kill);
+    edict_bytecode(edict,'<',bc_namespace_enter);
+    edict_bytecode(edict,'>',bc_namespace_leave);
     edict_bytecode(edict,'(',bc_exec_enter);
     edict_bytecode(edict,')',bc_exec_leave);
 }

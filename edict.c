@@ -195,7 +195,7 @@ int edict_repl(EDICT *edict)
             switch (*token)
             {
                 case '\'':
-                    len=strcspn((token+1)+1,edict->bcdel);
+                    len=strcspn(token+1,edict->bcdel)+1;
                     ops=1;
                     break;
                 case '[':

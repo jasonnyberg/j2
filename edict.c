@@ -100,6 +100,15 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
 {
     void *md;
     LTV *ltv=edict_get(edict,name,len,pop,&md);
+
+#ifndef DYNCALL // FIXME: tear this shit out when dyncall is integrated
+    if (!strncmp(name,"dump",len))
+    {
+        LTV_release(ltv);
+        edict_dump(edict);
+    }
+    else
+#endif
     return edict_add(edict,ltv?ltv:edict->nil,metadata);
 }
 
@@ -162,8 +171,6 @@ int edict_repl(EDICT *edict)
         ltv=NULL;
         token=NULL;
         len=ops=0;
-
-        edict_dump(edict);
         
  read:
         if (!(ltv=LTV_get(&edict->code,1,0,&offset)))
@@ -219,7 +226,7 @@ int edict_repl(EDICT *edict)
 
         offset+=len+strspn(token+len,WHITESPACE);
 
-        if ((int) offset < ltv->len)
+        if ((ull) offset < ltv->len)
             LTV_put(&edict->code,ltv,0,(void *) offset);
 
         if (len)
@@ -231,7 +238,7 @@ int edict_repl(EDICT *edict)
                 edict_ref(edict,token,len,0,NULL);
         }
 
-        if ((int) offset >= ltv->len)
+        if ((ull) offset >= ltv->len)
             LTV_release(ltv);
     } while (1);
     

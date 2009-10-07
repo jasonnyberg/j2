@@ -180,6 +180,45 @@ LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
 
 
 //////////////////////////////////////////////////
+// Tag Team of traverse methods for LT elements
+//////////////////////////////////////////////////
+
+void *LTV_traverse(LTV *ltv,void *data)
+{
+    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+    if (!ltv || !ltobj_data) return NULL;
+    if (ltv->flags&LT_VIS) return NULL;
+    ltv->flags |= LT_VIS;
+    ltobj_data->ltobj_op(NULL,NULL,ltv,data);
+    if (ltv->rbr.rb_node)
+        RBR_traverse(&ltv->rbr,LTI_traverse,data);
+    ltv->flags &= ~LT_VIS;
+    return NULL;
+}
+
+void *LTVR_traverse(CLL *cll,void *data)
+{
+    LTVR *ltvr = (LTVR *) cll;
+    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+    if (!ltvr || !ltobj_data) return NULL;
+    ltobj_data->ltobj_op(ltvr,NULL,NULL,data);
+    LTV_traverse(ltvr->ltv,data);
+    return NULL;
+}
+
+void *LTI_traverse(RBN *rbn,void *data)
+{
+    LTI *lti = (LTI *) rbn;
+    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+    if (!lti || !ltobj_data) return NULL;
+    ltobj_data->ltobj_op(NULL,lti,NULL,data);
+    ltobj_data->data=&lti->cll;
+    CLL_traverse(&lti->cll,0,LTVR_traverse,data);
+    return NULL;
+}
+
+
+//////////////////////////////////////////////////
 // Tag Team of release methods for LT elements
 //////////////////////////////////////////////////
 

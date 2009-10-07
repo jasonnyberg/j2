@@ -5,80 +5,45 @@
 
 FILE *dumpfile;
 
-#if 0
-digraph iftree
+void *LTOBJ_dump(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 {
-compound=true
-	ordering=out concentrate=true
-	node [shape=record]
-edge []
-subgraph clusterA { label=aaa 111 subgraph clusterB }
-subgraph clusterB { color=red label=bbb 2 3 4 }
-subgraph clusterC { color=white xxx label=ccc 333 444 }
-
- subgraph clusterC ->  subgraph clusterA
-444 -> 2 [lhead=clusterB]
-a [shape=record label="<f1>a|<f2>b|<f3>c"]
-a:f1 -> a:f2
-a:f3 -> 2 [lhead=clusterA]
-}
-#endif
-
-/* temporary until reflect works */
-void *CLL_dump(CLL *cll,void *data);
-void *RBN_dump(RBN *rbn,void *data);
-void *LTV_dump(LTV *ltv);
-
-void *LTV_dump(LTV *ltv)
-{
-    if (ltv->flags & LT_VIS) return NULL;
-    else ltv->flags |= LT_VIS;
+    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+    if (!ltobj_data) return NULL;
     
-    if (ltv->len)
+    if (ltv)
     {
-        fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
-        fstrnprint(dumpfile,ltv->data,ltv->len);
-        fprintf(dumpfile,"\"]\n");
-    }
-    else
-    {
-        fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.1]\n",ltv);
-    }
-    if (ltv->rbr.rb_node)
-    {
-        fprintf(dumpfile,"%d -> %d\n",ltv,ltv->rbr.rb_node);
-        RBR_traverse(&ltv->rbr,RBN_dump,&ltv->rbr);
+        if (ltv->len)
+        {
+            fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
+            fstrnprint(dumpfile,ltv->data,ltv->len);
+            fprintf(dumpfile,"\"]\n");
+        }
+        else
+            fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.1]\n",ltv);
+        
+        if (ltv->rbr.rb_node)
+            fprintf(dumpfile,"%d -> %d\n",ltv,ltv->rbr.rb_node);
     }
 
-    ltv->flags &= ~LT_VIS;
-          
-    return NULL;
-}
-
-void *RBN_dump(RBN *rbn,void *data)
-{
-    LTI *lti=(LTI *) rbn; // each RBN is really an LTI
-    CLL *lnk;
-    //fprintf(dumpfile,"subgraph clusterRBN%d { %d }\n",data,lti);
-    fprintf(dumpfile,"%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
-    if (rb_parent(rbn))
-        fprintf(dumpfile,"%d -> %d\n",rb_parent(rbn),rbn);
-    if (lnk=CLL_get(&lti->cll,0,0))
+    if (lti)
     {
-        fprintf(dumpfile,"%d -> %d\n",rbn,lnk);
-        CLL_traverse(&lti->cll,0,CLL_dump,&lti->cll);
+        CLL *lnk;
+        fprintf(dumpfile,"%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
+        if (rb_parent(&lti->rbn))
+            fprintf(dumpfile,"%d -> %d\n",rb_parent(&lti->rbn),&lti->rbn);
+        if (lnk=CLL_get(&lti->cll,0,0))
+            fprintf(dumpfile,"%d -> %d\n",&lti->rbn,lnk);
     }
-    return NULL;
-}
 
-void *CLL_dump(CLL *cll,void *data)
-{
-    LTVR *ltvr=(LTVR *) cll; // each CLL node is really an LTVR
-    fprintf(dumpfile,"%d [label=\"\" shape=point]\n",cll);
-    if (ltvr->ltv) fprintf(dumpfile,"%d -> %d\n",cll,ltvr->ltv);
-    if (cll->lnk[1]!=data)
-        fprintf(dumpfile,"%d -> %d\n",cll->lnk[1],cll);
-    LTV_dump(ltvr->ltv);
+    if (ltvr)
+    {
+        struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+        fprintf(dumpfile,"%d [label=\"\" shape=point]\n",ltvr);
+        if (ltvr->ltv) fprintf(dumpfile,"%d -> %d\n",ltvr,ltvr->ltv);
+        if (ltvr->cll.lnk[1]!=ltobj_data->data)
+            fprintf(dumpfile,"%d -> %d\n",ltvr->cll.lnk[1],ltvr);
+    }
+    
     return NULL;
 }
 
@@ -88,14 +53,15 @@ extern int Gmymalloc;
 int edict_dump(EDICT *edict)
 {
     int status;
+    struct LTOBJ_DATA ltobj_data = { LTOBJ_dump, NULL };
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tordering=out concentrate=true\n\tnode [shape=record]\n\tedge []\n");
     //fprintf(dumpfile,"root=\"%d\"\n",-1);
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
     fprintf(dumpfile,"%d [label=dict]\n",&edict->dict);
-    TRY(CLL_traverse(&edict->dict,0,CLL_dump,NULL),0,finish,"\n");
-    //TRYLOG(CLL_dump(&edict->code,(void *) -1),0,done,"\n");
-    //GVGRP((void *) -1,&edict->code);
+    
+    TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
+    
  finish:
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);

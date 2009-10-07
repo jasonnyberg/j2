@@ -2,7 +2,7 @@
 
 viewer() { touch /tmp/jj.dot /tmp/jj.png; kview /tmp/jj.png; }
 draw() { dot -Tpng /tmp/jj.dot -o /tmp/jj.png; }
-changing() { inotifywait /tmp/jj.dot; }
+changing() { inotifywait -e close /tmp/jj.dot; }
 
 monitor() {
   viewer &

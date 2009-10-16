@@ -85,7 +85,7 @@ extern LTI *LT_lookup(RBR *rbr,char *name,int len,int insert);
 
 struct LTOBJ_DATA;
 typedef void *(*LTOBJ_OP)(LTVR *ltvr,LTI *lti,LTV *ltv,void *data);
-struct LTOBJ_DATA { LTOBJ_OP ltobj_op; void *data; };
+struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; void *data; };
 
 void *LTV_traverse(LTV *ltv,void *data);
 void *LTVR_traverse(CLL *cll,void *data);

@@ -1,0 +1,136 @@
+[]@reflection.types reflection.types<
+[DW_TAG_compile_unit]@11 11<[myreader.c]@name
+[]@children children<
+[DW_TAG_base_type]@41 41<[unsigned int]@name
+>
+[DW_TAG_base_type]@48 48<[unsigned char]@name
+>
+[DW_TAG_base_type]@65 65<[short unsigned int]@name
+>
+[DW_TAG_base_type]@87 87<[long unsigned int]@name
+>
+[DW_TAG_base_type]@108 108<[signed char]@name
+>
+[DW_TAG_base_type]@123 123<[short int]@name
+>
+[DW_TAG_base_type]@136 136<[int]@name
+>
+[DW_TAG_base_type]@143 143<[long long int]@name
+>
+[DW_TAG_base_type]@160 160<[long long unsigned int]@name
+>
+[DW_TAG_base_type]@186 186<[long int]@name
+>
+[DW_TAG_base_type]@198 198<[unsigned int]@name
+>
+[DW_TAG_base_type]@211 211<[char]@name
+>
+[DW_TAG_subprogram]@230 230<[print_die_data]@name
+[]@children children<
+[DW_TAG_formal_parameter]@266 266<[dbg]@name
+>
+[DW_TAG_formal_parameter]@280 280<[in_die]@name
+>
+[DW_TAG_formal_parameter]@297 297<[level]@name
+>
+[DW_TAG_variable]@313 313<[name]@name
+>
+[DW_TAG_variable]@328 328<[error]@name
+>
+[DW_TAG_variable]@342 342<[tag]@name
+>
+[DW_TAG_variable]@356 356<[tagname]@name
+>
+[DW_TAG_variable]@374 374<[child]@name
+>
+[DW_TAG_variable]@390 390<[die_offset]@name
+>
+[DW_TAG_variable]@411 411<[res]@name
+>
+>
+>
+[DW_TAG_subprogram]@426 426<[get_die_and_siblings]@name
+[]@children children<
+[DW_TAG_formal_parameter]@468 468<[dbg]@name
+>
+[DW_TAG_formal_parameter]@482 482<[in_die]@name
+>
+[DW_TAG_formal_parameter]@499 499<[level]@name
+>
+[DW_TAG_formal_parameter]@515 515<[title]@name
+>
+[DW_TAG_variable]@531 531<[res]@name
+>
+[DW_TAG_variable]@545 545<[cur_die]@name
+>
+[DW_TAG_variable]@563 563<[error]@name
+>
+>
+>
+[DW_TAG_subprogram]@606 606<[read_cu_list]@name
+[]@children children<
+[DW_TAG_formal_parameter]@640 640<[dbg]@name
+>
+[DW_TAG_variable]@654 654<[cu_header_length]@name
+>
+[DW_TAG_variable]@681 681<[version_stamp]@name
+>
+[DW_TAG_variable]@705 705<[abbrev_offset]@name
+>
+[DW_TAG_variable]@729 729<[address_size]@name
+>
+[DW_TAG_variable]@752 752<[next_cu_header]@name
+>
+[DW_TAG_variable]@777 777<[error]@name
+>
+[DW_TAG_variable]@792 792<[cu_number]@name
+>
+>
+>
+[DW_TAG_subprogram]@872 872<[main]@name
+[]@children children<
+[DW_TAG_formal_parameter]@902 902<[argc]@name
+>
+[DW_TAG_formal_parameter]@918 918<[argv]@name
+>
+[DW_TAG_variable]@936 936<[dbg]@name
+>
+[DW_TAG_variable]@950 950<[fd]@name
+>
+[DW_TAG_variable]@963 963<[filepath]@name
+>
+[DW_TAG_variable]@982 982<[error]@name
+>
+>
+>
+>
+>
+>
+[]@reflection.types reflection.types<
+[DW_TAG_compile_unit]@1015 1015<[../libdwarf/libdwarf.h]@name
+[]@children children<
+[DW_TAG_structure_type]@1029 1029<[Dwarf_Error_s]@name
+>
+[DW_TAG_typedef]@1051 1051<[Dwarf_Error]@name
+>
+[DW_TAG_structure_type]@1071 1071<[Dwarf_Die_s]@name
+>
+[DW_TAG_typedef]@1091 1091<[Dwarf_Die]@name
+>
+[DW_TAG_structure_type]@1109 1109<[Dwarf_Debug_s]@name
+>
+[DW_TAG_typedef]@1131 1131<[Dwarf_Debug]@name
+>
+[DW_TAG_typedef]@1151 1151<[Dwarf_Half]@name
+>
+[DW_TAG_typedef]@1169 1169<[Dwarf_Unsigned]@name
+>
+[DW_TAG_typedef]@1191 1191<[Dwarf_Off]@name
+>
+>
+>
+>
+
+
+dump
+

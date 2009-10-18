@@ -20,7 +20,7 @@ void *cluster_ltv(LTV *ltv,void *data)
             fprintf(dumpfile,"\t%d -> %d\n",rb_parent(&lti->rbn),&lti->rbn);
         return NULL;
     }
-    fprintf(dumpfile,"\nsubgraph cluster_%1$d { rank=same\n",ltv);
+    fprintf(dumpfile,"\nsubgraph cluster_%1$d { rank=same ratio=4\n",ltv);
     RBR_traverse(&ltv->rbr,cluster_rbn,NULL);
     RBR_traverse(&ltv->rbr,cluster_rbn2,NULL);
     fprintf(dumpfile,"}\n");
@@ -51,11 +51,6 @@ void *LTOBJ_dump_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     if (lti)
     {
         CLL *lnk;
-#if 0 // handled in cluster_rbn now
-        fprintf(dumpfile,"%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
-        if (rb_parent(&lti->rbn))
-            fprintf(dumpfile,"%d -> %d\n",rb_parent(&lti->rbn),&lti->rbn);
-#endif
         if (lnk=CLL_get(&lti->cll,0,0))
             fprintf(dumpfile,"%d -> %d\n",&lti->rbn,lnk);
     }

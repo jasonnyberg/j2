@@ -32,6 +32,8 @@ int fstrnprint(FILE *ofile,char *str,int len)
             case '\"': fputs("\"",ofile); break;
             default: fputc(s,ofile); break;
         }
+    
+    return 0;
 }
 
 void try_error()

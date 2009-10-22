@@ -182,42 +182,60 @@ LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
 //////////////////////////////////////////////////
 // Tag Team of traverse methods for LT elements
 //////////////////////////////////////////////////
+void *LTV_descend(LTV *ltv,void *data);
+void *LTVR_descend(CLL *cll,void *data);
+void *LTI_descend(RBN *rbn,void *data);
 
-void *LTV_traverse(LTV *ltv,void *data)
+void *LTV_descend(LTV *ltv,void *data)
 {
+    if (!ltv) return NULL;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltv || !ltobj_data) return NULL;
-    if (ltv->flags&LT_VIS) return NULL;
-    ltv->flags |= LT_VIS;
-    if (ltobj_data->preop) ltobj_data->preop(NULL,NULL,ltv,data);
-    if (ltv->rbr.rb_node) RBR_traverse(&ltv->rbr,LTI_traverse,data);
-    if (ltobj_data->postop) ltobj_data->postop(NULL,NULL,ltv,data);
-    ltv->flags &= ~LT_VIS;
+
+    if (ltobj_data) // flag as visited and operate
+    {
+        if (ltv->flags&LT_VIS) return NULL;
+        ltv->flags |= LT_VIS;
+    }
+    else // remove visited flag
+    {
+        if (!(ltv->flags&LT_VIS)) return NULL;
+        ltv->flags &= ~LT_VIS;
+    }
+
+    if (ltobj_data && ltobj_data->preop) ltobj_data->preop(NULL,NULL,ltv,data);
+    if (ltobj_data) ltobj_data->depth++;
+    if (ltv->rbr.rb_node) RBR_traverse(&ltv->rbr,LTI_descend,data);
+    if (ltobj_data) ltobj_data->depth--;
+    if (ltobj_data && ltobj_data->postop) ltobj_data->postop(NULL,NULL,ltv,data);
     return NULL;
 }
 
-void *LTVR_traverse(CLL *cll,void *data)
+void *LTVR_descend(CLL *cll,void *data)
 {
     LTVR *ltvr = (LTVR *) cll;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltvr || !ltobj_data) return NULL;
-    if (ltobj_data->preop) ltobj_data->preop(ltvr,NULL,NULL,data);
-    LTV_traverse(ltvr->ltv,data);
-    if (ltobj_data->postop) ltobj_data->postop(ltvr,NULL,NULL,data);
+    if (!ltvr) return NULL;
+    if (ltobj_data && ltobj_data->preop) ltobj_data->preop(ltvr,NULL,NULL,data);
+    if (ltvr->ltv) LTV_descend(ltvr->ltv,data);
+    if (ltobj_data && ltobj_data->postop) ltobj_data->postop(ltvr,NULL,NULL,data);
     return NULL;
 }
 
-void *LTI_traverse(RBN *rbn,void *data)
+void *LTI_descend(RBN *rbn,void *data)
 {
     LTI *lti = (LTI *) rbn;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!lti || !ltobj_data) return NULL;
-    if (ltobj_data->preop) ltobj_data->preop(NULL,lti,NULL,data);
-    ltobj_data->data=&lti->cll;
-    CLL_traverse(&lti->cll,0,LTVR_traverse,data);
-    if (ltobj_data->postop) ltobj_data->postop(NULL,lti,NULL,data);
+    if (!lti) return NULL;
+    if (ltobj_data && ltobj_data->preop) ltobj_data->preop(NULL,lti,NULL,data);
+    CLL_traverse(&lti->cll,0,LTVR_descend,data);
+    if (ltobj_data && ltobj_data->postop) ltobj_data->postop(NULL,lti,NULL,data);
     return NULL;
 }
+
+// descend tree flagging nodes as visited and executing ops, then clean up the visited flags
+void *LTV_traverse(LTV *ltv,void *data) { void *r=LTV_descend(ltv,data); LTV_descend(ltv,NULL); return r; }
+void *LTVR_traverse(CLL *cll,void *data) { void *r=LTVR_descend(cll,data); LTVR_descend(cll,NULL); return r; }
+void *LTI_traverse(RBN *rbn,void *data) { void *r=LTI_descend(rbn,data); LTI_descend(rbn,NULL); return r; }
 
 
 //////////////////////////////////////////////////

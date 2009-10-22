@@ -17,7 +17,7 @@ void *cluster_ltv(LTV *ltv,void *data)
     {
         LTI *lti=(LTI *) rbn;
         if (rb_parent(&lti->rbn))
-            fprintf(dumpfile,"\t%d -> %d\n",rb_parent(&lti->rbn),&lti->rbn);
+            fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
         return NULL;
     }
     if (ltv->rbr.rb_node)
@@ -54,14 +54,14 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     {
         if (ltvr->ltv) fprintf(dumpfile,"%d -> %d\n",ltvr,ltvr->ltv);
         fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&ltvr->cll);
-        fprintf(dumpfile,"%d -> %d\n",&ltvr->cll,ltvr->cll.lnk[0]);
+        fprintf(dumpfile,"%d -> %d [color=brown]\n",&ltvr->cll,ltvr->cll.lnk[0]);
     }
     
     if (lti)
     {
         fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&lti->cll);
         fprintf(dumpfile,"%d -> %d\n",&lti->rbn,&lti->cll);
-        fprintf(dumpfile,"%d -> %d\n",&lti->cll,lti->cll.lnk[0]);
+        fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->cll,lti->cll.lnk[0]);
     }
 
     return NULL;
@@ -100,6 +100,9 @@ int edict_dump(EDICT *edict)
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
+    fprintf(dumpfile,"Gmymalloc [label=\"ltv_count %d\"]\n",ltv_count);
+    fprintf(dumpfile,"Gmymalloc [label=\"ltvr_count %d\"]\n",ltvr_count);
+    fprintf(dumpfile,"Gmymalloc [label=\"lti_count %d\"]\n",lti_count);
     fprintf(dumpfile,"%1$d [label=\"\" shape=point color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
 
     ltobj_data.preop = LTOBJ_graph_pre;

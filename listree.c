@@ -9,6 +9,7 @@
 #define PEDANTIC(alt,args...) alt
 
 CLL ltv_repo,ltvr_repo,lti_repo;
+int ltv_count=0,ltvr_count=0,lti_count=0;
 
 //////////////////////////////////////////////////
 // Circular Linked List
@@ -91,6 +92,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
     LTV *ltv=NULL;
     if (data && ((ltv=(LTV *) CLL_get(&ltv_repo,1,1)) || (ltv=NEW(LTV))))
     {
+        ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
         ltv->flags=flags;
         ltv->data=flags&LT_DUP?ltv->flags|=LT_DEL,bufdup(data,ltv->len):data;
@@ -102,6 +104,7 @@ void LTV_free(LTV *ltv)
 {
     ZERO(*ltv);
     CLL_put(&ltv_repo,&ltv->repo[0],0);
+    ltv_count--;
 }
 
 
@@ -110,7 +113,10 @@ LTVR *LTVR_new(void *metadata)
 {
     LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,1,1);
     if (ltvr || (ltvr=NEW(LTVR)))
+    {
         ltvr->metadata=metadata;
+        ltvr_count++;
+    }
     return ltvr;
 }
 
@@ -119,6 +125,7 @@ void *LTVR_free(LTVR *ltvr)
     void *metadata=ltvr->metadata;
     ZERO(*ltvr);
     CLL_put(&ltvr_repo,&ltvr->repo[0],0);
+    ltvr_count--;
     return metadata;
 }
 
@@ -128,8 +135,11 @@ LTI *LTI_new(char *name,int len)
 {
     LTI *lti;
     if (name && ((lti=(LTI *) CLL_get(&lti_repo,1,1)) || (lti=NEW(LTI))))
-    lti->name=bufdup(name,len);
-    CLL_init(&lti->cll);
+    {
+        lti_count++;
+        lti->name=bufdup(name,len);
+        CLL_init(&lti->cll);
+    }
     return lti;
 }
 
@@ -137,6 +147,7 @@ void LTI_free(LTI *lti)
 {
     ZERO(*lti);
     CLL_put(&lti_repo,&lti->repo[0],0);
+    lti_count--;
 }
 
 

@@ -27,7 +27,7 @@ extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////
 
-extern CLL ltv_repo,ltvr_repo,lti_repo;
+extern int ltv_count,ltvr_count,lti_count;
 
 #include "rbtree.h"
 

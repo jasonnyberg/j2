@@ -100,14 +100,15 @@ int edict_dump(EDICT *edict)
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
-    fprintf(dumpfile,"Gmymalloc [label=\"ltv_count %d\"]\n",ltv_count);
-    fprintf(dumpfile,"Gmymalloc [label=\"ltvr_count %d\"]\n",ltvr_count);
-    fprintf(dumpfile,"Gmymalloc [label=\"lti_count %d\"]\n",lti_count);
+    fprintf(dumpfile,"ltv_count [label=\"ltv_count %d\"]\n",ltv_count);
+    fprintf(dumpfile,"ltvr_count [label=\"ltvr_count %d\"]\n",ltvr_count);
+    fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
     fprintf(dumpfile,"%1$d [label=\"\" shape=point color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
 
     ltobj_data.preop = LTOBJ_graph_pre;
     ltobj_data.postop = NULL;
     TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
+    TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,NULL),0,finish,"\n");
     
  finish:
     fprintf(dumpfile,"}\n");

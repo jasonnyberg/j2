@@ -121,7 +121,7 @@ void traverse_attribs(Dwarf_Debug dbg,Dwarf_Die die)
         int i;
         for (i=0;i<atcnt;i++)
         {
-            printf("[%d]@attr attr<\n",i);
+            printf("[%d]@attribs attribs<\n",i);
             dump_attrib(dbg,&atlist[i]);
             printf(">\n");
             
@@ -156,7 +156,9 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     if (dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK)
         printf("Error in dwarf_dieoffset, level %d\n",level), exit(1);
     
-    printf("[%s]@%d %d<[%s]@name\n",tagname,(int) die_offset,(int) die_offset,name);
+    printf("[%s]@%d\n",tagname,(int) die_offset);
+    printf("reflection.types@types %1$d@types.%1$d /types\n",(int) die_offset);
+    printf("%d<[%s]@name\n",(int) die_offset,name);
     
     SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc\n",(int) vaddr));
     SKIP(dwarf_highpc(die,&vaddr,&error),printf("[%d]@highpc\n",(int) vaddr));
@@ -166,7 +168,7 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     SKIP(dwarf_srclang(die,&vuint,&error),printf("[%d]@srclang\n",(int) vuint));
     SKIP(dwarf_arrayorder(die,&vuint,&error),printf("[%d]@arrayorder\n",(int) vuint));
     
-    traverse_attribs(dbg,die);
+    // traverse_attribs(dbg,die);
    
     dwarf_dealloc(dbg,name,DW_DLA_STRING);
     
@@ -239,7 +241,8 @@ void read_cu_list(Dwarf_Debug dbg)
         else if(res == DW_DLV_NO_ENTRY)
             printf("no entry! in dwarf_siblingof on CU die\n"), exit(1);
     
-        printf("[]@reflection.types reflection.types<\n");
+        printf("[]@reflection.types\n");
+        printf("[]@reflection.hier reflection.hier<\n");
         get_die_and_siblings(dbg,cu_die,0);
         printf(">\n");
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);

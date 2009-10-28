@@ -32,6 +32,17 @@ CLL *CLL_put(CLL *lst,CLL *lnk,int end)
     return lnk;
 }
 
+CLL *CLL_splice(CLL *dst,CLL *src,int end)
+{
+    if (!dst || !src || CLL_EMPTY(src)) return NULL;
+    CLL *dhead=dst->lnk[end],*shead=src->lnk[end],*stail=src->lnk[!end];
+    shead->lnk[!end]=dst;
+    stail->lnk[end]=dhead;
+    dst->lnk[end]=shead;
+    dhead->lnk[!end]=stail;
+    src->lnk[end]=src->lnk[!end]=src;
+}
+
 CLL *CLL_pop(CLL *lnk)
 {
     if (!lnk) return NULL;

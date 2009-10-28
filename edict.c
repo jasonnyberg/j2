@@ -286,15 +286,36 @@ int bc_namespace_leave(EDICT *edict,char *name,int len)
 
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
-    bc_name(edict,"continuation",-1);
+    void *md;
+    LTV_put(&edict->dict,LTV_new("",0,LT_DUP),0,NULL);
+    bc_name(edict,"_cont",-1);
     return 0;
 }
 
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_put(&edict->code,edict_get(edict,"continuation",-1,1,&md),0,NULL);
+    LTV_put(&edict->code,LTV_new(">",1,LT_DUP),0,NULL); // close
+    LTV_put(&edict->code,LTV_new("^",1,LT_DUP),0,NULL); // splice
+    LTV_put(&edict->code,edict_get(edict,"_cont",-1,1,&md),0,NULL);
     return 0;
+}
+
+int bc_splice(EDICT *edict,char *name,int len)
+{
+    LTI *anons[2] = { NULL, NULL };
+    int i=0;
+    
+    void *get_anons(CLL *cll,void *data)
+    {
+        LTV *root=((LTVR *) cll)->ltv;
+        anons[i]=LT_lookup(&root->rbr,"",0,i); // insert LTI on 2nd layer, i.e. i=1 (sweet)
+        return i++; // returns halt after populating anons[0] and anons[1]
+    }
+
+    CLL_traverse(&edict->dict,0,get_anons,NULL);
+    if (anons[0] && anons[1])
+        CLL_splice(&(anons[1]->cll),&(anons[0]->cll),0);
 }
 
 /*
@@ -336,6 +357,7 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'>',bc_namespace_leave);
     edict_bytecode(edict,'(',bc_exec_enter);
     edict_bytecode(edict,')',bc_exec_leave);
+    edict_bytecode(edict,'^',bc_splice);
 }
 
 

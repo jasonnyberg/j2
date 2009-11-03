@@ -148,9 +148,10 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     TRY(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"Error in dwarf_get_TAG_name , level %d\n",level);
     TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"Error in dwarf_dieoffset, level %d\n",level);
     
-    printf("[%s]@%d\n",tagname,(int) die_offset);
+    printf("[%s]@%d\n",name,(int) die_offset);
     printf("types@types %1$d@types.%1$d /types\n",(int) die_offset);
-    printf("%d<[%s]@name\n",(int) die_offset,name);
+    printf("tags@tags %1$d@tags.%2$s /tags\n",(int) die_offset,tagname);
+    printf("%d<[%s]@type\n",(int) die_offset,tagname);
     
     SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc\n",(int) vaddr));
     SKIP(dwarf_highpc(die,&vaddr,&error),printf("[%d]@highpc\n",(int) vaddr));
@@ -165,12 +166,13 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     dwarf_dealloc(dbg,name,DW_DLA_STRING);
     
     TRY((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_child , level %d\n",level);
-    TRY(res!=DW_DLV_OK,-1,done,"");
+    TRY(res!=DW_DLV_OK,-1,done_die,"");
     
     printf("[]@children children<\n");
     get_die_and_siblings(dbg,child,level+1);
     printf(">\n");
 
+ done_die:
     printf(">\n");
 
  done:
@@ -227,6 +229,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
     
         printf("[%s]@reflection.module reflection.module<\n",module);
         printf("[]@types\n");
+        printf("[]@tags\n");
         printf("[]@hier hier<\n");
         get_die_and_siblings(dbg,cu_die,0);
         printf("> [hier]/\n> [module]/\n");
@@ -260,7 +263,7 @@ int main(int argc, char **argv)
     if(dwarf_init(fd,DW_DLC_READ,NULL,NULL,&dbg,&error) != DW_DLV_OK)
         printf("Giving up, cannot do DWARF processing\n"), exit(1);
     
-    read_cu_list(dbg);
+    read_cu_list(dbg,"main");
     
     if(dwarf_finish(dbg,&error) != DW_DLV_OK)
         printf("dwarf_finish failed!\n");

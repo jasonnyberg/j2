@@ -99,8 +99,8 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
         dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
     }
     
- done:
     return;
+
  panic:
     exit(1);
 }
@@ -142,16 +142,16 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     int res;
 
     TRY((res=dwarf_diename(die,&name,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_diename , level %d\n",level);
-    TRY(res==DW_DLV_NO_ENTRY,0,done,"");
+    TRY(res==DW_DLV_NO_ENTRY,0,done,"DW_DLV_NO_ENTRY");
     
     TRY(dwarf_tag(die,&tag,&error) != DW_DLV_OK,-1,panic,"Error in dwarf_tag , level %d\n",level);
     TRY(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"Error in dwarf_get_TAG_name , level %d\n",level);
     TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"Error in dwarf_dieoffset, level %d\n",level);
     
-    printf("[%s]@%d\n",name,(int) die_offset);
-    printf("types@types %1$d@types.%1$d /types\n",(int) die_offset);
-    printf("tags@tags %1$d@tags.%2$s /tags\n",(int) die_offset,tagname);
-    printf("%d<[%s]@type\n",(int) die_offset,tagname);
+    printf("types@types [%s]@types.%d /types\n",name,(int) die_offset);
+    printf("tags@tags tags+%2$s@types.%1$d.tagname types.%1$d@tagname.%2$s /tags\n",(int) die_offset,tagname);
+    //printf("%d<[%s]@type\n",(int) die_offset,tagname);
+    printf("types.%d<\n",(int) die_offset);
     
     SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc\n",(int) vaddr));
     SKIP(dwarf_highpc(die,&vaddr,&error),printf("[%d]@highpc\n",(int) vaddr));
@@ -193,7 +193,7 @@ void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level)
         int res;
         print_die_data(dbg,cur_die,level);
         TRY((res=dwarf_siblingof(dbg,cur_die,&sib_die,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_siblingof , level %d\n",level);
-        TRY(res==DW_DLV_NO_ENTRY,0,done,""); /* Done at this level. */
+        TRY(res==DW_DLV_NO_ENTRY,0,done,"DW_DLV_NO_ENTRY"); /* Done at this level. */
         if(cur_die!=in_die) 
             dwarf_dealloc(dbg,cur_die,DW_DLA_DIE);
         cur_die=sib_die;
@@ -222,7 +222,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         Dwarf_Die cu_die = NULL;
         int res=dwarf_next_cu_header(dbg,&cu_header_length,&version_stamp,&abbrev_offset,&address_size,&next_cu_header,&error);
 
-        TRY(res==DW_DLV_NO_ENTRY,0,done,"");
+        TRY(res==DW_DLV_NO_ENTRY,0,done,"DW_DLV_NO_ENTRY");
         TRY(res==DW_DLV_ERROR,-1,panic,"Error in dwarf_next_cu_header\n");
         TRY((res=dwarf_siblingof(dbg,no_die,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_siblingof on CU die\n");
         TRY(res==DW_DLV_NO_ENTRY,-1,panic,"no entry! in dwarf_siblingof on CU die\n");
@@ -230,9 +230,8 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         printf("[%s]@reflection.module reflection.module<\n",module);
         printf("[]@types\n");
         printf("[]@tags\n");
-        printf("[]@hier hier<\n");
         get_die_and_siblings(dbg,cu_die,0);
-        printf("> [hier]/\n> [module]/\n");
+        printf("> [module]/\n");
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
         cu_number++;
     }

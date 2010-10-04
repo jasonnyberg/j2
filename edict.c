@@ -8,11 +8,9 @@
 // Edict
 //////////////////////////////////////////////////
 
-#define EDICT_NAMESEP ".,"
-
-int edict_delimit(char *str,int rlen)
+int edict_delimit(char *str,int rlen,char *delim)
 {
-    int len = (str && *str)?strcspn(str,EDICT_NAMESEP):0;
+    int len = (str && *str)?strcspn(str,delim):0;
     return rlen<len?rlen:len;
 }
 
@@ -20,32 +18,49 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
 {
     void *internal_get(CLL *cll,void *data)
     {
-        void *md;
-        int tlen;
-        LTI *lti;
-        int end;
+        void *match=NULL;
+        int nlen=0,mlen=0,alen=0,tlen=0,matchlen=0;
+        LTI *lti=NULL;
+        int end=0,last=0;
         LTVR *ltvr=(LTVR *) cll; // each CLL node is really an LTVR
-        LTV *root=ltvr->ltv;
+        LTV *root=ltvr->ltv,*newroot=NULL;
         
         if (len<0) len=strlen(name);
         do
         {
-            tlen=edict_delimit(name,len);
-            end=(*name=='-');
-            if (!(lti=LT_lookup(&root->rbr,name+end,tlen-end,0)))
-                break;
+            *metadata=NULL;
+            match=NULL;
+            matchlen=0;
             pop=pop && !(root->flags&LT_RO);
-            if (name[tlen]!='.')
+            nlen=edict_delimit(name,len,"."); // end of layer name
+            mlen=edict_delimit(name,len,"="); // test specific value
+            alen=edict_delimit(name,len,"+"); // test/add specific value
+            tlen=MIN(mlen,alen);
+            end=(*name=='-');
+            last=(name[nlen]!='.');
+            if (tlen<nlen)
             {
-                LTV *rval=LTV_get(&lti->cll,pop,end,metadata);
+                match=name+tlen+1; // look for specific item rather than first or last
+                matchlen=nlen-(tlen+1);
+            }
+            if (!(lti=LT_find(&root->rbr,name+end,MIN(tlen,nlen)-end,alen<len))) // if test/add, build name tree
+                break;
+            if (!(newroot=LTV_get(&lti->cll,pop&&last,end,match,matchlen,metadata)) && alen<len)
+            {
+                newroot=LTV_new(match,matchlen,LT_DUP);
+                if (!pop) LTV_put(&lti->cll,newroot,end,0);
+            }
+            if (last)
+            {
                 if (pop && CLL_EMPTY(&lti->cll))
                     RBN_release(&root->rbr,&lti->rbn,LTI_release);
-                return rval;
+                return newroot;
             }
-            root=LTV_get(&lti->cll,0,end,&md);
-            len-=(tlen+1);
-            name+=(tlen+1);
+            root=newroot;
+            len-=(nlen+1);
+            name+=(nlen+1);
         } while(len>0 && root);
+        pop=0; // only outermost namespace can delete
         return NULL;
     }
 
@@ -55,26 +70,35 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
 
 LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
 {
-    void *md;
-    int tlen;
-    LTI *lti;
-    int end;
-    LTV *root=LTV_get(&edict->dict,0,0,&md);
+    void *md=NULL;
+    void *match=NULL;
+    int nlen=0,mlen=0,alen=0,tlen=0,matchlen=0;
+    LTI *lti=NULL;
+    int end=0,last=0;
+    LTV *root=LTV_get(&edict->dict,0,0,NULL,-1,&md);
         
     if (len<0) len=strlen(name);
     do
     {
-        tlen=edict_delimit(name,len);
+        nlen=edict_delimit(name,len,"."); // end of layer name
+        mlen=edict_delimit(name,len,"="); // test specific value
+        alen=edict_delimit(name,len,"+"); // test/add specific value
+        tlen=MIN(mlen,alen);
         end=(*name=='-');
-        if ((lti=LT_lookup(&root->rbr,name+end,tlen-end,1)))
+        last=(name[nlen]!='.');
+        if (tlen<nlen)
         {
-            if (name[tlen]!='.')
+            match=name+tlen+1; // look for specific item rather than first or last
+            matchlen=nlen-(tlen+1);
+        }
+        if ((lti=LT_find(&root->rbr,name+end,MIN(tlen,nlen)-end,1)))
+        {
+            if (last)
                 return LTV_put(&lti->cll,ltv?ltv:edict->nil,end,metadata);
-            
-            if (!(root=LTV_get(&lti->cll,0,end,&md)))
-                root=LTV_put(&lti->cll,LTV_new("",-1,0),end,NULL);
-            len-=(tlen+1);
-            name+=(tlen+1);
+            if (!(root=LTV_get(&lti->cll,0,end,match,matchlen,&md)))
+                root=LTV_put(&lti->cll,LTV_new(match,matchlen,LT_DUP),end,0);
+            len-=(nlen+1);
+            name+=(nlen+1);
         }
     } while(len>0 && root);
     return NULL;
@@ -173,7 +197,7 @@ int edict_repl(EDICT *edict)
         len=ops=0;
         
  read:
-        if (!(ltv=LTV_get(&edict->code,1,0,&offset)))
+        if (!(ltv=LTV_get(&edict->code,1,0,NULL,-1,&offset)))
         {
             ltv=edict_getline(edict,stdin);
         }
@@ -280,7 +304,7 @@ int bc_namespace_enter(EDICT *edict,char *name,int len)
 int bc_namespace_leave(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_release(LTV_get(&edict->dict,1,0,&md));
+    LTV_release(LTV_get(&edict->dict,1,0,NULL,-1,&md));
     return 0;
 }
 
@@ -309,7 +333,7 @@ int bc_splice(EDICT *edict,char *name,int len)
     void *get_anons(CLL *cll,void *data)
     {
         LTV *root=((LTVR *) cll)->ltv;
-        anons[i]=LT_lookup(&root->rbr,"",0,i); // insert LTI on 2nd layer, i.e. i=1 (sweet)
+        anons[i]=LT_find(&root->rbr,"",0,i); // insert LTI on 2nd layer, i.e. i=1 (sweet)
         return i++; // returns halt after populating anons[0] and anons[1]
     }
 

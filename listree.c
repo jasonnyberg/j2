@@ -66,6 +66,7 @@ void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
     return result;
 }
 
+
 //////////////////////////////////////////////////
 // LisTree
 //////////////////////////////////////////////////
@@ -101,7 +102,13 @@ void *RBR_traverse(RBR *rbr,LT_OP op,void *data)
 LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 {
     LTV *ltv=NULL;
-    if (data && ((ltv=(LTV *) CLL_get(&ltv_repo,1,1)) || (ltv=NEW(LTV))))
+    if (!data)
+    {
+        data="";
+        flags|=LT_DUP;
+        len=0;
+    }
+    if ((ltv=(LTV *) CLL_get(&ltv_repo,1,1)) || (ltv=NEW(LTV)))
     {
         ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
@@ -178,7 +185,7 @@ int LT_strcmp(char *name,int len,char *lti_name)
 }
 
 // return node that owns "name", inserting if desired AND required.
-LTI *LT_lookup(RBR *rbr,char *name,int len,int insert)
+LTI *LT_find(RBR *rbr,char *name,int len,int insert)
 {
     LTI *lti=NULL;
     
@@ -304,16 +311,24 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata)
     return rval;
 }
 
-LTV *LTV_get(CLL *cll,int pop,int end,void **metadata)
+LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,void **metadata)
 {
+    void *ltv_match(CLL *cll,void *data)
+    {
+        LTVR *ltvr=(LTVR *) cll;
+        if (!ltvr || !ltvr->ltv || ltvr->ltv->len!=matchlen || memcmp(ltvr->ltv->data,match,matchlen)) return NULL;
+        else return pop?CLL_pop(cll):cll;
+    }
+    
     LTV *rval=NULL;
     LTVR *ltvr=NULL;
-    TRY(!(cll && (ltvr=(LTVR *) CLL_get(cll,pop,end))),0,done,PEDANTIC("","cll/ltvr: 0x%x/0x%x\n",cll,ltvr));
+    if (match && matchlen<0) matchlen=strlen(match);
+    if (!(ltvr=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
+        return NULL;
     rval=ltvr->ltv;
     rval->refs-=pop;
     *metadata=ltvr->metadata;
     if (pop) LTVR_free(ltvr);
- done:
     return rval;
 }
 
@@ -329,7 +344,7 @@ LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata)
     LTV *rval=NULL;
     LTI *lti;
     TRY(!(rbr && ltv && name),0,done,"rbr/ltv/name: %p,%p,%p\n",rbr,ltv,name);
-    TRY(!(lti=LT_lookup(rbr,name,len,1)),0,done,"LT_lookup failed\n",0);
+    TRY(!(lti=LT_find(rbr,name,len,1)),0,done,"LT_lookup failed\n",0);
     TRY(!(rval=LTV_put(&lti->cll,ltv,end,metadata)),0,done,"edict_enlist_ltv(...) failed\n",0);
  done:
     return rval;
@@ -340,9 +355,9 @@ LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end,void **metadata)
     LTV *rval=NULL;
     LTI *lti;
     TRY(!(rbr && name),0,done,"rbr/name: %p,%p\n",rbr,name);
-    if (lti=LT_lookup(rbr,name,len,0))
+    if (lti=LT_find(rbr,name,len,0))
     {
-        rval=LTV_get(&lti->cll,pop,end,metadata);
+        rval=LTV_get(&lti->cll,pop,end,NULL,-1,metadata);
         if (pop && CLL_EMPTY(&lti->cll))
             RBN_release(rbr,&lti->rbn,LTI_release);
     }

@@ -52,7 +52,7 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 
     if (ltvr)
     {
-        if (ltvr->ltv) fprintf(dumpfile,"%d -> %d\n",ltvr,ltvr->ltv);
+        if (ltvr->ltv) fprintf(dumpfile,"%d -> %d [weight=2]\n",ltvr,ltvr->ltv);
         fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&ltvr->cll);
         fprintf(dumpfile,"%d -> %d [color=brown]\n",&ltvr->cll,ltvr->cll.lnk[0]);
     }
@@ -60,7 +60,7 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     if (lti)
     {
         fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&lti->cll);
-        fprintf(dumpfile,"%d -> %d\n",&lti->rbn,&lti->cll);
+        fprintf(dumpfile,"%d -> %d [weight=2]\n",&lti->rbn,&lti->cll);
         fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->cll,lti->cll.lnk[0]);
     }
 

@@ -41,13 +41,14 @@
 #define CODE_BGWITE     "\e[47m" // set white background
 #define CODE_BGDEFLT    "\e[49m" // set default background color
 
-static int RESULT;
+static int status;
 
 typedef unsigned long long ull;
 
-extern void try_error();
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#define MAX(a,b) ((a)>(b)?(a):(b))
 
-static int status;
+extern void try_error();
 
 #define FORMAT_LEN(format,args...) (strlen(format))
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
@@ -57,7 +58,7 @@ static int status;
         {                                                                                                                \
             status = (int) fail_status;                                                                                  \
             try_error();                                                                                                 \
-            if (status && FORMAT_LEN(args))                                                                                        \
+            if (status && FORMAT_LEN(args))                                                                              \
             {                                                                                                            \
                 printf(CODE_RED "TRY_ERR in %s: " #cond "=%d: Jumping to " #exitpoint ": ",__func__,status);             \
                 printf(args); printf(CODE_RESET);                                                                        \

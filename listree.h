@@ -19,6 +19,7 @@ extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);
 extern CLL *CLL_splice(CLL *dst,CLL *src,int end);
 extern CLL *CLL_pop(CLL *lnk);
 extern CLL *CLL_get(CLL *lst,int pop,int end);
+extern CLL *CLL_find(CLL *lst,void *data,int len);
 
 extern void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data);
 
@@ -78,7 +79,7 @@ extern void *LTVR_free(LTVR *ltvr);
 extern LTI *LTI_new(char *name,int len);
 extern void LTI_free(LTI *lti);
 
-extern LTI *LT_lookup(RBR *rbr,char *name,int len,int insert);
+extern LTI *LT_find(RBR *rbr,char *name,int len,int insert);
 
 //////////////////////////////////////////////////
 // Tag Team of traverse methods for LT elements
@@ -104,7 +105,7 @@ extern void LTI_release(RBN *rbn);
 //////////////////////////////////////////////////
 
 extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata);
-extern LTV *LTV_get(CLL *cll,int pop,int end,void **metadata);
+extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,void **metadata);
 
 extern void LT_init();
 extern LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata);

@@ -50,6 +50,8 @@ void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level);
 #define DIE(cond) TRY(cond!=DW_DLV_OK,-1,panic,"\n")
 #define SKIP(cond,followup) if (cond==DW_DLV_OK) followup
 
+typedef void (*attrib_handler)(Dwarf_Debug dbg,Dwarf_Attribute *attr);
+
 void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
 {
     int status=0;
@@ -64,6 +66,8 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     Dwarf_Addr vaddr;
     Dwarf_Bool vbool;
     //Dwarf_Block *vblock;
+    
+    printf("[]@attribs attribs<\n");
     
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     DIE(dwarf_get_AT_name(vshort,&vcstr));
@@ -99,13 +103,31 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
         dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
     }
     
+    printf(">\n");
     return;
 
  panic:
     exit(1);
 }
 
-void traverse_attribs(Dwarf_Debug dbg,Dwarf_Die die)
+void dump_attrib_type(Dwarf_Debug dbg,Dwarf_Attribute *attr)
+{
+    int status=0;
+    Dwarf_Error error=0;
+
+    Dwarf_Half vshort;
+    Dwarf_Off voffset;
+    
+    DIE(dwarf_whatattr(*attr,&vshort,&error));
+    if (vshort==DW_AT_type)
+        SKIP(dwarf_global_formref(*attr,&voffset,&error),printf("reflection.module.%d@subtype\n",(int) voffset));
+    return;
+
+ panic:
+    exit(1);
+}
+
+void traverse_attribs(Dwarf_Debug dbg,Dwarf_Die die,attrib_handler handler)
 {
     Dwarf_Signed atcnt=0;
     Dwarf_Attribute *atlist=NULL;
@@ -117,10 +139,7 @@ void traverse_attribs(Dwarf_Debug dbg,Dwarf_Die die)
         int i;
         for (i=0;i<atcnt;i++)
         {
-            printf("[%d]@attribs attribs<\n",i);
-            dump_attrib(dbg,&atlist[i]);
-            printf(">\n");
-            
+            handler(dbg,&atlist[i]);
             dwarf_dealloc(dbg,atlist[i],DW_DLA_ATTR);
         }
         dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
@@ -148,10 +167,9 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     TRY(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"Error in dwarf_get_TAG_name , level %d\n",level);
     TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"Error in dwarf_dieoffset, level %d\n",level);
     
-    printf("types@types [%s]@types.%d /types\n",name,(int) die_offset);
-    printf("tags@tags tags+%2$s@types.%1$d.tagname types.%1$d@tagname.%2$s /tags\n",(int) die_offset,tagname);
-    //printf("%d<[%s]@type\n",(int) die_offset,tagname);
-    printf("types.%d<\n",(int) die_offset);
+    printf("[%s]@children\n\n",name);
+    printf("reflection.module@module children@module.%1$d module.tags+%2$s@children.tag /module\n\n",(int) die_offset,tagname);
+    printf("children<\n");
     
     SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc\n",(int) vaddr));
     SKIP(dwarf_highpc(die,&vaddr,&error),printf("[%d]@highpc\n",(int) vaddr));
@@ -161,16 +179,15 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     SKIP(dwarf_srclang(die,&vuint,&error),printf("[%d]@srclang\n",(int) vuint));
     SKIP(dwarf_arrayorder(die,&vuint,&error),printf("[%d]@arrayorder\n",(int) vuint));
     
-    // traverse_attribs(dbg,die);
+    //traverse_attribs(dbg,die,dump_attrib);
+    traverse_attribs(dbg,die,dump_attrib_type);
    
     dwarf_dealloc(dbg,name,DW_DLA_STRING);
     
     TRY((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_child , level %d\n",level);
     TRY(res!=DW_DLV_OK,-1,done_die,"");
     
-    printf("[]@children children<\n");
     get_die_and_siblings(dbg,child,level+1);
-    printf(">\n");
 
  done_die:
     printf(">\n");
@@ -228,10 +245,8 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         TRY(res==DW_DLV_NO_ENTRY,-1,panic,"no entry! in dwarf_siblingof on CU die\n");
     
         printf("[%s]@reflection.module reflection.module<\n",module);
-        printf("[]@types\n");
-        printf("[]@tags\n");
         get_die_and_siblings(dbg,cu_die,0);
-        printf("> [module]/\n");
+        printf("> [module]/\n\ndump\n");
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
         cu_number++;
     }

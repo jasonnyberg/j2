@@ -41,7 +41,6 @@
 #define CODE_BGWITE     "\e[47m" // set white background
 #define CODE_BGDEFLT    "\e[49m" // set default background color
 
-static int status;
 
 typedef unsigned long long ull;
 

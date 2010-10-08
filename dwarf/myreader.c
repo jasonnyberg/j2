@@ -81,12 +81,11 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
     printf("[%d]@form_direct [%s]@form_direct_name\n",vshort,vcstr);
 
-    SKIP(dwarf_formref(*attr,&voffset,&error),printf("[%d]@formref\n",(int) voffset));
+    //SKIP(dwarf_formref(*attr,&voffset,&error),printf("[%d]@formref\n",(int) voffset));
     SKIP(dwarf_global_formref(*attr,&voffset,&error),printf("[%d]@global_formref\n",(int) voffset));
     SKIP(dwarf_formaddr(*attr,&vaddr,&error),printf("[%d]@formaddr\n",(int) vaddr));
     SKIP(dwarf_formflag(*attr,&vbool,&error),printf("[%d]@formflag\n",vbool));
-    SKIP(dwarf_formudata(*attr,&vuint,&error),printf("[%d]@udata\n",(int) vuint));
-    SKIP(dwarf_formsdata(*attr,&vint,&error),printf("[%d]@udata\n",(int) vint));
+    SKIP(dwarf_formudata(*attr,&vuint,&error),printf("[0x%x]@udata\n",(unsigned) vuint));
     //SKIP(dwarf_formblock(*attr,&vblock,&error),printf("[%d]@block\n",vblock));
     SKIP(dwarf_formstring(*attr,&vstr,&error),printf("[%s]@string\n",vstr));
 
@@ -168,7 +167,23 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"Error in dwarf_dieoffset, level %d\n",level);
     
     printf("[%s]@children\n\n",name);
-    printf("reflection.module@module children@module.%1$d module.tags+%2$s@children.tag /module\n\n",(int) die_offset,tagname);
+    printf("reflection.module@module\n");
+    printf("children@module.%1$d module.tags+%2$s@children.tag\n",(int) die_offset,tagname);
+    switch(tag)
+    {
+        case DW_TAG_compile_unit:
+        case DW_TAG_subprogram:
+        case DW_TAG_formal_parameter:
+        case DW_TAG_enumeration_type:
+        case DW_TAG_enumerator:
+        case DW_TAG_variable:
+        case DW_TAG_structure_type:
+        case DW_TAG_base_type:
+        case DW_TAG_member:
+        case DW_TAG_typedef:
+            break;
+    }
+    printf("/module\n");
     printf("children<\n");
     
     SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc\n",(int) vaddr));
@@ -185,7 +200,7 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     dwarf_dealloc(dbg,name,DW_DLA_STRING);
     
     TRY((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_child , level %d\n",level);
-    TRY(res!=DW_DLV_OK,-1,done_die,"");
+    TRY(res!=DW_DLV_OK,0,done_die,"finished die\n");
     
     get_die_and_siblings(dbg,child,level+1);
 

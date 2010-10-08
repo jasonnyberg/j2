@@ -301,6 +301,7 @@ void LTI_release(RBN *rbn)
 
 LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata)
 {
+    int status=0;
     LTV *rval=NULL;
     LTVR *ltvr;
     TRY(!(cll && ltv && (ltvr=LTVR_new(metadata))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
@@ -341,6 +342,7 @@ void LT_init()
 
 LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata)
 {
+    int status=0;
     LTV *rval=NULL;
     LTI *lti;
     TRY(!(rbr && ltv && name),0,done,"rbr/ltv/name: %p,%p,%p\n",rbr,ltv,name);
@@ -352,6 +354,7 @@ LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata)
 
 LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end,void **metadata)
 {
+    int status=0;
     LTV *rval=NULL;
     LTI *lti;
     TRY(!(rbr && name),0,done,"rbr/name: %p,%p\n",rbr,name);

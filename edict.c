@@ -3,6 +3,8 @@
 #include "util.h"
 #include "edict.h"
 
+int debug_dump;
+
 
 //////////////////////////////////////////////////
 // Edict
@@ -106,12 +108,12 @@ LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
 
 LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata)
 {
-    return edict_nameltv(edict,"",0,metadata,ltv);
+    return LTV_put(&edict->anon,ltv,0,NULL);
 }
 
 LTV *edict_rem(EDICT *edict,void **metadata)
 {
-    return edict_get(edict,"",0,1,metadata); // cleanup: LTV_release(LTV *)
+    return LTV_get(&edict->anon,1,0,NULL,0,metadata); // cleanup: LTV_release(LTV *)
 }
 
 LTV *edict_name(EDICT *edict,char *name,int len,void *metadata)
@@ -130,6 +132,12 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
     {
         LTV_release(ltv);
         edict_dump(edict);
+    }
+    else
+    if (!strncmp(name,"print",len))
+    {
+        LTV_release(ltv);
+        edict_print(edict);
     }
     else
 #endif
@@ -250,7 +258,7 @@ int edict_repl(EDICT *edict)
 
         offset+=len+strspn(token+len,WHITESPACE);
 
-        if ((ull) offset < ltv->len)
+        if (offset < (void *) ltv->len)
             LTV_put(&edict->code,ltv,0,(void *) offset);
 
         if (len)
@@ -262,8 +270,11 @@ int edict_repl(EDICT *edict)
                 edict_ref(edict,token,len,0,NULL);
         }
 
-        if ((ull) offset >= ltv->len)
+        if (offset >= (void *) ltv->len)
             LTV_release(ltv);
+
+        if (debug_dump)
+            edict_dump(edict);
     } while (1);
     
  done:
@@ -311,35 +322,53 @@ int bc_namespace_leave(EDICT *edict,char *name,int len)
 int bc_exec_enter(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_put(&edict->dict,LTV_new("",0,LT_DUP),0,NULL);
-    bc_name(edict,"_cont",-1);
+    LTV *cont=edict_rem(edict,&md);
+    edict_add(edict,LTV_new("",0,LT_DUP),NULL);
+    bc_namespace_enter(edict,name,len);
+    edict_add(edict,cont,NULL);
+    bc_name(edict,"_cont",5);
     return 0;
 }
 
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_put(&edict->code,LTV_new(">",1,LT_DUP),0,NULL); // close
-    LTV_put(&edict->code,LTV_new("^",1,LT_DUP),0,NULL); // splice
-    LTV_put(&edict->code,edict_get(edict,"_cont",-1,1,&md),0,NULL);
-    return 0;
+    LTV_put(&edict->code,edict_get(edict,"_cont",5,1,&md),0,NULL);
+    return bc_namespace_leave(edict,name,len);
 }
 
-int bc_splice(EDICT *edict,char *name,int len)
+int bc_map(EDICT *edict,char *name,int len)
 {
-    LTI *anons[2] = { NULL, NULL };
-    int i=0;
+    void *md;
+    LTV *code=edict_rem(edict,&md);
+    LTV *data=edict_get(edict,name,len,1,&md);
     
-    void *get_anons(CLL *cll,void *data)
+    LTV *lbrack=NULL,*rbrack=NULL;
+    if (!lbrack) lbrack=LTV_new("[",1,LT_RO);
+    if (!rbrack) rbrack=LTV_new("]",1,LT_RO);
+    
+    if (code!=edict->nil && data!=edict->nil)
     {
-        LTV *root=((LTVR *) cll)->ltv;
-        anons[i]=LT_find(&root->rbr,"",0,i); // insert LTI on 2nd layer, i.e. i=1 (sweet)
-        return i++; // returns halt after populating anons[0] and anons[1]
-    }
+        char *recurse=FORMATA(recurse,len+2," *%s",name);
+        
+        // push code for tail recursion
+        LTV_put(&edict->code,LTV_new(recurse,len+2,LT_DUP),0,NULL);
+        LTV_put(&edict->code,rbrack,0,NULL);
+        LTV_put(&edict->code,code,0,NULL);
+        LTV_put(&edict->code,lbrack,0,NULL);
 
-    CLL_traverse(&edict->dict,0,get_anons,NULL);
-    if (anons[0] && anons[1])
-        CLL_splice(&(anons[1]->cll),&(anons[0]->cll),0);
+        // transform into single-shot execution...
+        edict_add(edict,data,NULL);
+        LTV_put(&edict->code,code,0,NULL);
+
+        if (debug_dump)
+            edict_dump(edict);
+    }
+    
+    LTV_release(code);
+    LTV_release(data);
+
+    return 0;
 }
 
 /*
@@ -381,17 +410,18 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'>',bc_namespace_leave);
     edict_bytecode(edict,'(',bc_exec_enter);
     edict_bytecode(edict,')',bc_exec_leave);
-    edict_bytecode(edict,'^',bc_splice);
+    edict_bytecode(edict,'*',bc_map);
 }
 
 
 int edict_init(EDICT *edict,LTV *root)
 {
-    int rval=0;
+    int status=0;
     BZERO(*edict);
     LT_init();
     TRY(!edict,-1,done,"\n");
     TRY(!(CLL_init(&edict->code)),-1,done,"\n");
+    TRY(!(CLL_init(&edict->anon)),-1,done,"\n");
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
     LTV_put(&edict->dict,root,0,NULL);
     edict->nil=LTV_new("nil",3,LT_RO);
@@ -399,16 +429,16 @@ int edict_init(EDICT *edict,LTV *root)
     //LTV_put(&edict->code,LTV_new(fopen("/tmp/jj.in","r"),0,LT_FILE),0,NULL);
 
  done:
-    return rval;
+    return status;
 }
 
 int edict_destroy(EDICT *edict)
 {
-    int rval;
+    int status=0;
     TRY(!edict,-1,done,"\n");
     CLL_release(&edict->code,LTVR_release);
     CLL_release(&edict->dict,LTVR_release);
  done:
-    return rval;
+    return status;
 }
 

@@ -96,23 +96,73 @@ extern int Gmymalloc;
 int edict_dump(EDICT *edict)
 {
     int status;
-    struct LTOBJ_DATA ltobj_data = { NULL, NULL, 0, NULL };
+    struct LTOBJ_DATA ltobj_data;
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
+
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
     fprintf(dumpfile,"ltv_count [label=\"ltv_count %d\"]\n",ltv_count);
     fprintf(dumpfile,"ltvr_count [label=\"ltvr_count %d\"]\n",ltvr_count);
     fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
-    fprintf(dumpfile,"%1$d [label=\"\" shape=point color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
+    fprintf(dumpfile,"%1$d [label=\"dict\" color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
+    fprintf(dumpfile,"%1$d [label=\"anon\" color=blue] %1$d -> %2$d\n",&edict->anon,edict->anon.lnk[0]);
+    fprintf(dumpfile,"%1$d [label=\"code\" color=blue] %1$d -> %2$d\n",&edict->code,edict->code.lnk[0]);
 
+    // dump data stack
+    ZERO(ltobj_data);
     ltobj_data.preop = LTOBJ_graph_pre;
     ltobj_data.postop = NULL;
     TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
-    TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,NULL),0,finish,"\n");
+    TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,NULL),0,finish,"\n"); // cleanup "visited" flags
+    
+    // dump code stack
+    ZERO(ltobj_data);
+    ltobj_data.preop = LTOBJ_graph_pre;
+    ltobj_data.postop = NULL;
+    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
+    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,NULL),0,finish,"\n"); // cleanup "visited" flags
+    
+    // dump code stack
+    ZERO(ltobj_data);
+    ltobj_data.preop = LTOBJ_graph_pre;
+    ltobj_data.postop = NULL;
+    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
+    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,NULL),0,finish,"\n"); // cleanup "visited" flags
     
  finish:
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
+
+ done:
+    return status;
+}
+
+int edict_print(EDICT *edict)
+{
+    int status;
+    void *metadata;
+    LTV *ltv=edict_get(edict,"",0,0,&metadata);
+    struct LTOBJ_DATA ltobj_data;
+    
+    // dump code stack
+    ZERO(ltobj_data);
+    ltobj_data.preop = LTOBJ_print_pre;
+    ltobj_data.postop = NULL;
+    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,&ltobj_data),0,done,"\n");
+    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,NULL),0,done,"\n"); // cleanup "visited" flags
+    
+    // dump code stack
+    ZERO(ltobj_data);
+    ltobj_data.preop = LTOBJ_print_pre;
+    ltobj_data.postop = NULL;
+    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,&ltobj_data),0,done,"\n");
+    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,NULL),0,done,"\n"); // cleanup "visited" flags
+    
+    ZERO(ltobj_data);
+    ltobj_data.preop = LTOBJ_print_pre;
+    ltobj_data.postop = NULL;
+    TRY(LTV_traverse(ltv,&ltobj_data),0,done,"\n");
+    TRY(LTV_traverse(ltv,NULL),0,done,"\n"); // cleanup "visited" flags
 
  done:
     return status;

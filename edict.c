@@ -341,27 +341,24 @@ int bc_map(EDICT *edict,char *name,int len)
 {
     void *md;
     LTV *code=edict_rem(edict,&md);
-    LTV *data=edict_get(edict,name,len,1,&md);
+    LTV *data=len?edict_get(edict,name,len,1,&md):edict_rem(edict,&md);
     
     LTV *lbrack=NULL,*rbrack=NULL;
     if (!lbrack) lbrack=LTV_new("[",1,LT_RO);
     if (!rbrack) rbrack=LTV_new("]",1,LT_RO);
     
-    if (code!=edict->nil && data!=edict->nil)
+    if (code!=edict->nil && data && data!=edict->nil)
     {
-        char *recurse=FORMATA(recurse,len+2," *%s",name);
+        char *recurse=FORMATA(recurse,code->len+len+4,"[%s] *%s",code->data,name);
         
         // push code for tail recursion
-        LTV_put(&edict->code,LTV_new(recurse,len+2,LT_DUP),0,NULL);
-        LTV_put(&edict->code,rbrack,0,NULL);
-        LTV_put(&edict->code,code,0,NULL);
-        LTV_put(&edict->code,lbrack,0,NULL);
+        LTV_put(&edict->code,LTV_new(recurse,code->len+len+4,LT_DUP),0,NULL);
 
-        // transform into single-shot execution...
+        // push single-shot execution...
         edict_add(edict,data,NULL);
         LTV_put(&edict->code,code,0,NULL);
 
-        if (debug_dump)
+        //if (debug_dump)
             edict_dump(edict);
     }
     

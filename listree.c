@@ -214,48 +214,64 @@ LTI *LT_find(RBR *rbr,char *name,int len,int insert)
 
 void *LTV_traverse(LTV *ltv,void *data)
 {
-    if (!ltv) return NULL;
+    void *rval=NULL;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+    if (!ltv) goto done;
 
-    if (ltobj_data) // flag as visited and operate
+    if (!ltobj_data) // remove visited flag
     {
-        if (ltv->flags&LT_VIS) return NULL;
+        if (ltv->flags&LT_VIS)
+        {
+            ltv->flags &= ~LT_VIS;
+            if (ltv->rbr.rb_node) RBR_traverse(&ltv->rbr,LTI_traverse,data);
+        }
+        goto done;
+    }
+    else
+    {
+        if (ltobj_data->preop && (rval=ltobj_data->preop(NULL,NULL,ltv,data))) goto done;
+        if (!(ltv->flags&LT_VIS))
+        {
+            ltobj_data->depth++;
+            if (ltv->rbr.rb_node) rval=RBR_traverse(&ltv->rbr,LTI_traverse,data);
+            ltobj_data->depth--;
+            if (rval) goto done;
+        }
+        if (ltobj_data->postop && (rval=ltobj_data->postop(NULL,NULL,ltv,data))) goto done;
+        
         ltv->flags |= LT_VIS;
     }
-    else // remove visited flag
-    {
-        if (!(ltv->flags&LT_VIS)) return NULL;
-        ltv->flags &= ~LT_VIS;
-    }
-
-    if (ltobj_data && ltobj_data->preop) ltobj_data->preop(NULL,NULL,ltv,data);
-    if (ltobj_data) ltobj_data->depth++;
-    if (ltv->rbr.rb_node) RBR_traverse(&ltv->rbr,LTI_traverse,data);
-    if (ltobj_data) ltobj_data->depth--;
-    if (ltobj_data && ltobj_data->postop) ltobj_data->postop(NULL,NULL,ltv,data);
-    return NULL;
+    
+ done:
+    return rval;
 }
 
 void *LTVR_traverse(CLL *cll,void *data)
 {
+    void *rval=NULL;
     LTVR *ltvr = (LTVR *) cll;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltvr) return NULL;
-    if (ltobj_data && ltobj_data->preop) ltobj_data->preop(ltvr,NULL,NULL,data);
-    if (ltvr->ltv) LTV_traverse(ltvr->ltv,data);
-    if (ltobj_data && ltobj_data->postop) ltobj_data->postop(ltvr,NULL,NULL,data);
-    return NULL;
+    if (!ltvr) goto done;
+    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(ltvr,NULL,NULL,data))) goto done;
+    if (ltvr->ltv && (rval=LTV_traverse(ltvr->ltv,data))) goto done;
+    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(ltvr,NULL,NULL,data))) goto done;
+
+ done:
+    return rval;
 }
 
 void *LTI_traverse(RBN *rbn,void *data)
 {
+    void *rval=NULL;
     LTI *lti = (LTI *) rbn;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!lti) return NULL;
-    if (ltobj_data && ltobj_data->preop) ltobj_data->preop(NULL,lti,NULL,data);
-    CLL_traverse(&lti->cll,0,LTVR_traverse,data);
-    if (ltobj_data && ltobj_data->postop) ltobj_data->postop(NULL,lti,NULL,data);
-    return NULL;
+    if (!lti) goto done;
+    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(NULL,lti,NULL,data))) goto done;
+    if (rval=CLL_traverse(&lti->cll,0,LTVR_traverse,data)) goto done;
+    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(NULL,lti,NULL,data))) goto done;
+    
+ done:
+    return rval;
 }
 
 //////////////////////////////////////////////////
@@ -339,34 +355,3 @@ void LT_init()
     CLL_init(&ltvr_repo);
     CLL_init(&lti_repo);
 }
-
-LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata)
-{
-    int status=0;
-    LTV *rval=NULL;
-    LTI *lti;
-    TRY(!(rbr && ltv && name),0,done,"rbr/ltv/name: %p,%p,%p\n",rbr,ltv,name);
-    TRY(!(lti=LT_find(rbr,name,len,1)),0,done,"LT_lookup failed\n",0);
-    TRY(!(rval=LTV_put(&lti->cll,ltv,end,metadata)),0,done,"edict_enlist_ltv(...) failed\n",0);
- done:
-    return rval;
-}
-
-LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end,void **metadata)
-{
-    int status=0;
-    LTV *rval=NULL;
-    LTI *lti;
-    TRY(!(rbr && name),0,done,"rbr/name: %p,%p\n",rbr,name);
-    if (lti=LT_find(rbr,name,len,0))
-    {
-        rval=LTV_get(&lti->cll,pop,end,NULL,-1,metadata);
-        if (pop && CLL_EMPTY(&lti->cll))
-            RBN_release(rbr,&lti->rbn,LTI_release);
-    }
- done:
-    return rval;
-}
-
-
-

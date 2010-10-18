@@ -108,9 +108,6 @@ extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata);
 extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,void **metadata);
 
 extern void LT_init();
-extern LTV *LT_put(RBR *rbr,LTV *ltv,char *name,int len,int end,void *metadata);
-extern LTV *LT_get(RBR *rbr,char *name,int len,int pop,int end,void **metadata);
-
 
 #endif
 

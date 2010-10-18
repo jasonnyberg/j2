@@ -113,13 +113,12 @@ void dump_attrib_type(Dwarf_Debug dbg,Dwarf_Attribute *attr)
 {
     int status=0;
     Dwarf_Error error=0;
-
     Dwarf_Half vshort;
     Dwarf_Off voffset;
     
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     if (vshort==DW_AT_type)
-        SKIP(dwarf_global_formref(*attr,&voffset,&error),printf("reflection.module.%d@subtype\n",(int) voffset));
+        SKIP(dwarf_global_formref(*attr,&voffset,&error),printf("reflection.module.die_offsets.%d@base\n",(int) voffset));
     return;
 
  panic:
@@ -168,7 +167,9 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     
     printf("[%s]@children\n\n",name);
     printf("reflection.module@module\n");
-    printf("children@module.%1$d module.tags+%2$s@children.tag\n",(int) die_offset,tagname);
+    printf("children@module.die_offsets.%d\n",(int) die_offset);
+    printf("module.tags+%s@children.tag\n",tagname+7); // skip "DW_TAG_"
+    printf("children@module.tags=%s.%s\n",tagname+7,name); // skip "DW_TAG_"
     switch(tag)
     {
         case DW_TAG_compile_unit:
@@ -261,7 +262,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
     
         printf("[%s]@reflection.module reflection.module<\n",module);
         get_die_and_siblings(dbg,cu_die,0);
-        printf("> [module]/\n\ndump\n");
+        printf("> [module]/\n\ndump\n\n");
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
         cu_number++;
     }

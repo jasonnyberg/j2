@@ -28,13 +28,14 @@ void *cluster_ltv(LTV *ltv,void *data)
         //fprintf(dumpfile,"}\n");
         fprintf(dumpfile,"%1$d -> %2$d [lhead=cluster_%2$d]\n\n",ltv,ltv->rbr.rb_node);
     }
+    
     return NULL;
 }
 
 void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 {
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltobj_data) return NULL;
+    if (!ltobj_data) goto done;
     
     if (ltv)
     {
@@ -64,6 +65,7 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
         fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->cll,lti->cll.lnk[0]);
     }
 
+ done:
     return NULL;
 }
 
@@ -73,30 +75,45 @@ char *indent="                                                                  
 void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 {
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltobj_data) return NULL;
+    if (!ltobj_data) goto done;
     
     if (ltv)
     {
-        fstrnprint(stdout,indent,ltobj_data->depth*4+1);
+        fstrnprint(stdout,indent,ltobj_data->depth*4+2);
+        fprintf(stdout,"[");
         fstrnprint(stdout,ltv->data,ltv->len);
-        fprintf(stdout,"\n");
+        fprintf(stdout,"]\n");
     }
     
     if (lti)
     {
         fstrnprint(stdout,indent,ltobj_data->depth*4);
-        fprintf(stdout,"%s:\n",lti->name);
+        fprintf(stdout,"\"%s\"\n",lti->name);
     }
 
+ done:
     return NULL;
 }
 
 extern int Gmymalloc;
 
+
+void *edict_traverse(CLL *cll,LTOBJ_OP preop,LTOBJ_OP postop)
+{
+    void *rval=NULL;
+    struct LTOBJ_DATA ltobj_data;
+    ZERO(ltobj_data);
+    ltobj_data.preop = preop;
+    ltobj_data.postop = postop;
+    rval=CLL_traverse(cll,0,LTVR_traverse,&ltobj_data);
+    CLL_traverse(cll,0,LTVR_traverse,NULL); // cleanup "visited" flags
+    return rval;
+}
+
+
 int edict_dump(EDICT *edict)
 {
-    int status;
-    struct LTOBJ_DATA ltobj_data;
+    int status=0;
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
 
@@ -108,63 +125,24 @@ int edict_dump(EDICT *edict)
     fprintf(dumpfile,"%1$d [label=\"anon\" color=blue] %1$d -> %2$d\n",&edict->anon,edict->anon.lnk[0]);
     fprintf(dumpfile,"%1$d [label=\"code\" color=blue] %1$d -> %2$d\n",&edict->code,edict->code.lnk[0]);
 
-    // dump data stack
-    ZERO(ltobj_data);
-    ltobj_data.preop = LTOBJ_graph_pre;
-    ltobj_data.postop = NULL;
-    TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
-    TRY(CLL_traverse(&edict->dict,0,LTVR_traverse,NULL),0,finish,"\n"); // cleanup "visited" flags
+    edict_traverse(&edict->dict,LTOBJ_graph_pre,NULL);
+    edict_traverse(&edict->anon,LTOBJ_graph_pre,NULL);
+    edict_traverse(&edict->code,LTOBJ_graph_pre,NULL); 
     
-    // dump code stack
-    ZERO(ltobj_data);
-    ltobj_data.preop = LTOBJ_graph_pre;
-    ltobj_data.postop = NULL;
-    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
-    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,NULL),0,finish,"\n"); // cleanup "visited" flags
-    
-    // dump code stack
-    ZERO(ltobj_data);
-    ltobj_data.preop = LTOBJ_graph_pre;
-    ltobj_data.postop = NULL;
-    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,&ltobj_data),0,finish,"\n");
-    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,NULL),0,finish,"\n"); // cleanup "visited" flags
-    
- finish:
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
 
- done:
     return status;
 }
 
-int edict_print(EDICT *edict)
+int edict_print(EDICT *edict,char *name,int len)
 {
-    int status;
-    void *metadata;
-    LTV *ltv=edict_get(edict,"",0,0,&metadata);
-    struct LTOBJ_DATA ltobj_data;
-    
-    // dump code stack
-    ZERO(ltobj_data);
-    ltobj_data.preop = LTOBJ_print_pre;
-    ltobj_data.postop = NULL;
-    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,&ltobj_data),0,done,"\n");
-    TRY(CLL_traverse(&edict->code,0,LTVR_traverse,NULL),0,done,"\n"); // cleanup "visited" flags
-    
-    // dump code stack
-    ZERO(ltobj_data);
-    ltobj_data.preop = LTOBJ_print_pre;
-    ltobj_data.postop = NULL;
-    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,&ltobj_data),0,done,"\n");
-    TRY(CLL_traverse(&edict->anon,0,LTVR_traverse,NULL),0,done,"\n"); // cleanup "visited" flags
-    
-    ZERO(ltobj_data);
-    ltobj_data.preop = LTOBJ_print_pre;
-    ltobj_data.postop = NULL;
-    TRY(LTV_traverse(ltv,&ltobj_data),0,done,"\n");
-    TRY(LTV_traverse(ltv,NULL),0,done,"\n"); // cleanup "visited" flags
-
- done:
+    int status=0;
+    void *md;
+    LTI *lti=NULL;
+    LTV *ltv=(name && len)?edict_get(edict,name,len,0,&md,&lti):NULL;
+    CLL *cll=lti?&lti->cll:&edict->anon;
+    edict_traverse(cll,LTOBJ_print_pre,NULL);
     return status;
 }
 

@@ -16,13 +16,12 @@ int edict_delimit(char *str,int rlen,char *delim)
     return rlen<len?rlen:len;
 }
 
-LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
+LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata,LTI **lti)
 {
     void *internal_get(CLL *cll,void *data)
     {
         void *match=NULL;
         int nlen=0,mlen=0,alen=0,tlen=0,matchlen=0;
-        LTI *lti=NULL;
         int end=0,last=0;
         LTVR *ltvr=(LTVR *) cll; // each CLL node is really an LTVR
         LTV *root=ltvr->ltv,*newroot=NULL;
@@ -45,17 +44,17 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata)
                 match=name+tlen+1; // look for specific item rather than first or last
                 matchlen=nlen-(tlen+1);
             }
-            if (!(lti=LT_find(&root->rbr,name+end,MIN(tlen,nlen)-end,alen<len))) // if test/add, build name tree
+            if (!((*lti)=LT_find(&root->rbr,name+end,MIN(tlen,nlen)-end,alen<len))) // if test/add, build name tree
                 break;
-            if (!(newroot=LTV_get(&lti->cll,pop&&last,end,match,matchlen,metadata)) && alen<len)
+            if (!(newroot=LTV_get(&(*lti)->cll,pop&&last,end,match,matchlen,metadata)) && alen<len)
             {
                 newroot=LTV_new(match,matchlen,LT_DUP);
-                if (!pop) LTV_put(&lti->cll,newroot,end,0);
+                if (!pop) LTV_put(&(*lti)->cll,newroot,end,0);
             }
             if (last)
             {
-                if (pop && CLL_EMPTY(&lti->cll))
-                    RBN_release(&root->rbr,&lti->rbn,LTI_release);
+                if (pop && CLL_EMPTY(&(*lti)->cll))
+                    RBN_release(&root->rbr,&(*lti)->rbn,LTI_release);
                 return newroot;
             }
             root=newroot;
@@ -98,7 +97,7 @@ LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
             if (last)
                 return LTV_put(&lti->cll,ltv?ltv:edict->nil,end,metadata);
             if (!(root=LTV_get(&lti->cll,0,end,match,matchlen,&md)))
-                root=LTV_put(&lti->cll,LTV_new(match,matchlen,LT_DUP),end,0);
+                root=LTV_put(&lti->cll,LTV_new(match,matchlen,LT_DUP),end,NULL);
             len-=(nlen+1);
             name+=(nlen+1);
         }
@@ -125,19 +124,14 @@ LTV *edict_name(EDICT *edict,char *name,int len,void *metadata)
 LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
 {
     void *md;
-    LTV *ltv=edict_get(edict,name,len,pop,&md);
+    LTI *lti=NULL;
+    LTV *ltv=edict_get(edict,name,len,pop,&md,&lti);
 
 #ifndef DYNCALL // FIXME: tear this shit out when dyncall is integrated
     if (!strncmp(name,"dump",len))
     {
         LTV_release(ltv);
         edict_dump(edict);
-    }
-    else
-    if (!strncmp(name,"print",len))
-    {
-        LTV_release(ltv);
-        edict_print(edict);
     }
     else
 #endif
@@ -301,7 +295,8 @@ int bc_name(EDICT *edict,char *name,int len)
 int bc_kill(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_release(edict_get(edict,name,len,1,&md));
+    LTI *lti=NULL;
+    LTV_release((name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md));
     return 1;
 }
 
@@ -319,35 +314,21 @@ int bc_namespace_leave(EDICT *edict,char *name,int len)
     return 0;
 }
 
-int bc_exec_enter(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV *cont=edict_rem(edict,&md);
-    edict_add(edict,LTV_new("",0,LT_DUP),NULL);
-    bc_namespace_enter(edict,name,len);
-    edict_add(edict,cont,NULL);
-    bc_name(edict,"_cont",5);
-    return 0;
-}
-
 int bc_exec_leave(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTV_put(&edict->code,edict_get(edict,"_cont",5,1,&md),0,NULL);
+    LTV_put(&edict->code,LTV_get(&edict->dict,0,0,NULL,-1,&md),0,NULL);
     return bc_namespace_leave(edict,name,len);
 }
 
 int bc_map(EDICT *edict,char *name,int len)
 {
     void *md;
+    LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
     LTV *code=edict_rem(edict,&md);
-    LTV *data=len?edict_get(edict,name,len,1,&md):edict_rem(edict,&md);
+    LTV *data=(name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md);
     
-    LTV *lbrack=NULL,*rbrack=NULL;
-    if (!lbrack) lbrack=LTV_new("[",1,LT_RO);
-    if (!rbrack) rbrack=LTV_new("]",1,LT_RO);
-    
-    if (code!=edict->nil && data && data!=edict->nil)
+    if (code && code!=edict->nil && data && lti)
     {
         char *recurse=FORMATA(recurse,code->len+len+4,"[%s] *%s",code->data,name);
         
@@ -358,7 +339,7 @@ int bc_map(EDICT *edict,char *name,int len)
         edict_add(edict,data,NULL);
         LTV_put(&edict->code,code,0,NULL);
 
-        //if (debug_dump)
+         //if (debug_dump)
             edict_dump(edict);
     }
     
@@ -367,6 +348,12 @@ int bc_map(EDICT *edict,char *name,int len)
 
     return 0;
 }
+
+int bc_print(EDICT *edict,char *name,int len)
+{
+    return edict_print(edict,name,len);
+}
+
 
 /*
 void *edict_pop(EDICT *edict,char *name,int len,int end
@@ -405,9 +392,10 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'/',bc_kill);
     edict_bytecode(edict,'<',bc_namespace_enter);
     edict_bytecode(edict,'>',bc_namespace_leave);
-    edict_bytecode(edict,'(',bc_exec_enter);
+    edict_bytecode(edict,'(',bc_namespace_enter); // exec_enter same as namespace_enter
     edict_bytecode(edict,')',bc_exec_leave);
     edict_bytecode(edict,'*',bc_map);
+    edict_bytecode(edict,'?',bc_print);
 }
 
 

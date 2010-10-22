@@ -220,17 +220,14 @@ void *LTV_traverse(LTV *ltv,void *data)
 
     if (!ltobj_data) // remove visited flag
     {
-        if (ltv->flags&LT_VIS)
-        {
-            ltv->flags &= ~LT_VIS;
+        if (ltv->flags&LT_VIS && !((ltv->flags&=~LT_VIS)&LT_VIS))
             if (ltv->rbr.rb_node) RBR_traverse(&ltv->rbr,LTI_traverse,data);
-        }
         goto done;
     }
     else
     {
         if (ltobj_data->preop && (rval=ltobj_data->preop(NULL,NULL,ltv,data))) goto done;
-        if (!(ltv->flags&LT_VIS))
+        if (!(ltv->flags&LT_VIS) && ((ltv->flags|=LT_VIS)&LT_VIS))
         {
             ltobj_data->depth++;
             if (ltv->rbr.rb_node) rval=RBR_traverse(&ltv->rbr,LTI_traverse,data);
@@ -238,8 +235,6 @@ void *LTV_traverse(LTV *ltv,void *data)
             if (rval) goto done;
         }
         if (ltobj_data->postop && (rval=ltobj_data->postop(NULL,NULL,ltv,data))) goto done;
-        
-        ltv->flags |= LT_VIS;
     }
     
  done:

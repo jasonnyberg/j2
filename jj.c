@@ -37,7 +37,7 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
     if (!ltobj_data) goto done;
     
-    if (ltv)
+    if (ltv && !(ltv->flags&LT_VIS))
     {
         if (ltv->len)
         {

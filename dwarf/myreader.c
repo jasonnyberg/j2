@@ -66,7 +66,8 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     Dwarf_Addr vaddr;
     Dwarf_Bool vbool;
     //Dwarf_Block *vblock;
-    
+
+    printf("[==========================================================]\n");
     printf("[]@attribs attribs<\n");
     
     DIE(dwarf_whatattr(*attr,&vshort,&error));
@@ -92,10 +93,61 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     Dwarf_Locdesc **llbuf;
     if (dwarf_loclist_n(*attr,&llbuf,&vint,&error) == DW_DLV_OK)
     {
-        int i;
+        int i,j;
         for (i=0;i<vint;i++)
         {
-            printf("[unimplemented]@loclist.%d\n",i);
+            printf("[%d]@loclist loclist<\n",i);
+            
+            printf("[%" DW_PR_DUx "]@lowpc\n",llbuf[i]->ld_lopc);
+            printf("[%" DW_PR_DUx "]@hipc\n",llbuf[i]->ld_hipc);
+            printf("[%" DW_PR_DUx "]@section_offset.%s\n",
+                   llbuf[i]->ld_section_offset,
+                   llbuf[i]->ld_from_loclist?"debug_loc":"debug_info");
+            printf("[%d]@ld_cents\n",llbuf[i]->ld_cents);
+            for (j=0;j<llbuf[i]->ld_cents;j++)
+            {
+                if (llbuf[i]->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf[i]->ld_s[j].lr_atom <= DW_OP_breg31)
+                    printf("[%" DW_PR_DSd "]@-location\n", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
+                else
+                    switch(llbuf[i]->ld_s[j].lr_atom)
+                    {
+                        case DW_OP_addr:
+                            printf("[0x%" DW_PR_DUx "]@-location\n", llbuf[i]->ld_s[j].lr_number);
+                            break;
+                        case DW_OP_const1s:
+                        case DW_OP_const2s:
+                        case DW_OP_const4s:
+                        case DW_OP_const8s:
+                        case DW_OP_consts:
+                        case DW_OP_skip:
+                        case DW_OP_bra:
+                        case DW_OP_fbreg:
+                            printf("%" DW_PR_DSd "]@-location\n", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
+                            break;
+                        case DW_OP_const1u:
+                        case DW_OP_const2u:
+                        case DW_OP_const4u:
+                        case DW_OP_const8u:
+                        case DW_OP_constu:
+                        case DW_OP_pick:
+                        case DW_OP_plus_uconst:
+                        case DW_OP_regx:
+                        case DW_OP_piece:
+                        case DW_OP_deref_size:
+                        case DW_OP_xderef_size:
+                            printf("%" DW_PR_DUu "]@-location\n", llbuf[i]->ld_s[j].lr_number);
+                            break;
+                        case DW_OP_bregx:
+                            printf("[reg%" DW_PR_DUu "(%" DW_PR_DSd ")]@-location\n",
+                                   llbuf[i]->ld_s[j].lr_number,
+                                   llbuf[i]->ld_s[j].lr_number2);
+                            break;
+                        default:
+                            break;
+                    }
+                printf(">\n");
+            }
+
             dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
             dwarf_dealloc(dbg,llbuf[i], DW_DLA_LOCDESC);
         }
@@ -103,6 +155,81 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     }
     
     printf(">\n");
+    printf("[----------------------------------------------------------]\n");
+    return;
+
+ panic:
+    exit(1);
+}
+
+void dump_attrib_location(Dwarf_Debug dbg,Dwarf_Attribute *attr)
+{
+    int status=0;
+    Dwarf_Error error=0;
+
+    Dwarf_Signed vint;
+    Dwarf_Half vshort;
+
+    DIE(dwarf_whatattr(*attr,&vshort,&error));
+    if (vshort==DW_AT_location)
+    {
+        Dwarf_Locdesc **llbuf;
+        if (dwarf_loclist_n(*attr,&llbuf,&vint,&error) == DW_DLV_OK)
+        {
+            int i,j;
+            for (i=0;i<vint;i++)
+            {
+                for (j=0;j<llbuf[i]->ld_cents;j++)
+                {
+                    if (llbuf[i]->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf[i]->ld_s[j].lr_atom <= DW_OP_breg31)
+                        printf("[%" DW_PR_DSd "]@-location\n", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
+                    else
+                        switch(llbuf[i]->ld_s[j].lr_atom)
+                        {
+                            case DW_OP_addr:
+                                printf("[0x%" DW_PR_DUx "]@-location\n", llbuf[i]->ld_s[j].lr_number);
+                                break;
+                            case DW_OP_const1s:
+                            case DW_OP_const2s:
+                            case DW_OP_const4s:
+                            case DW_OP_const8s:
+                            case DW_OP_consts:
+                            case DW_OP_skip:
+                            case DW_OP_bra:
+                            case DW_OP_fbreg:
+                                printf("[%" DW_PR_DSd "]@-location\n", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
+                                break;
+                            case DW_OP_const1u:
+                            case DW_OP_const2u:
+                            case DW_OP_const4u:
+                            case DW_OP_const8u:
+                            case DW_OP_constu:
+                            case DW_OP_pick:
+                            case DW_OP_plus_uconst:
+                            case DW_OP_regx:
+                            case DW_OP_piece:
+                            case DW_OP_deref_size:
+                            case DW_OP_xderef_size:
+                                    printf("[%" DW_PR_DUu "]@-location\n", llbuf[i]->ld_s[j].lr_number);
+                                break;
+                            case DW_OP_bregx:
+                                printf("[reg%" DW_PR_DUu "(%" DW_PR_DSd ")]@-location\n",
+                                       llbuf[i]->ld_s[j].lr_number,
+                                       llbuf[i]->ld_s[j].lr_number2);
+                                break;
+                            default:
+                                break;
+                        }
+                    printf("\n");
+                }
+
+                dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
+                dwarf_dealloc(dbg,llbuf[i], DW_DLA_LOCDESC);
+            }
+            dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
+        }
+    }
+    
     return;
 
  panic:
@@ -197,6 +324,7 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     
     //traverse_attribs(dbg,die,dump_attrib);
     traverse_attribs(dbg,die,dump_attrib_type);
+    traverse_attribs(dbg,die,dump_attrib_location);
    
     dwarf_dealloc(dbg,name,DW_DLA_STRING);
     

@@ -6,7 +6,7 @@ typedef int testint;
 
 typedef enum testenum { a,b,c } testenum;
 
-typedef struct teststruct { char a; int b; testint c;} teststruct;
+typedef struct teststruct { char a; int b; testint c; int d:1; int e:2; int f:4; int g:8; int h:16; } teststruct;
 
 teststruct w;
 
@@ -19,4 +19,8 @@ static int testfunc(int arga, teststruct *argb, testenum argc)
     }
 
     return x+y[5]+*z+arga+argb->b+localc;
+}
+
+main(int argc,char *argv[])
+{
 }

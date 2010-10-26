@@ -26,7 +26,7 @@ void *cluster_ltv(LTV *ltv,void *data)
         RBR_traverse(&ltv->rbr,cluster_rbn,NULL);
         RBR_traverse(&ltv->rbr,cluster_rbn2,NULL);
         //fprintf(dumpfile,"}\n");
-        fprintf(dumpfile,"%1$d -> %2$d [lhead=cluster_%2$d]\n\n",ltv,ltv->rbr.rb_node);
+        fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",ltv,ltv->rbr.rb_node);
     }
     
     return NULL;

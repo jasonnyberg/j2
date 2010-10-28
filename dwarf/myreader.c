@@ -50,9 +50,9 @@ void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level);
 #define DIE(cond) TRY(cond!=DW_DLV_OK,-1,panic,"\n")
 #define SKIP(cond,followup) if (cond==DW_DLV_OK) followup
 
-typedef void (*attrib_handler)(Dwarf_Debug dbg,Dwarf_Attribute *attr);
+typedef void (*attrib_handler)(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr);
 
-void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
+void dump_attrib(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
 {
     int status=0;
     Dwarf_Error error=0;
@@ -162,7 +162,7 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     exit(1);
 }
 
-void dump_attrib_location(Dwarf_Debug dbg,Dwarf_Attribute *attr)
+void dump_attrib_location(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
 {
     int status=0;
     Dwarf_Error error=0;
@@ -213,7 +213,7 @@ void dump_attrib_location(Dwarf_Debug dbg,Dwarf_Attribute *attr)
                                     printf("[%" DW_PR_DUu "]@-location\n", llbuf[i]->ld_s[j].lr_number);
                                 break;
                             case DW_OP_bregx:
-                                printf("[reg%" DW_PR_DUu "(%" DW_PR_DSd ")]@-location\n",
+                                printf("[bregx_%" DW_PR_DUu "([%" DW_PR_DSd "])]@-location\n",
                                        llbuf[i]->ld_s[j].lr_number,
                                        llbuf[i]->ld_s[j].lr_number2);
                                 break;
@@ -236,16 +236,20 @@ void dump_attrib_location(Dwarf_Debug dbg,Dwarf_Attribute *attr)
     exit(1);
 }
 
-void dump_attrib_type(Dwarf_Debug dbg,Dwarf_Attribute *attr)
+void dump_attrib_base(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
 {
     int status=0;
     Dwarf_Error error=0;
     Dwarf_Half vshort;
+    Dwarf_Off die_offset;
     Dwarf_Off voffset;
     
+    dwarf_dieoffset(die,&die_offset,&error);
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     if (vshort==DW_AT_type)
-        SKIP(dwarf_global_formref(*attr,&voffset,&error),printf("reflection.module.die_offsets.%d@base\n",(int) voffset));
+        SKIP(dwarf_global_formref(*attr,&voffset,&error),
+             printf("[die_offsets.%d@die_offsets.%d.base]@module.deps\n",
+                    (int) voffset,(int) die_offset));
     return;
 
  panic:
@@ -264,7 +268,7 @@ void traverse_attribs(Dwarf_Debug dbg,Dwarf_Die die,attrib_handler handler)
         int i;
         for (i=0;i<atcnt;i++)
         {
-            handler(dbg,&atlist[i]);
+            handler(dbg,die,&atlist[i]);
             dwarf_dealloc(dbg,atlist[i],DW_DLA_ATTR);
         }
         dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
@@ -286,17 +290,15 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     int res;
 
     TRY((res=dwarf_diename(die,&name,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_diename , level %d\n",level);
-    TRY(res==DW_DLV_NO_ENTRY,0,done,"DW_DLV_NO_ENTRY");
-    
     TRY(dwarf_tag(die,&tag,&error) != DW_DLV_OK,-1,panic,"Error in dwarf_tag , level %d\n",level);
     TRY(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"Error in dwarf_get_TAG_name , level %d\n",level);
     TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"Error in dwarf_dieoffset, level %d\n",level);
     
-    printf("[%s]@children\n\n",name);
+    printf("[%s]@children\n\n",name?name:"anonymous");
     printf("reflection.module@module\n");
     printf("children@module.die_offsets.%d\n",(int) die_offset);
     printf("module.tags+%s@children.tag\n",tagname+7); // skip "DW_TAG_"
-    printf("children@module.tags=%s.%s\n",tagname+7,name); // skip "DW_TAG_"
+    printf("children@module.tags=%s.%s\n",tagname+7,name?name:"anonymous"); // skip "DW_TAG_"
     switch(tag)
     {
         case DW_TAG_compile_unit:
@@ -311,6 +313,9 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
         case DW_TAG_typedef:
             break;
     }
+    
+    traverse_attribs(dbg,die,dump_attrib_base);
+   
     printf("/module\n");
     printf("children<\n");
     
@@ -323,20 +328,16 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     SKIP(dwarf_arrayorder(die,&vuint,&error),printf("[%d]@arrayorder\n",(int) vuint));
     
     //traverse_attribs(dbg,die,dump_attrib);
-    traverse_attribs(dbg,die,dump_attrib_type);
     traverse_attribs(dbg,die,dump_attrib_location);
-   
     dwarf_dealloc(dbg,name,DW_DLA_STRING);
     
     TRY((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_child , level %d\n",level);
-    TRY(res!=DW_DLV_OK,0,done_die,"finished die\n");
+    TRY(res!=DW_DLV_OK,0,done,"finished die\n");
     
     get_die_and_siblings(dbg,child,level+1);
 
- done_die:
-    printf(">\n");
-
  done:
+    printf(">\n");
     return;
     
  panic:
@@ -388,9 +389,9 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         TRY((res=dwarf_siblingof(dbg,no_die,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_siblingof on CU die\n");
         TRY(res==DW_DLV_NO_ENTRY,-1,panic,"no entry! in dwarf_siblingof on CU die\n");
     
-        printf("[%s]@reflection.module reflection.module<\n",module);
+        printf("[%s]@reflection.module reflection.module<\n",module); // enter "reflection.module" namespace
         get_die_and_siblings(dbg,cu_die,0);
-        printf("> [module]/\n\ndump\n\n");
+        printf("\n[!]!deps [/]!die_offsets\n>\n\ndump\n\n"); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
         cu_number++;
     }

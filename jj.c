@@ -37,8 +37,10 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
     if (!ltobj_data) goto done;
     
-    if (ltv && !(ltv->flags&LT_VIS))
+    if (ltv)
     {
+        if (ltv->flags&LT_AVIS && (ltobj_data->halt=1)) goto done;
+        
         if (ltv->len)
         {
             fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
@@ -70,31 +72,6 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 }
 
 char *indent="                                                                                                                ";
-
-
-void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
-{
-    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltobj_data) goto done;
-    
-    if (ltv)
-    {
-        fstrnprint(stdout,indent,ltobj_data->depth*4+2);
-        fprintf(stdout,"[");
-        fstrnprint(stdout,ltv->data,ltv->len);
-        fprintf(stdout,"]\n");
-    }
-    
-    if (lti)
-    {
-        fstrnprint(stdout,indent,ltobj_data->depth*4);
-        fprintf(stdout,"\"%s\"\n",lti->name);
-    }
-
- done:
-    return NULL;
-}
-
 extern int Gmymalloc;
 
 
@@ -137,12 +114,39 @@ int edict_dump(EDICT *edict)
 
 int edict_print(EDICT *edict,char *name,int len)
 {
+    int ltv_prints=0;
+
+    void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
+    {
+        struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+        if (!ltobj_data) goto done;
+    
+        if (ltv)
+        {
+            fstrnprint(stdout,indent,ltobj_data->depth*4+2);
+            fprintf(stdout,"[");
+            fstrnprint(stdout,ltv->data,ltv->len);
+            fprintf(stdout,"]\n");
+            ltv_prints++;
+        }
+    
+        if (lti)
+        {
+            fstrnprint(stdout,indent,ltobj_data->depth*4);
+            fprintf(stdout,"\"%s\"\n",lti->name);
+        }
+
+ done:
+        return NULL;
+    }
+
     int status=0;
     void *md;
     LTI *lti=NULL;
     LTV *ltv=(name && len)?edict_get(edict,name,len,0,&md,&lti):NULL;
     CLL *cll=lti?&lti->cll:&edict->anon;
     edict_traverse(cll,LTOBJ_print_pre,NULL);
+    printf("ltvs: %d\n",ltv_prints);
     return status;
 }
 

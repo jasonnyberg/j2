@@ -324,27 +324,30 @@ int bc_exec_leave(EDICT *edict,char *name,int len)
 int bc_map(EDICT *edict,char *name,int len)
 {
     void *md;
-    LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
     LTV *code=edict_rem(edict,&md);
-    LTV *data=(name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md);
     
-    if (code && code!=edict->nil && data && lti)
+    if (code && code!=edict->nil)
     {
-        char *recurse=FORMATA(recurse,code->len+len+4,"[%s] *%s",code->data,name);
-        
-        // push code for tail recursion
-        LTV_put(&edict->code,LTV_new(recurse,code->len+len+4,LT_DUP),0,NULL);
-
-        // push single-shot execution...
-        edict_add(edict,data,NULL);
-        LTV_put(&edict->code,code,0,NULL);
-
-         //if (debug_dump)
-            edict_dump(edict);
+        if (name && len) // iterate through dict entry
+        {
+            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+            LTV *data=edict_get(edict,name,len,1,&md,&lti);
+            if (data && lti)
+            {
+                char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
+                LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
+                edict_add(edict,data,NULL); // push data from lookup
+                LTV_put(&edict->code,code,0,NULL); // push code to execute
+            }
+            LTV_release(data);
+        }
+        else // single shot
+        {
+            LTV_put(&edict->code,code,0,NULL); // push code to execute
+        }
     }
     
     LTV_release(code);
-    LTV_release(data);
 
     return 0;
 }
@@ -394,7 +397,7 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'>',bc_namespace_leave);
     edict_bytecode(edict,'(',bc_namespace_enter); // exec_enter same as namespace_enter
     edict_bytecode(edict,')',bc_exec_leave);
-    edict_bytecode(edict,'*',bc_map);
+    edict_bytecode(edict,'!',bc_map);
     edict_bytecode(edict,'?',bc_print);
 }
 

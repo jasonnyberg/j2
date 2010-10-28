@@ -36,7 +36,15 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBR struct rb_root
 #define RBN struct rb_node
 
-typedef enum { LT_DUP=1<<0, LT_DEL=1<<1, LT_RO=1<<2, LT_FILE=1<<3, LT_CVAR=1<<4, LT_VIS=1<<5 } LTV_FLAGS;
+typedef enum {
+    LT_DUP=1<<0, // bufdup data for new LTV
+        LT_DEL=1<<1, // free not-referenced LTV data upon release
+        LT_RO=1<<2, // never release LTV/children
+        LT_FILE=1<<3, // LTV data is a FILE *
+        LT_CVAR=1<<4, // LTV data is a C variable
+        LT_AVIS=1<<5, // absolute traversal visitation flag
+        LT_RVIS=1<<6 // recursive traversal visitation flag
+} LTV_FLAGS;
 
 typedef struct
 {
@@ -85,9 +93,8 @@ extern LTI *LT_find(RBR *rbr,char *name,int len,int insert);
 // Tag Team of traverse methods for LT elements
 //////////////////////////////////////////////////
 
-struct LTOBJ_DATA;
 typedef void *(*LTOBJ_OP)(LTVR *ltvr,LTI *lti,LTV *ltv,void *data);
-struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; int depth; void *data; };
+struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; int halt; int depth; void *data; };
 
 void *LTV_traverse(LTV *ltv,void *data);
 void *LTVR_traverse(CLL *cll,void *data);

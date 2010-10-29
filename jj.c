@@ -78,10 +78,7 @@ extern int Gmymalloc;
 void *edict_traverse(CLL *cll,LTOBJ_OP preop,LTOBJ_OP postop)
 {
     void *rval=NULL;
-    struct LTOBJ_DATA ltobj_data;
-    ZERO(ltobj_data);
-    ltobj_data.preop = preop;
-    ltobj_data.postop = postop;
+    struct LTOBJ_DATA ltobj_data = {preop, postop, 0, 0, NULL };
     rval=CLL_traverse(cll,0,LTVR_traverse,&ltobj_data);
     CLL_traverse(cll,0,LTVR_traverse,NULL); // cleanup "visited" flags
     return rval;
@@ -115,6 +112,7 @@ int edict_dump(EDICT *edict)
 int edict_print(EDICT *edict,char *name,int len)
 {
     int ltv_prints=0;
+    LTI *_lti=NULL;
 
     void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     {
@@ -123,6 +121,7 @@ int edict_print(EDICT *edict,char *name,int len)
     
         if (ltv)
         {
+            if (_lti) ltobj_data->halt=1;
             fstrnprint(stdout,indent,ltobj_data->depth*4+2);
             fprintf(stdout,"[");
             fstrnprint(stdout,ltv->data,ltv->len);
@@ -132,6 +131,7 @@ int edict_print(EDICT *edict,char *name,int len)
     
         if (lti)
         {
+            if (!lti) ltobj_data->halt=1;
             fstrnprint(stdout,indent,ltobj_data->depth*4);
             fprintf(stdout,"\"%s\"\n",lti->name);
         }
@@ -142,11 +142,12 @@ int edict_print(EDICT *edict,char *name,int len)
 
     int status=0;
     void *md;
-    LTI *lti=NULL;
-    LTV *ltv=(name && len)?edict_get(edict,name,len,0,&md,&lti):NULL;
-    CLL *cll=lti?&lti->cll:&edict->anon;
-    edict_traverse(cll,LTOBJ_print_pre,NULL);
-    printf("ltvs: %d\n",ltv_prints);
+    LTV *ltv=(name && len)?edict_get(edict,name,len,0,&md,&_lti):NULL;
+    struct LTOBJ_DATA ltobj_data = { LTOBJ_print_pre, NULL, 0, 0, NULL };
+    if (_lti)
+        LTI_traverse((RBN *) _lti,&ltobj_data),LTI_traverse((RBN *) _lti,NULL);
+    else
+        edict_traverse(&edict->anon,LTOBJ_print_pre,NULL);
     return status;
 }
 

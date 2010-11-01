@@ -27,7 +27,7 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata,LTI **lti
         LTV *root=ltvr->ltv,*newroot=NULL;
         
         if (len<0) len=strlen(name);
-        do
+        if (len>0 && name[len]!='.') do
         {
             *metadata=NULL;
             match=NULL;
@@ -65,7 +65,9 @@ LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata,LTI **lti
         return NULL;
     }
 
-    LTV *result=CLL_traverse(&edict->dict,0,internal_get,NULL);
+    LTV *result=name[0]=='.'?
+        (name++,len--,internal_get(CLL_get(&edict->dict,0,0),NULL)): // first layer only
+        CLL_traverse(&edict->dict,0,internal_get,NULL);
     return result?result:edict->nil;
 }
 
@@ -77,9 +79,9 @@ LTV *edict_nameltv(EDICT *edict,char *name,int len,void *metadata,LTV *ltv)
     LTI *lti=NULL;
     int end=0,last=0;
     LTV *root=LTV_get(&edict->dict,0,0,NULL,-1,&md);
-        
+
     if (len<0) len=strlen(name);
-    do
+    if (len>0 && name[len]!='.') do
     {
         nlen=edict_delimit(name,len,"."); // end of layer name
         mlen=edict_delimit(name,len,"="); // test specific value
@@ -325,7 +327,6 @@ int bc_map(EDICT *edict,char *name,int len)
 {
     void *md;
     LTV *code=edict_rem(edict,&md);
-    
     if (code && code!=edict->nil)
     {
         if (name && len) // iterate through dict entry
@@ -342,19 +343,58 @@ int bc_map(EDICT *edict,char *name,int len)
             LTV_release(data);
         }
         else // single shot
-        {
             LTV_put(&edict->code,code,0,NULL); // push code to execute
+    }
+    LTV_release(code);
+    return 1;
+}
+
+
+int bc_and(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV *code=edict_rem(edict,&md);
+    if (code && code!=edict->nil)
+    {
+        if (name && len) // iterate through dict entry
+        {
+            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+            LTV *data=edict_get(edict,name,len,0,&md,&lti);
+            if (data && lti) // lookup succeeded
+            {
+                edict_add(edict,data,NULL); // push data from lookup
+                LTV_put(&edict->code,code,0,NULL); // push code to execute
+            }
+            LTV_release(data);
         }
     }
-    
     LTV_release(code);
+    return 1;
+}
 
-    return 0;
+int bc_or(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV *code=edict_rem(edict,&md);
+    if (code && code!=edict->nil)
+    {
+        if (name && len) // iterate through dict entry
+        {
+            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+            LTV *data=edict_get(edict,name,len,0,&md,&lti);
+            if (data && !lti) // lookup failed
+                LTV_put(&edict->code,code,0,NULL); // push code to execute
+            LTV_release(data);
+        }
+    }
+    LTV_release(code);
+    return 1;
 }
 
 int bc_print(EDICT *edict,char *name,int len)
 {
-    return edict_print(edict,name,len);
+    edict_print(edict,name,len);
+    return 1;
 }
 
 
@@ -398,6 +438,8 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'(',bc_namespace_enter); // exec_enter same as namespace_enter
     edict_bytecode(edict,')',bc_exec_leave);
     edict_bytecode(edict,'!',bc_map);
+    edict_bytecode(edict,'&',bc_and);
+    edict_bytecode(edict,'|',bc_or);
     edict_bytecode(edict,'?',bc_print);
 }
 

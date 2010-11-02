@@ -47,6 +47,9 @@ typedef unsigned long long ull;
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
+static inline int minint(int a,int b) { return MIN(a,b); }
+static inline int maxint(int a,int b) { return MAX(a,b); }
+
 extern void try_error();
 
 #define FORMAT_LEN(format,args...) (strlen(format))

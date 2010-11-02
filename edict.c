@@ -246,7 +246,7 @@ int edict_repl(EDICT *edict)
                     len=ops=1;
                     break;
                 default: // expression
-                    ops=strspn(token,edict->bc);
+                    ops=minint(strcspn(token,"\'(){}[]<>"),strspn(token,edict->bc));
                     len=ops+strcspn(token+ops,edict->bcdel);
                     break;
             }
@@ -346,7 +346,7 @@ int bc_map(EDICT *edict,char *name,int len)
             LTV_put(&edict->code,code,0,NULL); // push code to execute
     }
     LTV_release(code);
-    return 1;
+    return 0;
 }
 
 

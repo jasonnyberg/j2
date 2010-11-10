@@ -3,8 +3,8 @@
 #include "util.h"
 #include "edict.h"
 
-int debug_dump;
-
+int debug_dump=0;
+int prompt=1;
 
 //////////////////////////////////////////////////
 // Edict
@@ -123,6 +123,18 @@ LTV *edict_name(EDICT *edict,char *name,int len,void *metadata)
     return edict_nameltv(edict,name,len,metadata,edict_rem(edict,&md));
 }
 
+int edict_readfile(EDICT *edict,FILE *file)
+{
+    if (!file) return 0;
+    return LTV_put(&edict->code,LTV_new(file,0,LT_FILE),0,NULL)!=NULL;
+}
+
+int dwarf_import(EDICT *edict,char *module)
+{
+    char *cmd=FORMATA(cmd,,"../dwarf/myreader %s",module);
+    return edict_readfile(edict,popen(cmd,"r"));
+}
+
 LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
 {
     void *md;
@@ -134,6 +146,15 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
     {
         LTV_release(ltv);
         edict_dump(edict);
+    }
+    else
+    if (!strncmp(name,"import",len))
+    {
+        LTV *module=edict_rem(edict,&md);
+        LTV_release(ltv);
+        if (module && module!=edict->nil && module->len)
+            dwarf_import(edict,module->data);
+        LTV_release(module);
     }
     else
 #endif
@@ -165,7 +186,7 @@ LTV *edict_getline(EDICT *edict,FILE *stream)
     ssize_t len=0,totlen=0;
     int nest=1;
     
-    printf("jj> ");
+    if (prompt) printf("jj> ");
     while ((len=getline(&buf,&bufsz,stream))>0)
     {
         rbuf=RENEW(rbuf,totlen+len+1);
@@ -176,7 +197,7 @@ LTV *edict_getline(EDICT *edict,FILE *stream)
         totlen+=len;
         if (nest==1)
             break;
-        else printf("... ");
+        else if (prompt) printf("... ");
     }
     
     return totlen?LTV_new(rbuf,totlen,LT_DEL):NULL;
@@ -443,7 +464,6 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'?',bc_print);
 }
 
-
 int edict_init(EDICT *edict,LTV *root)
 {
     int status=0;
@@ -456,7 +476,7 @@ int edict_init(EDICT *edict,LTV *root)
     LTV_put(&edict->dict,root,0,NULL);
     edict->nil=LTV_new("nil",3,LT_RO);
     edict_bytecodes(edict);
-    //LTV_put(&edict->code,LTV_new(fopen("/tmp/jj.in","r"),0,LT_FILE),0,NULL);
+    //edict_readfile(edict,fopen("/tmp/jj.in","r"));
 
  done:
     return status;

@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
-add_definitions(-g)
+add_definitions(-g -ggdb3 -feliminate-dwarf2-dups)
 include_directories(.)
+link_directories(~/downloads/dwarf-20090716/libdwarf)
 add_library (edict listree.c util.c rbtree.c edict.c)
 add_executable (jj jj.c)
 target_link_libraries (jj edict) 

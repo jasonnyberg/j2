@@ -45,7 +45,7 @@
 #include "libdwarf.h"
 #include "util.h"
 
-#define END " "
+#define END "\n"
 
 void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level);
 
@@ -379,6 +379,8 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
     Dwarf_Error error;
     int cu_number = 0;
 
+    printf("[%s]@reflection.module reflection.module<" END,module); // enter "reflection.module" namespace
+    
     while (1)
     {
         Dwarf_Die no_die = NULL;
@@ -390,14 +392,13 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         TRY((res=dwarf_siblingof(dbg,no_die,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_siblingof on CU die" END);
         TRY(res==DW_DLV_NO_ENTRY,-1,panic,"no entry! in dwarf_siblingof on CU die" END);
     
-        printf("[%s]@reflection.module reflection.module<" END,module); // enter "reflection.module" namespace
         get_die_and_siblings(dbg,cu_die,0);
-        //printf(END "[!]!deps [/]!die_offsets>" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
-        printf(END ">" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
         cu_number++;
     }
 
+    printf(END "[!]!deps [/]!die_offsets>" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
+    
  done:
     return;
  panic:

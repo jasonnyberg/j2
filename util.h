@@ -93,53 +93,10 @@ extern int fstrnprint(FILE *ofile,char *str,int len);
 
 extern char *bufdup(char *buf,int len);
 
-extern char *ulltostr(char *format,ull i);
-extern unsigned strtou(char *str);
-
-extern char *ntostr(char *format,long double i);
-extern long double strton(char *str);
+extern int strtou(char *str,int len,unsigned *val);
+extern int strton(char *str,int len,long double *val);
 
 extern int fnmatch_len(char *pat,char *str,int len);
-
-extern ull *STRTOULL_PTR;
-extern char *STRTOULL_TAIL;
-
-extern long long *STRTOLL_PTR;
-extern char *STRTOLL_TAIL;
-
-extern void **STRTOPTR_PTR;
-extern char *STRTOPTR_TAIL;
-
-// returns a pointer to ULL if valid number, NULL otherwise
-#define STRTOPTRP(str)                                                 \
-    (                                                                  \
-     str? (                                                            \
-           (STRTOPTR_PTR = alloca(sizeof(*STRTOPTR_PTR))),             \
-           (*STRTOPTR_PTR = strtoull(str,&STRTOPTR_TAIL,0)),           \
-           ((str == STRTOPTR_TAIL)? NULL:STRTOPTR_PTR)                 \
-           ) : NULL                                                    \
-     )
-
-// returns a pointer to ULL if valid number, NULL otherwise
-#define STRTOULLP(str)                                                 \
-    (                                                                  \
-     str? (                                                            \
-           (STRTOULL_PTR = alloca(sizeof(*STRTOULL_PTR))),             \
-           (*STRTOULL_PTR = strtoull(str,&STRTOULL_TAIL,0)),           \
-           ((str == STRTOULL_TAIL)? NULL:STRTOULL_PTR)                 \
-           ) : NULL                                                    \
-     )
-
-// returns a pointer to ULL if valid number, NULL otherwise
-#define STRTOLLP(str)                                                  \
-    (                                                                  \
-     str? (                                                            \
-           (STRTOLL_PTR = alloca(sizeof(*STRTOLL_PTR))),               \
-           (*STRTOLL_PTR = strtoll(str,&STRTOLL_TAIL,0)),              \
-           ((str == STRTOLL_TAIL)? NULL:STRTOLL_PTR)                   \
-           ) : NULL                                                    \
-     )
-
 
 #endif
 

@@ -84,33 +84,21 @@ char *bufdup(char *buf,int len)
     return newbuf;
 }
 
-char *ulltostr(char *format,ull i)
+int strtou(char *str,int len,unsigned *val)
 {
-    static char buf[1024];
-    sprintf(buf,format,i);
-    return buf;
+    char *tail;
+    if (!str) return 0;
+    *val=strtoul(str,&tail,0);
+    return str+len==tail;
 }
 
-
-unsigned strtou(char *str)
+int strton(char *str,int len,long double *val)
 {
-    return str? strtoul(str,NULL,0):0;
+    char *tail;
+    if (!str) return 0;
+    *val=strtold(str,&tail);
+    return str+len==tail;
 }
-
-
-char *ntostr(char *format,long double i)
-{
-    static char buf[1024];
-    sprintf(buf,format,i);
-    return buf;
-}
-
-
-long double strton(char *str)
-{
-    return str? strtold(str,NULL):0;
-}
-
 
 int fnmatch_len(char *pat,char *str,int len)
 {
@@ -121,5 +109,3 @@ int fnmatch_len(char *pat,char *str,int len)
     pat[len]=eos;
     return result;
 }
-
-

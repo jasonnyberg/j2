@@ -279,7 +279,7 @@ void traverse_attribs(Dwarf_Debug dbg,Dwarf_Die die,attrib_handler handler)
 void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
 {
     int status=0;
-    char *name = 0;
+    char *diename = NULL,*name=NULL;
     Dwarf_Error error = 0;
     Dwarf_Half tag = 0;
     const char *tagname = 0;
@@ -290,16 +290,17 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
 
     int res;
 
-    TRY((res=dwarf_diename(die,&name,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_diename , level %d" END,level);
+    TRY((res=dwarf_diename(die,&diename,&error))==DW_DLV_ERROR,-1,panic,"Error in dwarf_diename , level %d" END,level);
+    name=diename?diename:"anonymous";
     TRY(dwarf_tag(die,&tag,&error) != DW_DLV_OK,-1,panic,"Error in dwarf_tag , level %d" END,level);
     TRY(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"Error in dwarf_get_TAG_name , level %d" END,level);
     TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"Error in dwarf_dieoffset, level %d" END,level);
     
-    printf("[%s]@children" END END,name?name:"anonymous");
+    printf("[%s]@children" END END,name);
     printf("reflection.module@module" END);
     printf("children@module.die_offsets.%d" END,(int) die_offset);
     printf("module.tags+%s@children.tag" END,tagname+7); // skip "DW_TAG_"
-    //printf("children@module.tags=%s.%s" END,tagname+7,name?name:"anonymous"); // skip "DW_TAG_"
+    //printf("children@module.tags=%s.%s" END,tagname+7,name); // skip "DW_TAG_"
     switch(tag)
     {
         case DW_TAG_compile_unit:

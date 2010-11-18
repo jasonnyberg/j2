@@ -186,7 +186,7 @@ LTV *edict_getline(EDICT *edict,FILE *stream)
     ssize_t len=0,totlen=0;
     int nest=1;
     
-    if (prompt) printf("jj> ");
+    if (prompt) printf("[jj]/ ");
     while ((len=getline(&buf,&bufsz,stream))>0)
     {
         rbuf=RENEW(rbuf,totlen+len+1);
@@ -350,18 +350,31 @@ int bc_map(EDICT *edict,char *name,int len)
     LTV *code=edict_rem(edict,&md);
     if (code && code!=edict->nil)
     {
-        if (name && len) // iterate through dict entry
+        if (name && len) // iterate...
         {
-            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-            LTV *data=edict_get(edict,name,len,1,&md,&lti);
-            if (data && lti)
+            int uval;
+            if (strtou(name,len,&uval)) // ...N times
             {
-                char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
-                LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
-                edict_add(edict,data,NULL); // push data from lookup
-                LTV_put(&edict->code,code,0,NULL); // push code to execute
+                if (uval)
+                {
+                    char *recurse=FORMATA(recurse,code->len+10+3,"[%s]!0x%x",code->data,uval-1);
+                    LTV_put(&edict->code,LTV_new(recurse,-1,LT_DUP),0,NULL); // push code for tail recursion
+                    LTV_put(&edict->code,code,0,NULL); // push code to execute
+                }
             }
-            LTV_release(data);
+            else // ...through dict entry
+            {
+                LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+                LTV *data=edict_get(edict,name,len,1,&md,&lti);
+                if (data && lti)
+                {
+                    char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
+                    LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
+                    edict_add(edict,data,NULL); // push data from lookup
+                    LTV_put(&edict->code,code,0,NULL); // push code to execute
+                }
+                LTV_release(data);
+            }
         }
         else // single shot
             LTV_put(&edict->code,code,0,NULL); // push code to execute
@@ -418,6 +431,12 @@ int bc_print(EDICT *edict,char *name,int len)
     return 1;
 }
 
+int bc_match(EDICT *edict,char *name,int len)
+{
+    edict_match(edict,name,len);
+    return 1;
+}
+
 
 /*
 void *edict_pop(EDICT *edict,char *name,int len,int end
@@ -462,6 +481,7 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'&',bc_and);
     edict_bytecode(edict,'|',bc_or);
     edict_bytecode(edict,'?',bc_print);
+    edict_bytecode(edict,'~',bc_match);
 }
 
 int edict_init(EDICT *edict,LTV *root)

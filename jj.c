@@ -112,6 +112,7 @@ int edict_dump(EDICT *edict)
 int edict_print(EDICT *edict,char *name,int len)
 {
     LTI *_lti=NULL;
+    unsigned uval=0;
 
     void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     {
@@ -128,7 +129,7 @@ int edict_print(EDICT *edict,char *name,int len)
         }
         if (lti)
         {
-            if (!_lti) ltobj_data->halt=1;
+            if (!_lti && ltobj_data->depth>uval) ltobj_data->halt=1;
             fstrnprint(stdout,indent,ltobj_data->depth*4);
             fprintf(stdout,"\"%s\"\n",lti->name);
         }
@@ -138,7 +139,11 @@ int edict_print(EDICT *edict,char *name,int len)
 
     int status=0;
     void *md;
-    LTV *ltv=(name && len)?edict_get(edict,name,len,0,&md,&_lti):NULL;
+    LTV *ltv=NULL;
+
+    if (name && len && !strtou(name,len,&uval))
+        ltv=edict_get(edict,name,len,0,&md,&_lti);
+    
     struct LTOBJ_DATA ltobj_data = { LTOBJ_print_pre, NULL, 0, 0, NULL };
     if (_lti)
         LTI_traverse((RBN *) _lti,&ltobj_data),LTI_traverse((RBN *) _lti,NULL);
@@ -150,24 +155,73 @@ int edict_print(EDICT *edict,char *name,int len)
 
 int edict_match(EDICT *edict,char *name,int len)
 {
-    typedef struct
+    int offset=0,toffset=0;
+    CLL ltis;
+    
+    void *dump_lti(CLL *cll,void *data)
     {
-        
-    } EM_DATA;
+        LTVR *ltvr=(LTVR *) cll;
+        LTI *lti=NULL;
+        if (ltvr && ltvr->ltv && (lti=ltvr->ltv->data))
+            printf("%s",lti->name);
+        return NULL;
+    }
     
     void *LTOBJ_match_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     {
         struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
         if (!ltobj_data) goto done;
-    
+
+        int nlen=edict_delimit(name+toffset,len-toffset,"."); // end of layer name
+        int mlen=edict_delimit(name+toffset,len-toffset,"="); // test specific value
+        int alen=edict_delimit(name+toffset,len-toffset,"+"); // test/add specific value
+        int tlen=MIN(mlen,alen);
+
         if (lti)
         {
-            //ltobj_data->halt=1;
-            fprintf(stdout,"\"%s\"\n",lti->name);
+            toffset=offset;
+            LTV_put(&ltis,LTV_new(lti,0,0),0,(void *) offset);
+            offset+=nlen+1;
         }
- done:
+
+        if (ltobj_data->halt=toffset>=len)
+            goto done;
+        
+        if (lti)
+            ltobj_data->halt=fnmatch_len(name+toffset,lti->name,MIN(tlen,nlen))!=0;
+        if (ltv)
+        {
+            if (offset>=len)
+            {
+                CLL_traverse(&ltis,1,dump_lti,NULL);
+                printf(":%s\n",ltv->data);
+            }
+        }
+     done:
         return NULL;
     }
+    
+    void *LTOBJ_match_post(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
+    {
+        void *md=NULL;
+        if (!data) goto done;
+        if (lti)
+        {
+            LTV_release(LTV_get(&ltis,1,0,NULL,-1,&md));
+            toffset=offset=(int) md;
+        }
+     done:
+        return NULL;
+    }
+
+    int status=0;
+    struct LTOBJ_DATA ltobj_data = { LTOBJ_match_pre, LTOBJ_match_post, 0, 0, NULL };
+
+    CLL_init(&ltis);
+    CLL_traverse(&edict->dict,0,LTVR_traverse,&ltobj_data);
+    CLL_traverse(&edict->dict,0,LTVR_traverse,NULL); // cleanup "visited" flags
+    
+    return status;
 }
 
 

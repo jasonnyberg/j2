@@ -172,10 +172,8 @@ int edict_match(EDICT *edict,char *name,int len)
         struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
         if (!ltobj_data) goto done;
 
-        int nlen=edict_delimit(name+toffset,len-toffset,"."); // end of layer name
-        int mlen=edict_delimit(name+toffset,len-toffset,"="); // test specific value
-        int alen=edict_delimit(name+toffset,len-toffset,"+"); // test/add specific value
-        int tlen=MIN(mlen,alen);
+        int nlen=strncspn(name+toffset,len-toffset,"."); // end of layer name
+        int tlen=strncspn(name+toffset,len-toffset,"=+"); // specific value
 
         if (lti)
         {
@@ -215,11 +213,9 @@ int edict_match(EDICT *edict,char *name,int len)
     }
 
     int status=0;
-    struct LTOBJ_DATA ltobj_data = { LTOBJ_match_pre, LTOBJ_match_post, 0, 0, NULL };
-
     CLL_init(&ltis);
-    CLL_traverse(&edict->dict,0,LTVR_traverse,&ltobj_data);
-    CLL_traverse(&edict->dict,0,LTVR_traverse,NULL); // cleanup "visited" flags
+    if (name && len)
+        edict_traverse(&edict->dict,LTOBJ_match_pre,LTOBJ_match_post);
     
     return status;
 }

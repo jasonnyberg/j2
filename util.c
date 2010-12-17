@@ -100,12 +100,40 @@ int strton(char *str,int len,long double *val)
     return str+len==tail;
 }
 
-int fnmatch_len(char *pat,char *str,int len)
+int strnncmp(char *a,int alen,char *b,int blen)
+{
+    alen=(alen<0)?strlen(a):alen;
+    blen=(blen<0)?strlen(b):blen;
+    
+    return !strncmp(a,b,MIN(alen,blen))?alen<blen?-1:blen<alen?1:0;
+}
+
+int strnspn(char *str,int len,char *accept)
 {
     int result;
-    char eos=pat[len];
-    pat[len]=0;
+    char eos=str[len];
+    str[len]=0;
+    result=strspn(str,accept);
+    str[len]=eos;
+    return result;
+}
+
+int strncspn(char *str,int len,char *reject)
+{
+    int result;
+    char eos=str[len];
+    str[len]=0;
+    result=strcspn(str,reject);
+    str[len]=eos;
+    return result;
+}
+
+int fnmatch_len(char *pat,int plen,char *str,int slen)
+{
+    int result;
+    char peos=pat[plen],seos=str[slen];
+    pat[plen]=str[slen]=0;
     result=fnmatch(pat,str,FNM_EXTMATCH);
-    pat[len]=eos;
+    pat[plen]=peos,str[slen]=seos;
     return result;
 }

@@ -102,10 +102,12 @@ int strton(char *str,int len,long double *val)
 
 int strnncmp(char *a,int alen,char *b,int blen)
 {
+    int mismatch;
     alen=(alen<0)?strlen(a):alen;
     blen=(blen<0)?strlen(b):blen;
+    mismatch=strncmp(a,b,MIN(alen,blen));
     
-    return !strncmp(a,b,MIN(alen,blen))?alen<blen?-1:blen<alen?1:0;
+    return mismatch?mismatch:alen-blen;
 }
 
 int strnspn(char *str,int len,char *accept)

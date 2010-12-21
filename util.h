@@ -96,10 +96,9 @@ extern char *bufdup(char *buf,int len);
 extern int strtou(char *str,int len,unsigned *val);
 extern int strton(char *str,int len,long double *val);
 
-extern int strnncmp(char *a,int alen,char *b,int blen)
-extern int strnspn(char *str,int len,char *accept)
-extern int strncspn(char *str,int len,char *reject)
-extern int fnmatch_len(char *pat,char *str,int len);
-
+extern int strnncmp(char *a,int alen,char *b,int blen);
+extern int strnspn(char *str,int len,char *accept);
+extern int strncspn(char *str,int len,char *reject);
+extern int fnmatch_len(char *pat,int plen,char *str,int slen);
 #endif
 

@@ -172,7 +172,7 @@ LTI *LT_find(RBR *rbr,char *name,int len,int insert)
         RBN *parent=NULL,**rbn = &(rbr->rb_node);
         while (*rbn)
         {
-            int result = LT_strcmp(name,len,((LTI *) *rbn)->name);
+            int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
             if (!result) return (LTI *) *rbn; // found it!
             else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
         }
@@ -190,16 +190,18 @@ void *RBR_traverse(RBR *rbr,char *pat,unsigned len,RB_OP op,void *data)
     RBN *result=NULL,*rbn=NULL;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
     int nlen;
+
+    if (pat && len<=0) return NULL;
     
     if (pat && (nlen=strncspn(pat,len,".=+")) && strncspn(pat,nlen,"*?[]-^")<nlen)
     {
-        rbn=LT_find(rbr,pat,nlen,/* (ltobj && ltobj->insert) || */ pat[nlen]=='+'); // insert by fiat or pattern-specified
-        result=op(rbn,data);
+        rbn=(RBN *) LT_find(rbr,pat,nlen,/* (ltobj && ltobj->insert) || */ pat[nlen]=='+'); // insert by fiat or pattern-specified
+        result=op(rbn,pat,len,data);
     }
     else
     {
         for (rbn=rb_first(rbr);
-             rbn && ((pat && len && fnmatch_len(pat,((LTI *) *rbn)->name),len) || !(result=op(rbn,data)));
+             rbn && ((pat && len && fnmatch_len(pat,len,((LTI *) rbn)->name,-1)) || !(result=op(rbn,pat,len,data)));
              rbn=rb_next(rbn));
     }
     
@@ -210,39 +212,35 @@ void *RBR_traverse(RBR *rbr,char *pat,unsigned len,RB_OP op,void *data)
 // Tag Team of traverse methods for LT elements
 //////////////////////////////////////////////////
 
-void *LTV_traverse(LTV *ltv,char *pat,unsigned len,void *data)
+void *LTV_traverse(LTV *ltv,char *pat,int len,void *data)
 {
     void *rval=NULL;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    LTV *qualifies(char *pat,int len,LTV *ltv) { return !strnncmp(pat,len,ltv->data,ltv->len); }
     int nlen=0,vlen=0;
 
     if (!ltv) goto done;
-
+    
+    if (pat && len)
+    {
+        vlen=strncspn(pat,len,"=+")+1; // test for specific value
+        nlen=strncspn(pat,len,"."); // end of layer name
+        if (vlen<nlen && strnncmp(pat+vlen,nlen-vlen,ltv->data,ltv->len))
+            goto done; // ltv fails pattern check
+        pat+=nlen;
+        len-=nlen;
+    }
+    
     if (!ltobj_data) // remove absoloute visited flag
         return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && ltv->rbr.rb_node)?
-            RBR_traverse(&ltv->rbr,LTI_traverse,data):NULL;
+            RBR_traverse(&ltv->rbr,pat,len,LTI_traverse,data):NULL;
     else if (!(ltv->flags&LT_RVIS))
     {
-        int nlen=0,vlen=0;
-        
-        if (pat && len)
-        {
-            vlen=strncspn(pat,len,"=+"); // test for specific value
-            nlen=strncspn(pat,len,"."); // end of layer name
-            if (vlen>nlen || strnncmp(pat+vlen,nlen-vlen,ltv->data,ltv->len))
-                goto done; // ltv fails pattern check
-        }
-    
         if (ltobj_data->preop && (rval=ltobj_data->preop(NULL,NULL,ltv,data))) goto done;
         
         ltv->flags|=LT_RVIS;
         ltobj_data->depth++;
         if (!(ltobj_data->halt) && ltv->rbr.rb_node)
-        {
-            if (!pat || len-nlen)
-                rval=RBR_traverse(&ltv->rbr,pat+nlen,len-nlen,LTI_traverse,data);
-        }
+            rval=RBR_traverse(&ltv->rbr,pat,len,LTI_traverse,data);
         ltobj_data->depth--;
         ltv->flags&=~LT_RVIS;
         if (rval) goto done;
@@ -256,7 +254,7 @@ void *LTV_traverse(LTV *ltv,char *pat,unsigned len,void *data)
     return rval;
 }
 
-void *LTVR_traverse(CLL *cll,char *pat,unsigned len,void *data)
+void *LTVR_traverse(CLL *cll,char *pat,int len,void *data)
 {
     void *rval=NULL;
     LTVR *ltvr = (LTVR *) cll;
@@ -264,7 +262,7 @@ void *LTVR_traverse(CLL *cll,char *pat,unsigned len,void *data)
     if (!ltvr) goto done;
     
     if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(ltvr,NULL,NULL,data))) goto done;
-    if ((!ltobj_data || !(ltobj_data->halt)) && ltvr->ltv && (rval=LTV_traverse(ltvr->ltv,data))) goto done;
+    if ((!ltobj_data || !(ltobj_data->halt)) && ltvr->ltv && (rval=LTV_traverse(ltvr->ltv,pat,len,data))) goto done;
     if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(ltvr,NULL,NULL,data))) goto done;
     
  done:
@@ -272,20 +270,23 @@ void *LTVR_traverse(CLL *cll,char *pat,unsigned len,void *data)
     return rval;
 }
 
-void *LTI_traverse(RBN *rbn,char *pat,unsigned len,void *data)
+void *LTI_traverse(RBN *rbn,char *pat,int len,void *data)
 {
     void *rval=NULL;
     LTI *lti=(LTI *) rbn;
     LTV *ltv=NULL;
+    CLL *cll=NULL;
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
     int reverse=pat && len && pat[0]=='-';
+    void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,pat,len,data); }
+    pat+=reverse;
+    len-=reverse;
     
     if (!lti) goto done;
 
     if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(NULL,lti,NULL,data))) goto done;
     if (!ltobj_data || ltobj_data->halt) goto done;
-    for (CLL *cll=lti->cll.lnk[reverse];cll && cll!=&lti->cll;cll=cll->lnk[reverse]) // See CLL_traverse
-        if (rval=LTV_traverse(((LTVR *) cll)->ltv,pat+reverse,len-reverse,data))) goto done;
+    if ((rval=CLL_traverse(&lti->cll,reverse,ltvr_op,ltobj_data))) goto done;
     if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(NULL,lti,NULL,data))) goto done;
     
  done:

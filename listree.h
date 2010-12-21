@@ -72,11 +72,11 @@ typedef struct
     CLL cll;
 } LTI; // LisTreeItem
 
-typedef void *(*RB_OP)(RBN *rbn,void *data);
+typedef void *(*RB_OP)(RBN *rbn,char *pat,int len,void *data);
 
 extern RBR *RBR_init(RBR *rbr);
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern void *RBR_traverse(RBR *rbr,RB_OP op,void *data);
+extern void *RBR_traverse(RBR *rbr,char *pat,unsigned len,RB_OP op,void *data);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
@@ -96,9 +96,9 @@ extern LTI *LT_find(RBR *rbr,char *name,int len,int insert);
 typedef void *(*LTOBJ_OP)(LTVR *ltvr,LTI *lti,LTV *ltv,void *data);
 struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; int depth; void *data; int halt:1; int add:1; int rem:1; int luf:1; };
 
-void *LTV_traverse(LTV *ltv,char *pat,unsigned len,void *data);
-void *LTVR_traverse(CLL *cll,char *pat,unsigned len,void *data);
-void *LTI_traverse(RBN *rbn,char *pat,unsigned len,void *data);
+void *LTV_traverse(LTV *ltv,char *pat,int len,void *data);
+void *LTVR_traverse(CLL *cll,char *pat,int len,void *data);
+void *LTI_traverse(RBN *rbn,char *pat,int len,void *data);
 
 //////////////////////////////////////////////////
 // Tag Team of release methods for LT elements

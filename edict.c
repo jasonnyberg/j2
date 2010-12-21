@@ -12,7 +12,7 @@ int prompt=1;
 
 int edict_delimit(char *str,int rlen,char *delim)
 {
-    return str && strncspn(str,rlen,delim);
+    return str && rlen && delim?strncspn(str,rlen,delim):0;
 }
 
 LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata,LTI **lti)

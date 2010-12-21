@@ -5,32 +5,6 @@
 
 FILE *dumpfile;
 
-void *cluster_ltv(LTV *ltv,void *data)
-{
-    void *cluster_rbn(RBN *rbn,void *data) // define rbn objs
-    {
-        LTI *lti=(LTI *) rbn;
-        fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
-        return NULL;
-    }
-    void *cluster_rbn2(RBN *rbn,void *data) // define rbn links
-    {
-        LTI *lti=(LTI *) rbn;
-        if (rb_parent(&lti->rbn))
-            fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
-        return NULL;
-    }
-    if (ltv->rbr.rb_node)
-    {
-        //fprintf(dumpfile,"\nsubgraph cluster_%d { ratio=4\n",&ltv->rbr.rb_node);
-        RBR_traverse(&ltv->rbr,cluster_rbn,NULL);
-        RBR_traverse(&ltv->rbr,cluster_rbn2,NULL);
-        //fprintf(dumpfile,"}\n");
-        fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",ltv,ltv->rbr.rb_node);
-    }
-    
-    return NULL;
-}
 
 void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 {
@@ -50,7 +24,8 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
         else
             fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
         
-        cluster_ltv(ltv,NULL);
+        if (ltv->rbr.rb_node)
+            fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",ltv,ltv->rbr.rb_node);
     }
 
     if (ltvr)
@@ -62,6 +37,8 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     
     if (lti)
     {
+        fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
+        if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
         fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&lti->cll);
         fprintf(dumpfile,"%d -> %d [weight=2]\n",&lti->rbn,&lti->cll);
         fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->cll,lti->cll.lnk[0]);
@@ -75,12 +52,13 @@ char *indent="                                                                  
 extern int Gmymalloc;
 
 
-void *edict_traverse(CLL *cll,LTOBJ_OP preop,LTOBJ_OP postop)
+void *edict_traverse(CLL *cll,char *pat,int len,LTOBJ_OP preop,LTOBJ_OP postop)
 {
     void *rval=NULL;
-    struct LTOBJ_DATA ltobj_data = {preop, postop, 0, 0, NULL };
-    rval=CLL_traverse(cll,0,LTVR_traverse,&ltobj_data);
-    CLL_traverse(cll,0,LTVR_traverse,NULL); // cleanup "visited" flags
+    struct LTOBJ_DATA ltobj_data = { preop,postop,0,NULL,0,0,0 };
+    void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,pat,len,data); }
+    rval=CLL_traverse(cll,0,ltvr_op,&ltobj_data);
+    CLL_traverse(cll,0,ltvr_op,NULL); // cleanup "visited" flags
     return rval;
 }
 
@@ -99,9 +77,9 @@ int edict_dump(EDICT *edict)
     fprintf(dumpfile,"%1$d [label=\"anon\" color=blue] %1$d -> %2$d\n",&edict->anon,edict->anon.lnk[0]);
     fprintf(dumpfile,"%1$d [label=\"code\" color=blue] %1$d -> %2$d\n",&edict->code,edict->code.lnk[0]);
 
-    edict_traverse(&edict->dict,LTOBJ_graph_pre,NULL);
-    edict_traverse(&edict->anon,LTOBJ_graph_pre,NULL);
-    edict_traverse(&edict->code,LTOBJ_graph_pre,NULL); 
+    edict_traverse(&edict->dict,NULL,0,LTOBJ_graph_pre,NULL);
+    edict_traverse(&edict->anon,NULL,0,LTOBJ_graph_pre,NULL);
+    edict_traverse(&edict->code,NULL,0,LTOBJ_graph_pre,NULL); 
     
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
@@ -144,11 +122,12 @@ int edict_print(EDICT *edict,char *name,int len)
     if (name && len && !strtou(name,len,&uval))
         ltv=edict_get(edict,name,len,0,&md,&_lti);
     
-    struct LTOBJ_DATA ltobj_data = { LTOBJ_print_pre, NULL, 0, 0, NULL };
+    struct LTOBJ_DATA ltobj_data = { LTOBJ_print_pre,NULL,0,NULL,0,0 };
     if (_lti)
-        LTI_traverse((RBN *) _lti,&ltobj_data),LTI_traverse((RBN *) _lti,NULL);
+        LTI_traverse((RBN *) _lti,name,len,&ltobj_data),
+            LTI_traverse((RBN *) _lti,name,len,NULL);
     else
-        edict_traverse(&edict->anon,LTOBJ_print_pre,NULL);
+        edict_traverse(&edict->anon,name,len,LTOBJ_print_pre,NULL);
     return status;
 }
 
@@ -186,7 +165,7 @@ int edict_match(EDICT *edict,char *name,int len)
             goto done;
         
         if (lti)
-            ltobj_data->halt=fnmatch_len(name+toffset,lti->name,MIN(tlen,nlen))!=0;
+            ltobj_data->halt=fnmatch_len(name+toffset,len-toffset,lti->name,MIN(tlen,nlen))!=0;
         if (ltv)
         {
             if (offset>=len)
@@ -215,7 +194,7 @@ int edict_match(EDICT *edict,char *name,int len)
     int status=0;
     CLL_init(&ltis);
     if (name && len)
-        edict_traverse(&edict->dict,LTOBJ_match_pre,LTOBJ_match_post);
+        edict_traverse(&edict->dict,name,len,LTOBJ_match_pre,LTOBJ_match_post);
     
     return status;
 }
@@ -225,9 +204,7 @@ EDICT edict;
 
 int main()
 {
-    LTI *lti;
-    LTV *root=LTV_new("ROOT",-1,0);
-    edict_init(&edict,root);
+    edict_init(&edict,LTV_new("ROOT",-1,0));
     edict_repl(&edict);
     edict_destroy(&edict);
 }

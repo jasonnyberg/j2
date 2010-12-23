@@ -132,7 +132,7 @@ int edict_print(EDICT *edict,char *name,int len)
 }
 
 
-int edict_match(EDICT *edict,char *name,int len)
+int edict_match_orig(EDICT *edict,char *name,int len)
 {
     int offset=0,toffset=0;
     CLL ltis;
@@ -195,6 +195,26 @@ int edict_match(EDICT *edict,char *name,int len)
     CLL_init(&ltis);
     if (name && len)
         edict_traverse(&edict->dict,name,len,LTOBJ_match_pre,LTOBJ_match_post);
+    
+    return status;
+}
+
+
+int edict_match(EDICT *edict,char *name,int len)
+{
+    void *LTOBJ_match_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
+    {
+        struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
+        if (!ltobj_data) goto done;
+        if (ltv)
+            printf("%s\n",ltv->data);
+     done:
+        return NULL;
+    }
+
+    int status=0;
+    if (name && len)
+        edict_traverse(&edict->dict,name,len,LTOBJ_match_pre,NULL);
     
     return status;
 }

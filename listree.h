@@ -76,7 +76,7 @@ typedef void *(*RB_OP)(RBN *rbn,char *pat,int len,void *data);
 
 extern RBR *RBR_init(RBR *rbr);
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern void *RBR_traverse(RBR *rbr,char *pat,unsigned len,RB_OP op,void *data);
+extern void *RBR_traverse(RBR *rbr,RB_OP op,void *data);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);

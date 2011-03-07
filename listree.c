@@ -274,12 +274,7 @@ void *LTI_traverse(RBN *rbn,char *pat,int len,void *data)
     
     void *traverse_cll(CLL *cll)
     {
-        int rval=0;
-        int reverse=pat && len && pat[0]=='-';
-
-         
         void *ltvr_op(CLL *cll,void *data) { return (pat[0]=='=' || pat[0]=='+')?LTVR_traverse(cll,pat,len,data):NULL; }
-        
         return CLL_traverse(&lti->cll,reverse,ltvr_op,data);
     }
     
@@ -294,20 +289,30 @@ void *LTI_traverse(RBN *rbn,char *pat,int len,void *data)
     return rval;
 }
 
-void *LT_traverse(LTV *ltv,LTVR *ltvr,LTI *lti,char *pat,int len,void *data)
+
+// TODO!!! Consolidate XXX_traverse into LT_traverse to conserve state, and B) eliminate recursion
+void *LT_traverse(LTVR *ltvr,LTV *ltv,LTI *lti,char *pat,int len,void *data)
 {
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    int nlen=0,ilen=0,rev=0,next=0,quali=0,qualv=0;
-
-    if (pat)
+    int rev=0,nlen=0,ilen=0,quali=0,qualv=0;
+    
+    void *traverse_cll(CLL *cll)
     {
-        reverse=pat[0]=='-';
-        nlen=strncspn(pat,len,"=+");
-        ilen=strncspn(pat,len,".");
-        quali=strncspn(pat,nlen,"*?[]-^")<nlen;
-        qualv=strncspn(pat+nlen,ilen-nlen,"*?[]-^")<ilen-nlen;
+        void *ltvr_op(CLL *cll,void *data) { return (pat[0]=='=' || pat[0]=='+')?LTVR_traverse((LTVR *) cll,pat,len,data):NULL; }
+        return CLL_traverse(&lti->cll,reverse,ltvr_op,data);
     }
 
+    void parse_pat()
+    {
+        if (pat)
+        {
+            rev=pat[0]=='-';
+            nlen=strncspn(pat,len,"=+");
+            ilen=strncspn(pat,len,".");
+            quali=strncspn(pat,nlen,"*?[]-^")<nlen;
+            qualv=strncspn(pat+nlen,ilen-nlen,"*?[]-^")<ilen-nlen;
+        }
+    }
 
 //ltv
 //    
@@ -339,9 +344,9 @@ void *LT_traverse(LTV *ltv,LTVR *ltvr,LTI *lti,char *pat,int len,void *data)
 //             rbn=rb_next(rbn));
 //    }
  
-    if (lti) return LTVR_traverse(lti);
+    if (lti) return LTI_traverse(lti);
     if (ltvr) return LTVR_traverse(ltvr);
-    if (ltv) return LTVR_traverse(ltv);
+    if (ltv) return LTV_traverse(ltv);
 }
 
 

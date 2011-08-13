@@ -44,6 +44,10 @@
 
 typedef unsigned long long ull;
 
+//#define PEDANTIC(alt,args...) args
+#define PEDANTIC(alt,args...) alt
+
+
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 

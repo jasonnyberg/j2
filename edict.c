@@ -166,43 +166,156 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
 
-int edict_balance(char *str,char *start_end,int *nest)
-{
-    int i;
-    for(i=0;str&&str[i];i++)
-        if (str[i]==start_end[0]) (*nest)++;
-        else if (str[i]==start_end[1] && --(*nest)==0)
-            return ++i; // balanced
-    return i; // unbalanced
-}
 
- 
-LTV *edict_getline(EDICT *edict,FILE *stream)
+
+
+// process characters into tokens, saving them in a static buffer until end is found. stack the token.
+
+/**************************
+
+EMBED edict_getline or whatever into edict_getexpr
+
+FIXME: fix up handling of exhausted file or buf code objects.
+
+*************/
+int edict_getexpr(EDICT *edict,char **expr)
 {
-    char *rbuf=NULL;
-    char *buf=NULL;
-    size_t bufsz;
-    ssize_t len=0,totlen=0;
-    int nest=1;
+    LTV *frag=NULL;
+    int offset=0;
+    CLL fraglist;
+    int parens=0,brackets=0,curlys=0,angles=0;
+    int exprlen=0;
+
+    (*expr)=NULL;
     
-    if (prompt) printf("[jj]/ ");
-    while ((len=getline(&buf,&bufsz,stream))>0)
+    CLL_init(&loc);
+
+    void rel_frag()
     {
-        rbuf=RENEW(rbuf,totlen+len+1);
-        strcpy(rbuf+totlen,buf);
-        free(buf); // allocated via getline, so don't DELETE
-        buf=NULL;
-        edict_balance(rbuf+totlen,"[]",&nest);
-        totlen+=len;
-        if (nest==1)
-            break;
-        else if (prompt) printf("... ");
+        if (frag && frag->flags&LT_FILE)
+            fclose(frag->data);
+        LTV_release(frag);
+    }
+
+    void put_frag() 
+    {
+        LTV_put(&edict->code,frag,0,(void *) offset);
     }
     
-    return totlen?LTV_new(rbuf,totlen,LT_DEL):NULL;
+    void get_frag()
+    {
+        frag=LTV_get(&edict->code,1,0,NULL,-1,&offset);
+        if (frag && frag->flags&LT_FILE) // if reading from a file, read a line
+        {
+            char *line=NULL;
+            int len,buflen=0;
+            if ((len=getline(&line,&buflen,frag->data))>0)
+            {
+                put_frag();
+                frag=LTV_new(line,len,LT_DEL);
+            }
+            else
+            {
+                rel_frag();
+                get_frag();
+            }
+        }
+    }
+
+    void defrag()
+    {
+        *expr=mymalloc(exprlen);
+        int acc=0;
+        while ((frag=LTV_get(&fraglist,1,0,NULL,-1,&offset)))
+        {
+            memcpy(&(*expr)[acc],((char *) frag->data)+offset,frag->len-offset);
+            acc=frag->len-offset;
+            rel_frag();
+        }
+    }
+
+    for (get_frag();frag;rel_frag(),get_frag())
+    {
+        LTV_put(&fraglist,frag,1,(void *) offset);
+        
+        while (offset < (void *) frag->len)
+        {
+            exprlen++;
+            switch(c)
+            {
+                case '(': parens++; break;
+                case ')': parens--; break;
+                case '[': brackets++; break;
+                case ']': brackets--; break;
+                case '{': curlys++; break;
+                case '}': curlys--; break;
+                case '<': angles++; break;
+                case '>': angles--; break;
+                case EOF:
+                case ' ':
+                case '\n':
+                case '\t':
+                    if (--(*len) && !parens && !brackets && !curlys && !angles) // don't count whitespace
+                    {
+                        put_frag();
+                        defrag();
+                        return exprlen;
+                    }
+            }
+        }
+    }
+
+    return 0;
+}
+
+typedef enum {
+    WS       =0,
+    NAME     =1<<0,
+    LIT      =1<<1,
+    OP       =1<<2,
+    ELLIPSIS =1<<3,
+    
+    REGEXP   =1<<4,
+    REVERSE  =1<<5,
+    ADD      =1<<6
+} EDICT_TOKTYPES;
+
+
+int edict_eval(EDICT *edict,CLL *expr,int len)
+{
+    int status=0;
+
+    printf("---\n");
+    fstrnprint(stdout,expr,len);
+    
+    return status;
+}
+
+int edict_repl(EDICT *edict)
+{
+    int len;
+    char *expr;
+    
+    while ((len=edict_getexpr(edict,&expr)) && !edict_eval(edict,expr,len));
+    
 }
 
 
+/* NOTES:
+ *
+ * For regexp/traversing name context, store LTVR w/LTI as metadata to keep track of CLL's begin/end.
+ *
+ * Parse and create a CLL of tokens for each whitespace delineated expr,
+ * that can be traversed fwd/back along with stacking/unstacking context. Metadata can store CLL of context?
+ *
+ * Parse tokens directly into CLL, and process @ whitespace. No intermediate storage.
+ *
+ *
+ */
+
+int edict_repl
+
+#if 0
 int edict_repl(EDICT *edict)
 {
     int status;
@@ -216,66 +329,74 @@ int edict_repl(EDICT *edict)
     {
         status=0;
         offset=0;
-        ltv=NULL;
+        code=NULL;
         token=NULL;
         len=ops=0;
         
  read:
-        if (!(ltv=LTV_get(&edict->code,1,0,NULL,-1,&offset)))
+        TRY(!((code=LTV_get(&edict->code,0,0,NULL,-1,&offset)) || // retrieve any stacked code first
+              (code=LTV_put(&edict->code,edict_getline(edict,stdin),0,offset=0))),-1,done,"\n"); // otherwise, stdin
+
+        if (code->flags&LT_FILE &&
+            !(code=LTV_put(&edict->code,edict_getline(edict,code->data),0,offset=0))) // file ref, but no code
         {
-            ltv=edict_getline(edict,stdin);
+            code=LTV_get(&edict->code,1,0,NULL,-1,&offset) // re-retrieve file ref
+                fclose(code->data);
+            LTV_release(code);
+            goto read;
         }
-        else if (ltv->flags&LT_FILE)
+        
+        token=&code->data[offset];
+
+        if (*token==0)
         {
-            LTV *newltv=edict_getline(edict,ltv->data);
-            if (newltv)
-            {
-                LTV_put(&edict->code,ltv,0,(void *) strspn((char *) ltv->data,WHITESPACE));
-                ltv=newltv;
-            }
-            else
-            {
-                fclose(ltv->data);
-                LTV_release(ltv);
-                goto read;
-            }
+            LTV_release(LTV_get(&edict->code,1,0,NULL,-1,&offset));
+            goto read;
         }
 
-        TRY(!ltv,-1,done,"\n");
-
-        token=ltv->data+(long) offset;
-        if (*token) // not end of string
+        // start_expr();
+        
+        switch (*token)
         {
             int nest=0;
-            switch (*token)
-            {
-                case '\'':
-                    len=strcspn(token+1,edict->bcdel)+1;
-                    ops=1;
-                    break;
-                case '[':
-                    len=edict_balance(token,"[]",&nest);
-                    ops=1;
-                    break;
-                case '(':
-                case ')':
-                case '{':
-                case '}':
-                case '<':
-                case '>':
-                    len=ops=1;
-                    break;
-                default: // expression
-                    ops=minint(strcspn(token,"\'(){}[]<>"),strspn(token,edict->bc));
-                    len=ops+strcspn(token+ops,edict->bcdel);
-                    break;
-            }
-        }
 
+            // case '-': setreverse();
+            // case '.': pushname(namelen);
+            // case '+': set_condlit(); // conditional lit add
+            // case '=': set_speclit(); // get specific lit
+            // case '\'': pushslit(); // whitespace terminated
+            // case '[': pushlit(); // balanced w/']'
+            // case <ops>: pushops(); // use strspn
+            // case <whitespace>: end_expr(); // clear expression stack
+            // case <symchar>: namelen++;
+            // case <wildcard>: setwild(),namelen++;
+            
+            case '\'':
+                len=strcspn(token+1,edict->bcdel)+1;
+                ops=1;
+                break;
+            case '[':
+                len=edict_balance(token,"[]",&nest);
+                ops=1;
+                break;
+            case '(':
+            case ')':
+            case '{':
+            case '}':
+            case '<':
+            case '>':
+                len=ops=1;
+                break;
+            default: // expression
+                ops=minint(strcspn(token,"\'(){}[]<>"),strspn(token,edict->bc));
+                len=ops+strcspn(token+ops,edict->bcdel);
+                break;
+        }
+    
         offset+=len+strspn(token+len,WHITESPACE);
 
-        if (offset < (void *) ltv->len)
-            LTV_put(&edict->code,ltv,0,(void *) offset);
+        if (offset < (void *) code->len)
+            LTV_put(&edict->code,code,0,(void *) offset);
 
         if (len)
         {
@@ -286,8 +407,8 @@ int edict_repl(EDICT *edict)
                 edict_ref(edict,token,len,0,NULL);
         }
 
-        if (offset >= (void *) ltv->len)
-            LTV_release(ltv);
+        if (offset >= (void *) code->len)
+            LTV_release(code);
 
         if (debug_dump)
             edict_dump(edict);
@@ -296,159 +417,160 @@ int edict_repl(EDICT *edict)
  done:
     return status;
 }
+#endif
 
-int bc_slit(EDICT *edict,char *name,int len)
-{
-    edict_add(edict,LTV_new(name,len,LT_DUP),NULL);
-    return 0;
-}
+ int bc_slit(EDICT *edict,char *name,int len)
+ {
+     edict_add(edict,LTV_new(name,len,LT_DUP),NULL);
+     return 0;
+ }
 
-int bc_lit(EDICT *edict,char *name,int len)
-{
-    return bc_slit(edict,name,len-1);
-}
+ int bc_lit(EDICT *edict,char *name,int len)
+ {
+     return bc_slit(edict,name,len-1);
+ }
 
-int bc_name(EDICT *edict,char *name,int len)
-{
-    edict_name(edict,name,len,NULL);
-    return 1;
-}
+ int bc_name(EDICT *edict,char *name,int len)
+ {
+     edict_name(edict,name,len,NULL);
+     return 1;
+ }
 
-int bc_kill(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTI *lti=NULL;
-    LTV_release((name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md));
-    return 1;
-}
+ int bc_kill(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTI *lti=NULL;
+     LTV_release((name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md));
+     return 1;
+ }
 
-int bc_namespace_enter(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV_put(&edict->dict,edict_rem(edict,&md),0,NULL);
-    return 0;
-}
+ int bc_namespace_enter(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTV_put(&edict->dict,edict_rem(edict,&md),0,NULL);
+     return 0;
+ }
 
-int bc_namespace_leave(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV_release(LTV_get(&edict->dict,1,0,NULL,-1,&md));
-    return 0;
-}
+ int bc_namespace_leave(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTV_release(LTV_get(&edict->dict,1,0,NULL,-1,&md));
+     return 0;
+ }
 
-int bc_exec_leave(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV_put(&edict->code,LTV_get(&edict->dict,0,0,NULL,-1,&md),0,NULL);
-    return bc_namespace_leave(edict,name,len);
-}
+ int bc_exec_leave(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTV_put(&edict->code,LTV_get(&edict->dict,0,0,NULL,-1,&md),0,NULL);
+     return bc_namespace_leave(edict,name,len);
+ }
 
-int bc_map(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV *code=edict_rem(edict,&md);
-    if (code && code!=edict->nil)
-    {
-        if (name && len) // iterate...
-        {
-            int uval;
-            if (strtou(name,len,&uval)) // ...N times
-            {
-                if (uval)
-                {
-                    char *recurse=FORMATA(recurse,code->len+10+3,"[%s]!0x%x",code->data,uval-1);
-                    LTV_put(&edict->code,LTV_new(recurse,-1,LT_DUP),0,NULL); // push code for tail recursion
-                    LTV_put(&edict->code,code,0,NULL); // push code to execute
-                }
-            }
-            else // ...through dict entry
-            {
-                LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-                LTV *data=edict_get(edict,name,len,1,&md,&lti);
-                if (data && lti)
-                {
-                    char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
-                    LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
-                    edict_add(edict,data,NULL); // push data from lookup
-                    LTV_put(&edict->code,code,0,NULL); // push code to execute
-                }
-                LTV_release(data);
-            }
-        }
-        else // single shot
-            LTV_put(&edict->code,code,0,NULL); // push code to execute
-    }
-    LTV_release(code);
-    return 0;
-}
-
-
-int bc_and(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV *code=edict_rem(edict,&md);
-    if (code && code!=edict->nil)
-    {
-        if (name && len) // iterate through dict entry
-        {
-            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-            LTV *data=edict_get(edict,name,len,0,&md,&lti);
-            if (data && lti) // lookup succeeded
-            {
-                edict_add(edict,data,NULL); // push data from lookup
-                LTV_put(&edict->code,code,0,NULL); // push code to execute
-            }
-            LTV_release(data);
-        }
-    }
-    LTV_release(code);
-    return 1;
-}
-
-int bc_or(EDICT *edict,char *name,int len)
-{
-    void *md;
-    LTV *code=edict_rem(edict,&md);
-    if (code && code!=edict->nil)
-    {
-        if (name && len) // iterate through dict entry
-        {
-            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-            LTV *data=edict_get(edict,name,len,0,&md,&lti);
-            if (data && !lti) // lookup failed
-                LTV_put(&edict->code,code,0,NULL); // push code to execute
-            LTV_release(data);
-        }
-    }
-    LTV_release(code);
-    return 1;
-}
-
-int bc_print(EDICT *edict,char *name,int len)
-{
-    edict_print(edict,name,len);
-    return 1;
-}
-
-int bc_match(EDICT *edict,char *name,int len)
-{
-    edict_match(edict,name,len);
-    return 1;
-}
+ int bc_map(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTV *code=edict_rem(edict,&md);
+     if (code && code!=edict->nil)
+     {
+         if (name && len) // iterate...
+         {
+             int uval;
+             if (strtou(name,len,&uval)) // ...N times
+             {
+                 if (uval)
+                 {
+                     char *recurse=FORMATA(recurse,code->len+10+3,"[%s]!0x%x",code->data,uval-1);
+                     LTV_put(&edict->code,LTV_new(recurse,-1,LT_DUP),0,NULL); // push code for tail recursion
+                     LTV_put(&edict->code,code,0,NULL); // push code to execute
+                 }
+             }
+             else // ...through dict entry
+             {
+                 LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+                 LTV *data=edict_get(edict,name,len,1,&md,&lti);
+                 if (data && lti)
+                 {
+                     char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
+                     LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
+                     edict_add(edict,data,NULL); // push data from lookup
+                     LTV_put(&edict->code,code,0,NULL); // push code to execute
+                 }
+                 LTV_release(data);
+             }
+         }
+         else // single shot
+             LTV_put(&edict->code,code,0,NULL); // push code to execute
+     }
+     LTV_release(code);
+     return 0;
+ }
 
 
-/*
-void *edict_pop(EDICT *edict,char *name,int len,int end
-LTV *edict_clone(LTV *ltv,int sibs)
-int edict_copy_item(EDICT *edict,LTV *ltv)
-int edict_copy(EDICT *edict,char *name,int len)
-int edict_raise(EDICT *edict,char *name,int len)
-void *edict_lookup(EDICT *edict,char *name,int len)
-void edict_display_item(LTV *ltv,char *prefix)
-void edict_list(EDICT *edict,char *buf,int len,int count,char *prefix)
-int edict_len(EDICT *edict,char *buf,int len)
-LTV *edict_getitem(EDICT *edict,char *name,int len,int pop)
-LTV *edict_getitems(EDICT *edict,LTV *repos,int display)
+ int bc_and(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTV *code=edict_rem(edict,&md);
+     if (code && code!=edict->nil)
+     {
+         if (name && len) // iterate through dict entry
+         {
+             LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+             LTV *data=edict_get(edict,name,len,0,&md,&lti);
+             if (data && lti) // lookup succeeded
+             {
+                 edict_add(edict,data,NULL); // push data from lookup
+                 LTV_put(&edict->code,code,0,NULL); // push code to execute
+             }
+             LTV_release(data);
+         }
+     }
+     LTV_release(code);
+     return 1;
+ }
+
+ int bc_or(EDICT *edict,char *name,int len)
+ {
+     void *md;
+     LTV *code=edict_rem(edict,&md);
+     if (code && code!=edict->nil)
+     {
+         if (name && len) // iterate through dict entry
+         {
+             LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+             LTV *data=edict_get(edict,name,len,0,&md,&lti);
+             if (data && !lti) // lookup failed
+                 LTV_put(&edict->code,code,0,NULL); // push code to execute
+             LTV_release(data);
+         }
+     }
+     LTV_release(code);
+     return 1;
+ }
+
+ int bc_print(EDICT *edict,char *name,int len)
+ {
+     edict_print(edict,name,len);
+     return 1;
+ }
+
+ int bc_match(EDICT *edict,char *name,int len)
+ {
+     edict_match(edict,name,len);
+     return 1;
+ }
+
+
+ /*
+   void *edict_pop(EDICT *edict,char *name,int len,int end
+   LTV *edict_clone(LTV *ltv,int sibs)
+   int edict_copy_item(EDICT *edict,LTV *ltv)
+   int edict_copy(EDICT *edict,char *name,int len)
+   int edict_raise(EDICT *edict,char *name,int len)
+   void *edict_lookup(EDICT *edict,char *name,int len)
+   void edict_display_item(LTV *ltv,char *prefix)
+   void edict_list(EDICT *edict,char *buf,int len,int count,char *prefix)
+   int edict_len(EDICT *edict,char *buf,int len)
+   LTV *edict_getitem(EDICT *edict,char *name,int len,int pop)
+   LTV *edict_getitems(EDICT *edict,LTV *repos,int display)
 LTV *edict_get_nth_item(EDICT *edict,int n)
 */
 
@@ -495,6 +617,7 @@ int edict_init(EDICT *edict,LTV *root)
     LTV_put(&edict->dict,root,0,NULL);
     edict->nil=LTV_new("nil",3,LT_RO);
     edict_bytecodes(edict);
+    edict_readfile(edict,stdin);
     //edict_readfile(edict,fopen("/tmp/jj.in","r"));
 
  done:

@@ -6,9 +6,10 @@ typedef int (*edict_bc_impl)(struct EDICT *edict,char *name,int len);
 
 typedef struct EDICT
 {
-    CLL code;
     CLL anon;
     CLL dict;
+    CLL code;
+    CLL toks;
     LTV *nil;
     int numbc;
     char bc[256];

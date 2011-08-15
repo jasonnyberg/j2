@@ -171,77 +171,58 @@ LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata)
 
 // process characters into tokens, saving them in a static buffer until end is found. stack the token.
 
-/**************************
+void rel_frag(LTV *frag)
+{
+    if (frag && frag->flags&LT_FILE)
+        fclose(frag->data);
+    LTV_release(frag);
+}
+ 
+LTV *get_frag(EDICT *edict,void **offset)
+{
+    LTV *frag;
+ start:
+    frag=LTV_get(&edict->code,1,0,NULL,-1,offset);
+    if (frag && frag->flags&LT_FILE) // if reading from a file, read a line
+    {
+        char *line=NULL;
+        int len,buflen=0;
+        if ((len=getline(&line,&buflen,frag->data))>0)
+        {
+            LTV_put(&edict->code,frag,0,*offset);
+            *offset=NULL;
+            return LTV_new(line,len,LT_DEL);
+        }
+        else
+        {
+            rel_frag(frag);
+            goto start;
+        }
+    }
+    return frag;
+}
 
-EMBED edict_getline or whatever into edict_getexpr
-
-FIXME: fix up handling of exhausted file or buf code objects.
-
-*************/
 int edict_getexpr(EDICT *edict,char **expr)
 {
     LTV *frag=NULL;
-    int offset=0;
+    void *offset=NULL;
     CLL fraglist;
     int parens=0,brackets=0,curlys=0,angles=0;
     int exprlen=0;
 
     (*expr)=NULL;
     
-    CLL_init(&loc);
+    CLL_init(&fraglist);
 
-    void rel_frag()
+    while (frag=get_frag(edict,&offset))
     {
-        if (frag && frag->flags&LT_FILE)
-            fclose(frag->data);
-        LTV_release(frag);
-    }
+        if (exprlen)
+            LTV_put(&fraglist,frag,1,(void *) offset); // subsequent frags
 
-    void put_frag() 
-    {
-        LTV_put(&edict->code,frag,0,(void *) offset);
-    }
-    
-    void get_frag()
-    {
-        frag=LTV_get(&edict->code,1,0,NULL,-1,&offset);
-        if (frag && frag->flags&LT_FILE) // if reading from a file, read a line
-        {
-            char *line=NULL;
-            int len,buflen=0;
-            if ((len=getline(&line,&buflen,frag->data))>0)
-            {
-                put_frag();
-                frag=LTV_new(line,len,LT_DEL);
-            }
-            else
-            {
-                rel_frag();
-                get_frag();
-            }
-        }
-    }
-
-    void defrag()
-    {
-        *expr=mymalloc(exprlen);
-        int acc=0;
-        while ((frag=LTV_get(&fraglist,1,0,NULL,-1,&offset)))
-        {
-            memcpy(&(*expr)[acc],((char *) frag->data)+offset,frag->len-offset);
-            acc=frag->len-offset;
-            rel_frag();
-        }
-    }
-
-    for (get_frag();frag;rel_frag(),get_frag())
-    {
-        LTV_put(&fraglist,frag,1,(void *) offset);
-        
         while (offset < (void *) frag->len)
         {
             exprlen++;
-            switch(c)
+            switch(((char *) frag->data)[((int) offset++)])
             {
                 case '(': parens++; break;
                 case ')': parens--; break;
@@ -251,18 +232,35 @@ int edict_getexpr(EDICT *edict,char **expr)
                 case '}': curlys--; break;
                 case '<': angles++; break;
                 case '>': angles--; break;
-                case EOF:
                 case ' ':
                 case '\n':
                 case '\t':
-                    if (--(*len) && !parens && !brackets && !curlys && !angles) // don't count whitespace
+                    if (!parens && !brackets && !curlys && !angles && --exprlen) // don't count embedded whitespace
                     {
-                        put_frag();
-                        defrag();
+                        if (offset < (void *) frag->len)
+                            LTV_put(&edict->code,frag,0,(void *) offset); // frag not empty, re-queue
+                        else
+                            rel_frag(frag); // frag empty
+                        
+                        *expr=mymalloc(exprlen);
+                        int acc=0;
+                        while ((frag=LTV_get(&fraglist,1,0,NULL,-1,&offset)))
+                        {
+                            int fraglen=MIN(frag->len-((int) offset),exprlen-acc);
+                            memcpy(&(*expr)[acc],((char *) frag->data)+((int) offset),fraglen);
+                            acc+=fraglen;
+                            rel_frag(frag);
+                        }
                         return exprlen;
                     }
+                    break;
             }
+            
+            if (exprlen==1) // first significant frag
+                LTV_put(&fraglist,frag,1,(void *) offset-1);
         }
+        
+        rel_frag(frag); // frag empty, but expr not balanced yet
     }
 
     return 0;
@@ -281,13 +279,14 @@ typedef enum {
 } EDICT_TOKTYPES;
 
 
-int edict_eval(EDICT *edict,CLL *expr,int len)
+int edict_eval(EDICT *edict,char *expr,int len)
 {
     int status=0;
 
     printf("---\n");
     fstrnprint(stdout,expr,len);
-    
+    printf("\n> ");
+
     return status;
 }
 
@@ -313,7 +312,6 @@ int edict_repl(EDICT *edict)
  *
  */
 
-int edict_repl
 
 #if 0
 int edict_repl(EDICT *edict)
@@ -419,159 +417,154 @@ int edict_repl(EDICT *edict)
 }
 #endif
 
- int bc_slit(EDICT *edict,char *name,int len)
- {
-     edict_add(edict,LTV_new(name,len,LT_DUP),NULL);
-     return 0;
- }
 
- int bc_lit(EDICT *edict,char *name,int len)
- {
-     return bc_slit(edict,name,len-1);
- }
+int bc_slit(EDICT *edict,char *name,int len)
+{
+    edict_add(edict,LTV_new(name,len,LT_DUP),NULL);
+    return 0;
+}
 
- int bc_name(EDICT *edict,char *name,int len)
- {
-     edict_name(edict,name,len,NULL);
-     return 1;
- }
+int bc_lit(EDICT *edict,char *name,int len)
+{
+    return bc_slit(edict,name,len-1);
+}
 
- int bc_kill(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTI *lti=NULL;
-     LTV_release((name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md));
-     return 1;
- }
+int bc_name(EDICT *edict,char *name,int len)
+{
+    edict_name(edict,name,len,NULL);
+    return 1;
+}
 
- int bc_namespace_enter(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTV_put(&edict->dict,edict_rem(edict,&md),0,NULL);
-     return 0;
- }
+int bc_kill(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTI *lti=NULL;
+    LTV_release((name && len)?edict_get(edict,name,len,1,&md,&lti):edict_rem(edict,&md));
+    return 1;
+}
 
- int bc_namespace_leave(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTV_release(LTV_get(&edict->dict,1,0,NULL,-1,&md));
-     return 0;
- }
+int bc_namespace_enter(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV_put(&edict->dict,edict_rem(edict,&md),0,NULL);
+    return 0;
+}
 
- int bc_exec_leave(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTV_put(&edict->code,LTV_get(&edict->dict,0,0,NULL,-1,&md),0,NULL);
-     return bc_namespace_leave(edict,name,len);
- }
+int bc_namespace_leave(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV_release(LTV_get(&edict->dict,1,0,NULL,-1,&md));
+    return 0;
+}
 
- int bc_map(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTV *code=edict_rem(edict,&md);
-     if (code && code!=edict->nil)
-     {
-         if (name && len) // iterate...
-         {
-             int uval;
-             if (strtou(name,len,&uval)) // ...N times
-             {
-                 if (uval)
-                 {
-                     char *recurse=FORMATA(recurse,code->len+10+3,"[%s]!0x%x",code->data,uval-1);
-                     LTV_put(&edict->code,LTV_new(recurse,-1,LT_DUP),0,NULL); // push code for tail recursion
-                     LTV_put(&edict->code,code,0,NULL); // push code to execute
-                 }
-             }
-             else // ...through dict entry
-             {
-                 LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-                 LTV *data=edict_get(edict,name,len,1,&md,&lti);
-                 if (data && lti)
-                 {
-                     char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
-                     LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
-                     edict_add(edict,data,NULL); // push data from lookup
-                     LTV_put(&edict->code,code,0,NULL); // push code to execute
-                 }
-                 LTV_release(data);
-             }
-         }
-         else // single shot
-             LTV_put(&edict->code,code,0,NULL); // push code to execute
-     }
-     LTV_release(code);
-     return 0;
- }
+int bc_exec_leave(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV_put(&edict->code,LTV_get(&edict->dict,0,0,NULL,-1,&md),0,NULL);
+    return bc_namespace_leave(edict,name,len);
+}
 
-
- int bc_and(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTV *code=edict_rem(edict,&md);
-     if (code && code!=edict->nil)
-     {
-         if (name && len) // iterate through dict entry
-         {
-             LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-             LTV *data=edict_get(edict,name,len,0,&md,&lti);
-             if (data && lti) // lookup succeeded
-             {
-                 edict_add(edict,data,NULL); // push data from lookup
-                 LTV_put(&edict->code,code,0,NULL); // push code to execute
-             }
-             LTV_release(data);
-         }
-     }
-     LTV_release(code);
-     return 1;
- }
-
- int bc_or(EDICT *edict,char *name,int len)
- {
-     void *md;
-     LTV *code=edict_rem(edict,&md);
-     if (code && code!=edict->nil)
-     {
-         if (name && len) // iterate through dict entry
-         {
-             LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
-             LTV *data=edict_get(edict,name,len,0,&md,&lti);
-             if (data && !lti) // lookup failed
-                 LTV_put(&edict->code,code,0,NULL); // push code to execute
-             LTV_release(data);
-         }
-     }
-     LTV_release(code);
-     return 1;
- }
-
- int bc_print(EDICT *edict,char *name,int len)
- {
-     edict_print(edict,name,len);
-     return 1;
- }
-
- int bc_match(EDICT *edict,char *name,int len)
- {
-     edict_match(edict,name,len);
-     return 1;
- }
+int bc_map(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV *code=edict_rem(edict,&md);
+    if (code && code!=edict->nil)
+    {
+        if (name && len) // iterate...
+        {
+            int uval;
+            if (strtou(name,len,&uval)) // ...N times
+            {
+                if (uval)
+                {
+                    char *recurse=FORMATA(recurse,code->len+10+3,"[%s]!0x%x",code->data,uval-1);
+                    LTV_put(&edict->code,LTV_new(recurse,-1,LT_DUP),0,NULL); // push code for tail recursion
+                    LTV_put(&edict->code,code,0,NULL); // push code to execute
+                }
+            }
+            else // ...through dict entry
+            {
+                LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+                LTV *data=edict_get(edict,name,len,1,&md,&lti);
+                if (data && lti)
+                {
+                    char *recurse=FORMATA(recurse,code->len+len+3,"[%s]!%s",code->data,name);
+                    LTV_put(&edict->code,LTV_new(recurse,code->len+len+3,LT_DUP),0,NULL); // push code for tail recursion
+                    edict_add(edict,data,NULL); // push data from lookup
+                    LTV_put(&edict->code,code,0,NULL); // push code to execute
+                }
+                LTV_release(data);
+            }
+        }
+        else // single shot
+            LTV_put(&edict->code,code,0,NULL); // push code to execute
+    }
+    LTV_release(code);
+    return 0;
+}
 
 
- /*
-   void *edict_pop(EDICT *edict,char *name,int len,int end
-   LTV *edict_clone(LTV *ltv,int sibs)
-   int edict_copy_item(EDICT *edict,LTV *ltv)
-   int edict_copy(EDICT *edict,char *name,int len)
-   int edict_raise(EDICT *edict,char *name,int len)
-   void *edict_lookup(EDICT *edict,char *name,int len)
-   void edict_display_item(LTV *ltv,char *prefix)
-   void edict_list(EDICT *edict,char *buf,int len,int count,char *prefix)
-   int edict_len(EDICT *edict,char *buf,int len)
-   LTV *edict_getitem(EDICT *edict,char *name,int len,int pop)
-   LTV *edict_getitems(EDICT *edict,LTV *repos,int display)
-LTV *edict_get_nth_item(EDICT *edict,int n)
+int bc_and(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV *code=edict_rem(edict,&md);
+    if (code && code!=edict->nil)
+    {
+        if (name && len) // iterate through dict entry
+        {
+            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+            LTV *data=edict_get(edict,name,len,0,&md,&lti);
+            if (data && lti) // lookup succeeded
+            {
+                edict_add(edict,data,NULL); // push data from lookup
+                LTV_put(&edict->code,code,0,NULL); // push code to execute
+            }
+            LTV_release(data);
+        }
+    }
+    LTV_release(code);
+    return 1;
+}
+
+int bc_or(EDICT *edict,char *name,int len)
+{
+    void *md;
+    LTV *code=edict_rem(edict,&md);
+    if (code && code!=edict->nil)
+    {
+        if (name && len) // iterate through dict entry
+        {
+            LTI *lti=(void *) -1; // a NULL lti will indicate lookup fail
+            LTV *data=edict_get(edict,name,len,0,&md,&lti);
+            if (data && !lti) // lookup failed
+                LTV_put(&edict->code,code,0,NULL); // push code to execute
+            LTV_release(data);
+        }
+    }
+    LTV_release(code);
+    return 1;
+}
+
+int bc_print(EDICT *edict,char *name,int len)
+{
+    edict_print(edict,name,len);
+    return 1;
+}
+
+
+/*
+  void *edict_pop(EDICT *edict,char *name,int len,int end
+  LTV *edict_clone(LTV *ltv,int sibs)
+  int edict_copy_item(EDICT *edict,LTV *ltv)
+  int edict_copy(EDICT *edict,char *name,int len)
+  int edict_raise(EDICT *edict,char *name,int len)
+  void *edict_lookup(EDICT *edict,char *name,int len)
+  void edict_display_item(LTV *ltv,char *prefix)
+  void edict_list(EDICT *edict,char *buf,int len,int count,char *prefix)
+  int edict_len(EDICT *edict,char *buf,int len)
+  LTV *edict_getitem(EDICT *edict,char *name,int len,int pop)
+  LTV *edict_getitems(EDICT *edict,LTV *repos,int display)
+  LTV *edict_get_nth_item(EDICT *edict,int n)
 */
 
 int edict_bytecode(EDICT *edict,char bc,edict_bc_impl bcf)
@@ -602,7 +595,6 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,'&',bc_and);
     edict_bytecode(edict,'|',bc_or);
     edict_bytecode(edict,'?',bc_print);
-    edict_bytecode(edict,'~',bc_match);
 }
 
 int edict_init(EDICT *edict,LTV *root)

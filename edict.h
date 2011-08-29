@@ -8,13 +8,11 @@ typedef struct EDICT
 {
     CLL anon;
     CLL dict;
-    CLL code;
     CLL toks;
     LTV *nil;
     int numbc;
     char bc[256];
     edict_bc_impl bcf[256];
-    char bcdel[257];
 } EDICT;
 
 

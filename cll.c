@@ -23,7 +23,8 @@ CLL *CLL_put(CLL *lst,CLL *lnk,int end)
     return lnk;
 }
 
-CLL *CLL_splice(CLL *dst,CLL *src,int end)
+// prepend or postpend src to dest
+CLL *CLL_splice(CLL *dst,int end,CLL *src)
 {
     if (!dst || !src || CLL_EMPTY(src)) return NULL;
     CLL *dhead=dst->lnk[end],*shead=src->lnk[end],*stail=src->lnk[!end];

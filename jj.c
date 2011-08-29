@@ -75,11 +75,11 @@ int edict_dump(EDICT *edict)
     fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
     fprintf(dumpfile,"%1$d [label=\"dict\" color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
     fprintf(dumpfile,"%1$d [label=\"anon\" color=blue] %1$d -> %2$d\n",&edict->anon,edict->anon.lnk[0]);
-    fprintf(dumpfile,"%1$d [label=\"code\" color=blue] %1$d -> %2$d\n",&edict->code,edict->code.lnk[0]);
+    fprintf(dumpfile,"%1$d [label=\"toks\" color=blue] %1$d -> %2$d\n",&edict->toks,edict->toks.lnk[0]);
 
     edict_traverse(&edict->dict,LTOBJ_graph_pre,NULL);
     edict_traverse(&edict->anon,LTOBJ_graph_pre,NULL);
-    edict_traverse(&edict->code,LTOBJ_graph_pre,NULL); 
+    edict_traverse(&edict->toks,LTOBJ_graph_pre,NULL); 
     
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
@@ -124,10 +124,9 @@ int edict_print(EDICT *edict,char *name,int len)
 }
 
 
-EDICT edict;
-
 int main()
 {
+    EDICT edict;
     edict_init(&edict,LTV_new("ROOT",-1,0));
     edict_repl(&edict);
     edict_destroy(&edict);

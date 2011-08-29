@@ -16,7 +16,7 @@ extern void CLL_release(CLL *lst,void (*cll_release)(CLL *cll));
 
 
 extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);
-extern CLL *CLL_splice(CLL *dst,CLL *src,int end);
+extern CLL *CLL_splice(CLL *dst,int end,CLL *src);
 extern CLL *CLL_pop(CLL *lnk);
 extern CLL *CLL_get(CLL *lst,int pop,int end);
 extern CLL *CLL_find(CLL *lst,void *data,int len);

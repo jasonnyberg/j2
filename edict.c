@@ -335,10 +335,10 @@ void edict_parse(EDICT *edict,CLL *cll,char *expr,int exprlen,int depth)
                 adv_tok(TOK_OPS,expr,1,--depth,1);
                 break;
             default:
-                tlen=strspn(expr,edict->bc);
-                adv_tok(TOK_OPS,expr,tlen,depth,tlen);
-                tlen=minint(strcspn(expr,bc_ws),escape(exprlen));
-                adv_tok(TOK_NAME,expr,tlen,depth,tlen);
+                if ((tlen=strspn(expr,edict->bc)))
+                    adv_tok(TOK_OPS,expr,1,depth,1);
+                else if ((tlen=minint(escape(exprlen),strcspn(expr,bc_ws))))
+                    adv_tok(TOK_NAME,expr,tlen,depth,tlen);
                 break;
         }
     }
@@ -537,6 +537,11 @@ int bc_lit(EDICT *edict,char *name,int len)
     return bc_slit(edict,name,len-1);
 }
 
+int bc_subname(EDICT *edict,char *name,int len)
+{
+    return 1;
+}
+
 int bc_name(EDICT *edict,char *name,int len)
 {
     edict_name(edict,name,len,NULL);
@@ -693,12 +698,15 @@ int edict_bytecodes(EDICT *edict)
     
     edict_bytecode(edict,'\'',bc_slit);
     edict_bytecode(edict,'[',bc_lit);
+    edict_bytecode(edict,'.',bc_subname);
     edict_bytecode(edict,'@',bc_name);
     edict_bytecode(edict,'/',bc_kill);
     edict_bytecode(edict,'<',bc_namespace_enter);
     edict_bytecode(edict,'>',bc_namespace_leave);
     edict_bytecode(edict,'(',bc_namespace_enter); // exec_enter same as namespace_enter
-    // edict_bytecode(edict,')',bc_exec_leave);
+    edict_bytecode(edict,')',bc_kill);
+    edict_bytecode(edict,'{',bc_kill);
+    edict_bytecode(edict,'}',bc_kill);
     // edict_bytecode(edict,'!',bc_map);
     // edict_bytecode(edict,'&',bc_and);
     // edict_bytecode(edict,'|',bc_or);

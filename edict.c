@@ -217,7 +217,7 @@ typedef enum {
     TOK_WS       =1<<2,
     TOK_NAME     =1<<3,
     TOK_LIT      =1<<4,
-    TOK_OPS      =1<<5,
+    TOK_OP       =1<<5,
     TOK_ELLIPSIS =1<<6,
 
     TOK_REGEXP   =1<<7,
@@ -254,18 +254,15 @@ void TOK_free(EDICT_TOK *tok)
 }
 
 
-void labstr(char *label,char *s,int len)
-{
-    printf("%s: ",label);
-    fstrnprint(stdout,s,len);
-    printf("\n");
-}
+void TOK_release(EDICT_TOK *tok) { if (tok) TOK_free(tok); }
 
 
-LTV *edict_tok(CLL *cll,EDICT_EXPR_FLAGS flags,char *val,int len,int depth)
-{
-    return LTV_put(cll,LTV_new(val,len,0),1,TOK_new(flags,depth));
-}
+#define LABSTR(s,l,label...)                                          \
+    {                                                                 \
+        printf(label);                                                \
+        fstrnprint(stdout,s,l);                                       \
+        printf("\n");                                                 \
+    }
 
 
 void edict_parse(EDICT *edict,CLL *cll,char *expr,int exprlen,int depth)
@@ -298,17 +295,24 @@ void edict_parse(EDICT *edict,CLL *cll,char *expr,int exprlen,int depth)
         return i;
     }
 
+    LTV *edict_tok(EDICT_EXPR_FLAGS flags,char *val,int len,int depth)
+    {
+        return LTV_put(cll,(len?LTV_new(val,len,0):edict->nil),1,TOK_new(flags,depth));
+    }
+
     void adv_tok(EDICT_EXPR_FLAGS flags,char *val,int len,int depth,int advance)
     {
-        if (len)
+        if (advance)
         {
-            edict_tok(cll,flags,val,len,depth);
+            edict_tok(flags,val,len,depth);
             expr+=advance;
             exprlen-=advance;
         }
     }
     
     CLL_init(cll);
+
+    edict_tok(TOK_CODE,expr,exprlen,0); // optional
     
     while (exprlen>0)
     {
@@ -329,14 +333,21 @@ void edict_parse(EDICT *edict,CLL *cll,char *expr,int exprlen,int depth)
                 adv_tok(TOK_LIT,expr+1,tlen-2,depth,tlen);
                 break;
             case '{':
-                adv_tok(TOK_OPS,expr,1,depth++,1);
+                adv_tok(TOK_OP,expr,1,depth++,1);
                 break;
             case '}':
-                adv_tok(TOK_OPS,expr,1,--depth,1);
+                adv_tok(TOK_OP,expr,1,--depth,1);
                 break;
+            case '.':
+                if (exprlen>2 && expr[1]=='.' && expr[2]=='.')
+                {
+                    adv_tok(TOK_ELLIPSIS,expr,0,depth,3);
+                    break;
+                }
+                // else fall thru!
             default:
                 if ((tlen=strspn(expr,edict->bc)))
-                    adv_tok(TOK_OPS,expr,1,depth,1);
+                    adv_tok(TOK_OP,expr,1,depth,1);
                 else if ((tlen=minint(escape(exprlen),strcspn(expr,bc_ws))))
                     adv_tok(TOK_NAME,expr,tlen,depth,tlen);
                 break;
@@ -351,31 +362,31 @@ int edict_eval(EDICT *edict,LTV *ltv,EDICT_TOK *tok)
     
     if (tok->flags & TOK_FILE)
     {
-        labstr("TOK_FILE","",0);
+        LABSTR("",0,"TOK_FILE(%d): ",tok->depth);
     }
     else if (tok->flags & TOK_CODE)
     {
-        labstr("TOK_CODE",ltv->data,ltv->len);
+        LABSTR(ltv->data,ltv->len,"TOK_CODE(%d): ",tok->depth);
     }
     else if (tok->flags & TOK_WS)
     {
-        labstr("TOK_WS",ltv->data,ltv->len);
+        LABSTR(ltv->data,ltv->len,"TOK_WS(%d): ",tok->depth);
     }
     else if (tok->flags & TOK_NAME)
     {
-        labstr("TOK_NAME",ltv->data,ltv->len);
+        LABSTR(ltv->data,ltv->len,"TOK_NAME(%d): ",tok->depth);
     }
     else if (tok->flags & TOK_LIT)
     {
-        labstr("TOK_LIT",ltv->data,ltv->len);
+        LABSTR(ltv->data,ltv->len,"TOK_LIT(%d): ",tok->depth);
     }
-    else if (tok->flags & TOK_OPS)
+    else if (tok->flags & TOK_OP)
     {
-        labstr("TOK_OPS",ltv->data,ltv->len);
+        LABSTR(ltv->data,ltv->len,"TOK_OP(%d): ",tok->depth);
     }
     else if (tok->flags & TOK_ELLIPSIS)
     {
-        labstr("TOK_ELLIPSIS",ltv->data,ltv->len);
+        LABSTR(ltv->data,ltv->len,"TOK_ELLIPSIS(%d): ",tok->depth);
     }
 
     return status;
@@ -393,14 +404,13 @@ int edict_repl(EDICT *edict)
     //while ((expr=edict_getexpr(edict,&len)) && !edict_eval(edict,expr,len));
     while ((expr=edict_tok_file(stdin,&len)))
     {
-        ltv=edict_tok(&edict->toks,TOK_CODE,expr,len,0);
         edict_parse(edict,&cll,expr,len,0);
         CLL_splice(&edict->toks,1,&cll);
         while (ltv=LTV_get(&edict->toks,1,0,NULL,-1,(void **) &tok))
         {
             edict_eval(edict,ltv,tok);
-            TOK_free(tok);
-            LTV_free(ltv);
+            TOK_release(tok);
+            LTV_release(ltv);
         }
     }
 
@@ -707,10 +717,12 @@ int edict_bytecodes(EDICT *edict)
     edict_bytecode(edict,')',bc_kill);
     edict_bytecode(edict,'{',bc_kill);
     edict_bytecode(edict,'}',bc_kill);
-    // edict_bytecode(edict,'!',bc_map);
-    // edict_bytecode(edict,'&',bc_and);
-    // edict_bytecode(edict,'|',bc_or);
-    // edict_bytecode(edict,'?',bc_print);
+    edict_bytecode(edict,'+',bc_kill);
+    edict_bytecode(edict,'-',bc_kill);
+    edict_bytecode(edict,'!',bc_kill); // bc_map
+    edict_bytecode(edict,'&',bc_kill); // bc_and
+    edict_bytecode(edict,'|',bc_kill); // bc_or
+    edict_bytecode(edict,'?',bc_kill); // bc_print
 }
 
 int edict_init(EDICT *edict,LTV *root)

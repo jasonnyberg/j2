@@ -9,7 +9,7 @@
 struct CLL { struct CLL *lnk[2]; } __attribute__((aligned(sizeof(long))));
 
 typedef struct CLL CLL;
-typedef void *(*CLL_OP)(CLL *lnk,void *data);
+typedef void *(*CLL_OP)(CLL *lnk,void *data); // allowed to pop lnk but not neighbors.
 
 enum { HEAD=0,TAIL=1,FWD=0,REV=1,KEEP=0,POP=1 };
 
@@ -28,3 +28,4 @@ extern void *CLL_traverse(CLL *lst,int end,CLL_OP op,void *data);
 #define CLL_EMPTY(lst) (!CLL_get((lst),0,0))
 
 #endif
+1

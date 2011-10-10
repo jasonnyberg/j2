@@ -50,10 +50,10 @@ CLL *CLL_get(CLL *lst,int pop,int end)
     return pop?CLL_pop(lst->lnk[end]):lst->lnk[end];
 }
 
-void *CLL_traverse(CLL *lst,int reverse,CLL_OP op,void *data)
+void *CLL_traverse(CLL *lst,int end,CLL_OP op,void *data)
 {
-    CLL *result=NULL,*lnk=lst->lnk[reverse];
-    while (lnk && lnk!=lst && !(result=op(lnk,data)))
-        lnk=lnk->lnk[reverse];
+    CLL *result=NULL,*next=NULL,*lnk=lst->lnk[end];
+    while (lnk && lnk!=lst && next=lnk->lnk[end] && !(result=op(lnk,data)))
+        lnk=next;
     return result;
 }

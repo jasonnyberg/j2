@@ -226,7 +226,8 @@ char *edict_read(FILE *ifile,int *exprlen)
 
 typedef enum {
     TOK_NONE     =0,
-    
+
+    // actionables
     TOK_FILE     =1<<0,
     TOK_SEQUENCE =1<<1,
     TOK_LIT      =1<<2,
@@ -234,14 +235,21 @@ typedef enum {
     TOK_OP       =1<<4,
     TOK_ELLIPSIS =1<<5,
 
+    // modifiers
     TOK_ADD      =1<<6,
     TOK_REVERSE  =1<<7,
     TOK_REGEXP   =1<<8,
 
+    // etc.
     TOK_FREE     =1<<9,
+    TOK_LEAF     =1<<10,
 
-    // composites
+    // masks
     TOK_ACTION   = TOK_FILE | TOK_SEQUENCE | TOK_LIT | TOK_NAME | TOK_OP | TOK_ELLIPSIS,
+    TOK_MODIFIER = TOK_ADD | TOK_REVERSE | TOK_REGEXP,
+    TOK_ETC      = TOK_FREE | TOK_LEAF,
+    
+    // composites
     TOK_SEQ_FILE = TOK_SEQUENCE | TOK_FILE,
 } TOK_FLAGS;
 
@@ -253,6 +261,9 @@ typedef struct
     int len;
     TOK_FLAGS flags;
     CLL items;
+    LTI *lti;
+    LTVR *ltvr;
+    LTV *ltv;
 } EDICT_TOK;
 
 EDICT_TOK *TOK_new(TOK_FLAGS flags,void *data,int len)
@@ -265,6 +276,7 @@ EDICT_TOK *TOK_new(TOK_FLAGS flags,void *data,int len)
         tok->data=data;
         tok->len=len;
         CLL_init(&tok->items);
+        lti=ltvr=ltv=NULL;
     }
     return tok;
 }
@@ -361,7 +373,7 @@ void edict_sequence(EDICT *edict,EDICT_TOK *seq)
                 advance(1);
                 continue; // !!!
             case '.':
-                if (exprlen>2 && expr[1]=='.' && expr[2]=='.')
+                if (exprlen>2 && *expr==expr[1] && *expr=expr[2]) // "..."
                     adv_tok(TOK_ELLIPSIS | flags,expr,0,3);
                 else
                     adv_tok(TOK_NONE | flags,expr,0,1); // no token!!!
@@ -391,6 +403,23 @@ int edict_tok(EDICT *edict,EDICT_TOK *tok)
 {
     int status=0;
     TOK_FLAGS action=tok->flags | TOK_ACTION;
+    
+    int edict_sequence(EDICT_TOK *sequence)
+    {
+        EDICT_TOK *err_tok,*iter_tok;
+        void *process(CLL *lnk,void *data) { return edict_tok(edict,(EDICT_TOK *) data)?tok:NULL; }
+        void *iterate(CLL *lnk,void *data)
+        {
+            EDICT_TOK *tok=(EDICT_TOK *) data;
+            if (tok->flags
+        }
+        
+        if (CLL_EMPTY(&sequence->items))
+            edict_sequence(edict,sequence);
+        while (!(err_tok=CLL_traverse(sequence->items,FWD,process,NULL)) &&
+               (iter_tok=CLL_traverse(sequence->items,REV,iterate,NULL)));
+        return err_tok;
+    }
 
     int edict_seq_file(EDICT_TOK *tok)
     {
@@ -399,29 +428,21 @@ int edict_tok(EDICT *edict,EDICT_TOK *tok)
         char *expr;
         FILE *ifile=stdin;
 
-        if (tok->len && tok->data)
+        if (tok->data)
             ifile=fopen(tok->data,"r");
         
         while ((expr=edict_read(ifile,&len)))
         {
-            EDICT_TOK *sequence=TOK_new(TOK_SEQUENCE,expr,len);
-            edict_sequence(edict,sequence);
-            edict_tok(edict,sequence);
+            EDICT_TOK *sequence=TOK_new(TOK_SEQUENCE|TOK_FREE,expr,len);
+            EDICT_TOK *err_tok=edict_tok(edict,sequence);
+            // if (err_tok) token_error(sequence,token);
             TOK_free(sequence);
         }
         
-        if (tok->len && tok->data)
+        if (tok->data)
             fclose(ifile);
         
         return status;
-    }
-
-    int edict_sequence(EDICT_TOK *sequence)
-    {
-        EDICT_TOK *tok;
-        while ((tok=CLL_get(&sequence->items,KEEP,HEAD)))
-            edict_tok(edict,tok);
-        return 0;
     }
 
     if (tok->flags & TOK_REVERSE)    printf("(REV)");
@@ -430,8 +451,8 @@ int edict_tok(EDICT *edict,EDICT_TOK *tok)
     switch(action)
     {
         case TOK_NONE:               printf("\n"); break;
-        case TOK_SEQ_FILE:           edict_seq_file(tok); break;
         case TOK_SEQUENCE:           edict_sequence(tok); break;
+        case TOK_SEQ_FILE:           edict_seq_file(tok); break;
         case TOK_LIT:                LABSTR(ltv->data,ltv->len,"LIT:"); break;
         case TOK_NAME:               LABSTR(ltv->data,ltv->len,"NAME:"); break;
         case TOK_OP:                 LABSTR(ltv->data,ltv->len,"OP:"); break;

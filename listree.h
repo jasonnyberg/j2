@@ -52,7 +52,7 @@ typedef void *(*RB_OP)(RBN *rbn,void *data);
 
 extern RBR *RBR_init(RBR *rbr);
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern void *RBR_traverse(RBR *rbr,RB_OP op,void *data);
+extern void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
@@ -88,7 +88,7 @@ extern void LTI_release(RBN *rbn);
 //////////////////////////////////////////////////
 
 extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata);
-extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,void **metadata);
+extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
 extern void LT_init();
 

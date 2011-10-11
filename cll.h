@@ -28,4 +28,3 @@ extern void *CLL_traverse(CLL *lst,int end,CLL_OP op,void *data);
 #define CLL_EMPTY(lst) (!CLL_get((lst),0,0))
 
 #endif
-1

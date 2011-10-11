@@ -126,10 +126,13 @@ LTI *LT_find(RBR *rbr,char *name,int len,int insert)
     return lti;
 }
 
-void *RBR_traverse(RBR *rbr,RB_OP op,void *data)
+void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data)
 {
-    RBN *result=NULL,*rbn=NULL;
-    for (rbn=rb_first(rbr);rbn && !(result=op(rbn,data));rbn=rb_next(rbn));
+    RBN *rbn=NULL,*result=NULL;
+    if (reverse)
+        for (rbn=rb_last(rbr);rbn && !(result=op(rbn,data));rbn=rb_prev(rbn));
+    else
+        for (rbn=rb_first(rbr);rbn && !(result=op(rbn,data));rbn=rb_next(rbn));
     return result;
 }
 
@@ -145,14 +148,14 @@ void *LTV_traverse(LTV *ltv,void *data)
     
     if (!ltobj_data) // remove absoloute visited flag
         return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && ltv->rbr.rb_node)?
-            RBR_traverse(&ltv->rbr,LTI_traverse,data):NULL;
+            RBR_traverse(&ltv->rbr,0,LTI_traverse,data):NULL;
     else if (!(ltv->flags&LT_RVIS))
     {
         if (ltobj_data->preop && (rval=ltobj_data->preop(NULL,NULL,ltv,data))) goto done;
         
         ltv->flags|=LT_RVIS;
         ltobj_data->depth++;
-        if (!ltobj_data->halt && ltv->rbr.rb_node) rval=RBR_traverse(&ltv->rbr,LTI_traverse,data);
+        if (!ltobj_data->halt && ltv->rbr.rb_node) rval=RBR_traverse(&ltv->rbr,0,LTI_traverse,data);
         ltobj_data->depth--;
         ltv->flags&=~LT_RVIS;
         if (rval) goto done;
@@ -253,7 +256,7 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata)
     return rval;
 }
 
-LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,void **metadata)
+LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr)
 {
     void *ltv_match(CLL *cll,void *data)
     {
@@ -263,14 +266,17 @@ LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,void **metadata)
     }
     
     LTV *rval=NULL;
-    LTVR *ltvr=NULL;
+    (*ltvr)=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
+    if (!((*ltvr)=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
         return NULL;
-    rval=ltvr->ltv;
+    rval=(*ltvr)->ltv;
     rval->refs-=pop;
-    *metadata=ltvr->metadata;
-    if (pop) LTVR_free(ltvr);
+    if (pop)
+    {
+        LTVR_free(*ltvr);
+        (*ltvr)=NULL;
+    }
     return rval;
 }
 

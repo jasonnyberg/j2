@@ -393,21 +393,23 @@ void edict_parse(EDICT *edict,EDICT_TOK *expr)
                 break;
             case '[':
                 tlen=series(NULL,NULL,']'); // !!!
-                if (tok_name) tok_append(tok_name,TOK_LIT | flags,expr->data+1,tlen-1,tlen+1); // name lit
-                else tok_append(expr,TOK_LIT | flags,expr->data+1,tlen-1,tlen+1); // naked lit
+                if (tok_name)
+                    tok_append(name,TOK_LIT | flags,expr->data+1,tlen-1,tlen+1); // name lit
+                else
+                    tok_append(expr,TOK_LIT | flags,expr->data+1,tlen-1,tlen+1); // naked lit
                 break;
             case '.':
                 tlen=series(".",NULL,0);
                 if (tlen>2) // "..." terminates an atom
                     tok_append(tok_atom(),TOK_ELLIPSIS | flags,expr->data,0,3),atom=name=NULL;
                 else if (tlen==2 | !name) // zero-len subname
-                    tok_append=adv_tok(tok_atom(),TOK_NAME | flags,"",0,1);
+                    name=tok_append(tok_atom(),TOK_NAME | flags,"",0,1);
                 else // delimits a nonzero-len subname
                     advance(1),name=NULL;
                 break;
             default:
                 if ((tlen=series(NULL,bc_ws,0))) // !!!
-                    name=adv_tok(tok_atom(),TOK_NAME | flags,expr->data,tlen,tlen);
+                    name=tok_append(tok_atom(),TOK_NAME | flags,expr->data,tlen,tlen);
                 break;
         }
 
@@ -484,6 +486,15 @@ EDICT_TOK *edict_tok(EDICT *edict,EDICT_TOK *tok,int iter)
         return tok;
     }
 
+    
+    EDICT_TOK *edict_atom(EDICT_TOK *atom,int iter)
+    {
+        EDICT_TOK *tok=NULL;
+        
+        return tok;
+    }
+
+    
     EDICT_TOK *edict_expr(EDICT_TOK *expr,int iter)
     {
         EDICT_TOK *tok=NULL;

@@ -53,7 +53,7 @@ CLL *CLL_get(CLL *lst,int pop,int end)
 void *CLL_traverse(CLL *lst,int end,CLL_OP op,void *data)
 {
     CLL *result=NULL,*next=NULL,*lnk=lst->lnk[end];
-    while (lnk && lnk!=lst && next=lnk->lnk[end] && !(result=op(lnk,data)))
+    while (lnk && lnk!=lst && (next=lnk->lnk[end]) && !(result=op(lnk,data)))
         lnk=next;
     return result;
 }

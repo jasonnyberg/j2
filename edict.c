@@ -245,12 +245,13 @@ typedef enum {
 
     // modifiers
     TOK_ADD      =1<<0x9,
-    TOK_REVERSE  =1<<0xa,
-    TOK_REGEXP   =1<<0xb,
+    TOK_REM      =1<<0xa,
+    TOK_REVERSE  =1<<0xb,
+    TOK_REGEXP   =1<<0xc,
 
     // masks
     TOK_TYPES     = TOK_FILE | TOK_EXPR | TOK_EXEC | TOK_SCOPE | TOK_ITER | TOK_ATOM | TOK_LIT | TOK_OP | TOK_NAME,
-    TOK_MODIFIERS = TOK_ADD | TOK_REVERSE | TOK_REGEXP,
+    TOK_MODIFIERS = TOK_ADD | TOK_REM | TOK_REVERSE | TOK_REGEXP,
 } TOK_FLAGS;
 
 
@@ -374,7 +375,13 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
                 tlen=series(NULL,NULL,']');
                 append(name,TOK_LIT|flags,expr->data+1,tlen-2,tlen); // if name is null, reverts to expr
                 break;
-            case '@': case '/': case '&': case '|': case '?':
+            case '@':
+                append(curatom(name!=NULL),TOK_OP|TOK_ADD,expr->data,1,1); // op after name resets atom
+                break;
+            case '/':
+                append(curatom(name!=NULL),TOK_OP|TOK_REM,expr->data,1,1); // op after name resets atom
+                break;
+            case '&': case '|': case '?':
                 append(curatom(name!=NULL),TOK_OP,expr->data,1,1); // op after name resets atom
                 break;
             case '.':
@@ -469,8 +476,10 @@ EDICT_TOK *edict_tok(EDICT *edict,EDICT_TOK *tok)
 
 #define SHOWTOK(type,etc) {                                               \
         printf("%s:%d(",type,tok->len);                                   \
-        if (tok->flags & TOK_REVERSE)    printf("(REV)");                 \
         if (tok->flags & TOK_ADD)        printf("(ADD)");                 \
+        if (tok->flags & TOK_REM)        printf("(REM)");                 \
+        if (tok->flags & TOK_REVERSE)    printf("(REVERSE)");             \
+        if (tok->flags & TOK_REGEXP)     printf("(REGEXP)");              \
         etc;                                                              \
         printf(")");                                                      \
     }

@@ -295,46 +295,29 @@ void TOK_free(EDICT_TOK *tok)
 
 int edict_parse(EDICT *edict,EDICT_TOK *expr)
 {
+    int status=0;
     char *ws=" \t\n";
     char *bc_ws=CONCATA(bc_ws,edict->bc,ws);
-    int status=0;
     int tlen;
     TOK_FLAGS flags=TOK_NONE;
     EDICT_TOK *atom=NULL,*name=NULL;
 
     // check for balance/matchset/notmatchset 
-    int series(char *including,char *excluding,char balance)
+    int series(char *include,char *exclude,char balance)
     {
-        int i,offset,depth,found,end;
-        int ilen=including?strlen(including):0;
-        int elen=excluding?strlen(excluding):0;
+        int i,depth;
+        int ilen=include?strlen(include):0;
+        int elen=exclude?strlen(exclude):0;
         
-        for (i=offset=depth=end=found=0;i<expr->len;i++)
+        for (i=depth=0;i<expr->len;i++)
         {
-            if (!found && expr->data[i+offset]=='\\') expr->len--,offset++,expr->data[i]=expr->data[(i++)+offset];
-            if (offset) expr->data[i]=expr->data[i+offset];
-
-            if (!found)
-            {
-                if (balance)
-                {
-                    if (expr->data[i]==expr->data[0])
-                        depth++;
-                    else if (expr->data[i]==balance)
-                        found=!(--depth);
-                }
-                else found=
-                    (including && !memchr(including,expr->data[i],ilen)) ||
-                    (excluding && memchr(excluding,expr->data[i],elen));
-                
-                end=i;
-            }
-            
-            if (found && !offset)
-                break;
+            if (expr->data[i]=='\\') i++;
+            else if (balance && !(depth+=(expr->data[i]==expr->data[0])?1:(expr->data[i]==balance)?-1:0)) return i+1;
+            else if (include && !memchr(include,expr->data[i],ilen)) return i;
+            else if (exclude && memchr(exclude,expr->data[i],elen)) return i;
         }
         
-        return found?end:expr->len;
+        return expr->len;
     }
 
     void advance(adv)
@@ -344,14 +327,14 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
         expr->len-=adv;
     }
 
-    EDICT_TOK *tok_atom(int reset)
+    EDICT_TOK *curatom(int reset)
     {
         name=NULL;
         if (reset) atom=NULL;
         return atom?atom:(atom=(EDICT_TOK *) CLL_put(&expr->items,(CLL *) TOK_new(TOK_ATOM,"",0),TAIL));
     }
 
-    EDICT_TOK *tok_append(EDICT_TOK *parent,TOK_FLAGS flags,void *data,int len,int adv)
+    EDICT_TOK *append(EDICT_TOK *parent,TOK_FLAGS flags,void *data,int len,int adv)
     {
         if (parent==NULL) parent=expr;
         if (parent==expr) atom=name=NULL;
@@ -373,40 +356,40 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
                 continue; // !!!
             case ' ': case '\t': case '\n':
                 tlen=series(ws,NULL,0);
-                tok_append(expr,TOK_NONE,expr->data,tlen,tlen);
+                append(expr,TOK_NONE,expr->data,tlen,tlen);
                 break;
             case '(':
                 tlen=series(NULL,NULL,')');
-                tok_append(expr,TOK_EXEC|flags,expr->data+1,tlen-1,tlen+1);
+                append(expr,TOK_EXEC|flags,expr->data+1,tlen-2,tlen);
                 break;
             case '{':
                 tlen=series(NULL,NULL,'}');
-                tok_append(expr,TOK_ITER|flags,expr->data+1,tlen-1,tlen+1);
+                append(expr,TOK_ITER|flags,expr->data+1,tlen-2,tlen);
                 break;
             case '<':
                 tlen=series(NULL,NULL,'>');
-                tok_append(expr,TOK_SCOPE|flags,expr->data+1,tlen-1,tlen+1);
+                append(expr,TOK_SCOPE|flags,expr->data+1,tlen-2,tlen);
                 break;
             case '[':
                 tlen=series(NULL,NULL,']');
-                tok_append(name,TOK_LIT|flags,expr->data+1,tlen-1,tlen+1); // if name is null, reverts to expr
+                append(name,TOK_LIT|flags,expr->data+1,tlen-2,tlen); // if name is null, reverts to expr
                 break;
-            case '@': case '/': case '!': case '&': case '|': case '?':
-                tok_append(tok_atom(name!=NULL),TOK_OP,expr->data,1,1); // op after name resets atom
+            case '@': case '/': case '&': case '|': case '?':
+                append(curatom(name!=NULL),TOK_OP,expr->data,1,1); // op after name resets atom
                 break;
             case '.':
                 tlen=series(".",NULL,0);
                 if (tlen>2) // ellipsis terminates an atom
-                    tok_append(tok_atom(0),TOK_NAME | flags,ELLIPSIS,3,3),
+                    append(curatom(0),TOK_NAME | flags,ELLIPSIS,3,3),
                         atom=name=NULL;
                 else if (tlen==2 | !name) // zero-len subname
-                    name=tok_append(tok_atom(0),TOK_NAME | flags,ANONYMOUS,0,1);
+                    name=append(curatom(0),TOK_NAME | flags,ANONYMOUS,0,1);
                 else // delimits a nonzero-len subname
                     advance(1),name=NULL;
                 break;
             default:
                 if ((tlen=series(NULL,bc_ws,0)))
-                    name=tok_append(tok_atom(0),TOK_NAME | flags,expr->data,tlen,tlen);
+                    name=append(curatom(0),TOK_NAME | flags,expr->data,tlen,tlen);
                 break;
         }
 
@@ -423,6 +406,11 @@ EDICT_TOK *edict_tok(EDICT *edict,EDICT_TOK *tok)
 {
     TOK_FLAGS type=tok->flags & TOK_TYPES;
     EDICT_TOK *errtok;
+
+    EDICT_TOK *edict_none(EDICT_TOK *tok)
+    {
+        fstrnprint(stdout,tok->data,tok->len);
+    }
 
     EDICT_TOK *edict_lit(EDICT_TOK *tok)
     {
@@ -479,8 +467,8 @@ EDICT_TOK *edict_tok(EDICT *edict,EDICT_TOK *tok)
         return NULL;
     }
 
-#define LABTOK(type,etc) {                                                \
-        printf(" %s(",type);                                              \
+#define SHOWTOK(type,etc) {                                               \
+        printf("%s:%d(",type,tok->len);                                   \
         if (tok->flags & TOK_REVERSE)    printf("(REV)");                 \
         if (tok->flags & TOK_ADD)        printf("(ADD)");                 \
         etc;                                                              \
@@ -490,25 +478,25 @@ EDICT_TOK *edict_tok(EDICT *edict,EDICT_TOK *tok)
     switch(type)
     {
         case TOK_NONE:
-            break;
+            errtok=edict_none(tok); break;
         case TOK_FILE:
-            LABTOK("FILE",errtok=edict_file(tok)); break;
+            SHOWTOK("FILE",errtok=edict_file(tok)); break;
         case TOK_EXPR:
-            LABTOK("EXPR",errtok=edict_expr(tok)); break;
+            SHOWTOK("EXPR",errtok=edict_expr(tok)); break;
         case TOK_EXEC:
-            LABTOK("EXEC",errtok=edict_expr(tok)); break;
+            SHOWTOK("EXEC",errtok=edict_expr(tok)); break;
         case TOK_SCOPE:
-            LABTOK("SCOPE",errtok=edict_expr(tok)); break;
+            SHOWTOK("SCOPE",errtok=edict_expr(tok)); break;
         case TOK_ITER:
-            LABTOK("ITER",errtok=edict_expr(tok)); break;
+            SHOWTOK("ITER",errtok=edict_expr(tok)); break;
         case TOK_ATOM:
-            LABTOK("ATOM",errtok=edict_atom(tok)); break;
+            SHOWTOK("ATOM",errtok=edict_atom(tok)); break;
         case TOK_LIT:
-            LABTOK("LIT",errtok=edict_lit(tok)); break;
+            SHOWTOK("LIT",errtok=edict_lit(tok)); break;
         case TOK_OP:
-            LABTOK("OP",errtok=edict_op(tok)); break;
+            SHOWTOK("OP",errtok=edict_op(tok)); break;
         case TOK_NAME:
-            LABTOK("NAME",errtok=edict_name(tok)); break;
+            SHOWTOK("NAME",errtok=edict_name(tok)); break;
     }
     return errtok;
 }

@@ -80,6 +80,7 @@ extern void try_error();
 
 #define FORMATA(p,len,fmt,args...) (p=alloca(strlen(fmt)+len+1),sprintf(p,fmt,args),p)
 #define CONCATA(p,str1,str2) (stpcpy(stpcpy((p=alloca(strlen(str1)+strlen(str2)+1)),(str1)),(str2)),p)
+#define STRIPDUPA(str,len) (strstrip(memcpy(alloca(*len),str,*len),len))
 
 extern void *mymalloc(int size);
 extern void *myrealloc(void *buf,int newsize);
@@ -93,9 +94,11 @@ extern void *mybzero(void *p,int size);
 #define DELETE(var) (myfree(var,0))
 #define RELEASE(var) (DELETE(var),var=NULL)
 
+extern char *strstrip(char *buf,int *len);
 extern int fstrnprint(FILE *ofile,char *str,int len);
 
 extern char *bufdup(char *buf,int len);
+extern char *stripdup(char *buf,int *len);
 
 extern int strtou(char *str,int len,unsigned *val);
 extern int strton(char *str,int len,long double *val);

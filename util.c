@@ -16,26 +16,6 @@ char *STRTOLL_TAIL;
 int Gmymalloc=0;
 int Gerrs;
 
-int fstrnprint(FILE *ofile,char *str,int len)
-{
-    char s;
-    if (len==-1)
-        len=strlen(str);
-    
-    for (s=*str;len--;s=*++str)
-        switch(s)
-        {
-            case '\\': fputs("\\\\",ofile); break;
-            case '\t': fputs("\\t",ofile); break;
-            case '\r': fputs("\\r",ofile); break;
-            case '\n': fputs("\\n",ofile); break;
-            case '\"': fputs("\"",ofile); break;
-            default: fputc(s,ofile); break;
-        }
-    
-    return 0;
-}
-
 void try_error()
 {
     Gerrs++;
@@ -73,6 +53,40 @@ void *mybzero(void *buf,int size)
     return buf?memset(buf,0,size):NULL;
 }
 
+char *strstrip(char *buf,int *len)
+{
+    int i,offset;
+    for (i=offset=0;(i+offset)<(*len);i++)
+    {
+        if (buf[i+offset]=='\\') offset++,buf[i]=buf[i+offset],i++;
+        if (offset) buf[i]=buf[i+offset];
+    }
+    (*len)-=offset;
+    return buf;
+}
+
+int fstrnprint(FILE *ofile,char *str,int len)
+{
+    char *buf;
+    if (len==-1) len=strlen(str);
+    if (!len) return 0;
+    buf=STRIPDUPA(str,&len);
+    do
+    {
+        switch(*buf)
+        {
+            case '\\': fputs("\\",ofile); break;
+            case '\t': fputs("\\t",ofile); break;
+            case '\r': fputs("\\r",ofile); break;
+            case '\n': fputs("\\n",ofile); break;
+            case '\"': fputs("\"",ofile); break;
+            default: fputc(*buf,ofile); break;
+        }
+    } while (++buf,--len);
+
+    return len;
+}
+
 char *bufdup(char *buf,int len)
 {
     // always null terminate whether string or not
@@ -82,6 +96,11 @@ char *bufdup(char *buf,int len)
     memcpy(newbuf,buf,len);
     newbuf[len]=0;
     return newbuf;
+}
+
+char *stripdup(char *buf,int *len)
+{
+    return strstrip(bufdup(buf,*len),len);
 }
 
 int strtou(char *str,int len,unsigned *val)

@@ -47,7 +47,9 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
         ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
         ltv->flags=flags;
-        ltv->data=flags&LT_DUP?ltv->flags|=LT_DEL,bufdup(data,ltv->len):data;
+        ltv->data=data;
+        if (flags&LT_DUP) (ltv->flags|=LT_DEL),(ltv->data=bufdup(ltv->data,ltv->len));
+        if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
     }
     return ltv;
 }

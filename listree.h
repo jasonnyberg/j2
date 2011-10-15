@@ -15,11 +15,12 @@ extern int ltv_count,ltvr_count,lti_count;
 
 typedef enum {
     LT_DUP=1<<0, // bufdup data for new LTV
-        LT_DEL=1<<1, // free not-referenced LTV data upon release
-        LT_RO=1<<2, // never release LTV/children
-        LT_CVAR=1<<3, // LTV data is a C variable
-        LT_AVIS=1<<4, // absolute traversal visitation flag
-        LT_RVIS=1<<5, // recursive traversal visitation flag
+        LT_ESC=1<<1, // strip escapes (changes buf and len!)
+        LT_DEL=1<<2,  // free not-referenced LTV data upon release
+        LT_RO=1<<3,   // never release LTV/children
+        LT_CVAR=1<<4, // LTV data is a C variable
+        LT_AVIS=1<<5, // absolute traversal visitation flag
+        LT_RVIS=1<<6, // recursive traversal visitation flag
 } LTV_FLAGS;
 
 typedef struct
@@ -87,7 +88,7 @@ extern void LTI_release(RBN *rbn);
 // Dictionary
 //////////////////////////////////////////////////
 
-extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata);
+extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr);
 extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
 extern void LT_init();

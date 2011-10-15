@@ -248,10 +248,12 @@ typedef enum {
     TOK_REM      =1<<0xa,
     TOK_REVERSE  =1<<0xb,
     TOK_REGEXP   =1<<0xc,
+    TOK_AVIS     =1<<0xd,
+    TOK_RVIS     =1<<0xe,
 
     // masks
     TOK_TYPES     = TOK_FILE | TOK_EXPR | TOK_EXEC | TOK_SCOPE | TOK_ITER | TOK_ATOM | TOK_LIT | TOK_OP | TOK_NAME,
-    TOK_MODIFIERS = TOK_ADD | TOK_REM | TOK_REVERSE | TOK_REGEXP,
+    TOK_MODIFIERS = TOK_ADD | TOK_REM | TOK_REVERSE | TOK_REGEXP | TOK_AVIS | TOK_RVIS,
 } TOK_FLAGS;
 
 
@@ -263,8 +265,7 @@ typedef struct
     TOK_FLAGS flags;
     CLL items;
     LTI *lti;
-    LTVR *ltvr;
-    LTV *ltv;
+    LTVR *ltvr; // points to LTV
 } EDICT_TOK;
 
 EDICT_TOK *TOK_new(TOK_FLAGS flags,char *data,int len)
@@ -386,9 +387,8 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
                 break;
             case '.':
                 tlen=series(".",NULL,0);
-                if (tlen>2) // ellipsis terminates an atom
+                if (tlen>2)
                     append(curatom(0),TOK_NAME | flags,ELLIPSIS,3,3),
-                        atom=name=NULL;
                 else if (tlen==2 | !name) // zero-len subname
                     name=append(curatom(0),TOK_NAME | flags,ANONYMOUS,0,1);
                 else // delimits a nonzero-len subname
@@ -407,114 +407,145 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
 }
 
 
-// if iter==true, return tok * if reprocessing of token is required
-// else return tok * if there was an error processing the token
-EDICT_TOK *edict_tok(EDICT *edict,EDICT_TOK *tok)
-{
-    TOK_FLAGS type=tok->flags & TOK_TYPES;
-    EDICT_TOK *errtok;
-
-    EDICT_TOK *edict_none(EDICT_TOK *tok)
-    {
-        fstrnprint(stdout,tok->data,tok->len);
-    }
-
-    EDICT_TOK *edict_lit(EDICT_TOK *tok)
-    {
-        fstrnprint(stdout,tok->data,tok->len);
-    }
-
-    EDICT_TOK *edict_op(EDICT_TOK *tok)
-    {
-        fstrnprint(stdout,tok->data,tok->len);
-    }
-
-    EDICT_TOK *edict_name(EDICT_TOK *tok)
-    {
-        fstrnprint(stdout,tok->data,tok->len);
-        void *eval(CLL *lnk,void *data) { return edict_tok(edict,(EDICT_TOK *) lnk); }
-        return (EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval,NULL);
-    }
-    
-    EDICT_TOK *edict_atom(EDICT_TOK *tok)
-    {
-        void *eval(CLL *lnk,void *data) { return edict_tok(edict,(EDICT_TOK *) lnk); }
-        return (EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval,NULL);
-    }
-    
-    EDICT_TOK *edict_expr(EDICT_TOK *tok)
-    {
-        void *eval(CLL *lnk,void *data) { return edict_tok(edict,(EDICT_TOK *) lnk); }
-        if (CLL_EMPTY(&tok->items)) edict_parse(edict,tok);
-        return (EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval,NULL);
-    }
-
-    EDICT_TOK *edict_file(EDICT_TOK *tok)
-    {
-        int len;
-        char *line;
-        FILE *ifile=stdin;
-
-        if (tok->data)
-            ifile=fopen(tok->data,"r");
-        
-        while ((line=edict_read(ifile,&len)))
-        {
-            EDICT_TOK *expr=TOK_new(TOK_EXPR,line,len);
-            EDICT_TOK *err_tok=edict_tok(edict,expr);
-            // if (err_tok) token_error(expr,token);
-            TOK_free(expr);
-            free(line);
-            printf("\n");
-        }
-        
-        if (tok->data)
-            fclose(ifile);
-        
-        return NULL;
-    }
-
-#define SHOWTOK(type,etc) {                                               \
-        printf("%s:%d(",type,tok->len);                                   \
-        if (tok->flags & TOK_ADD)        printf("(ADD)");                 \
-        if (tok->flags & TOK_REM)        printf("(REM)");                 \
-        if (tok->flags & TOK_REVERSE)    printf("(REVERSE)");             \
-        if (tok->flags & TOK_REGEXP)     printf("(REGEXP)");              \
-        etc;                                                              \
-        printf(")");                                                      \
-    }
-    
-    switch(type)
-    {
-        case TOK_NONE:
-            errtok=edict_none(tok); break;
-        case TOK_FILE:
-            SHOWTOK("FILE",errtok=edict_file(tok)); break;
-        case TOK_EXPR:
-            SHOWTOK("EXPR",errtok=edict_expr(tok)); break;
-        case TOK_EXEC:
-            SHOWTOK("EXEC",errtok=edict_expr(tok)); break;
-        case TOK_SCOPE:
-            SHOWTOK("SCOPE",errtok=edict_expr(tok)); break;
-        case TOK_ITER:
-            SHOWTOK("ITER",errtok=edict_expr(tok)); break;
-        case TOK_ATOM:
-            SHOWTOK("ATOM",errtok=edict_atom(tok)); break;
-        case TOK_LIT:
-            SHOWTOK("LIT",errtok=edict_lit(tok)); break;
-        case TOK_OP:
-            SHOWTOK("OP",errtok=edict_op(tok)); break;
-        case TOK_NAME:
-            SHOWTOK("NAME",errtok=edict_name(tok)); break;
-    }
-    return errtok;
-}
-
-
 int edict_repl(EDICT *edict)
 {
+    EDICT_TOK *errtok;
+    
+    void *eval_expr(CLL *lnk,void *data)
+    {
+        EDICT_TOK *tok=(EDICT_TOK *) lnk;
+        
+        EDICT_TOK *none(EDICT_TOK *tok)
+        {
+            fstrnprint(stdout,tok->data,tok->len);
+        }
+        
+        EDICT_TOK *lit(EDICT_TOK *tok)
+        {
+            fstrnprint(stdout,tok->data,tok->len);
+            LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),tok->flags&TOK_REVERSE,NULL);
+        }
+    
+        EDICT_TOK *atom(EDICT_TOK *tok)
+        {
+            EDICT_TOK *optok,*nametok;
+            int firstname,ops;
+            
+            EDICT_TOK *op(EDICT_TOK *tok) { return tok->flags!=tok->flags|TOK_AVIS?tok:NULL; } // transitions to flagged
+            
+            EDICT_TOK *name(EDICT_TOK *tok)
+            {
+                EDICT_TOK *parenttok=nametok;
+                
+                EDICT_TOK *resolve_lti(int insert)
+                {
+                    void *lookup(CLL *cll,void *data)
+                    {
+                        LTVR *ltvr=(LTVR *) cll;
+                        if (!tok->lti && ltvr) tok->lti=LT_find(&ltvr->ltv.rbr,tok->data,tok->len,insert);
+                        return tok->lti?tok:NULL;
+                    }
+                    
+                    if (firstname)
+                        return tok->data==ELLIPSIS?CLL_traverse(&edict->dict,0,lookup,NULL):lookup(CLL_get(&edict->dict,0,0),NULL);
+                    else if (parenttok && parenttok->ltvr)
+                        return lookup(CLL_get(&parenttok->ltvr,0,0),NULL);
+                    else
+                        return NULL;
+                }
+                
+                void *eval_name(CLL *cll,void *data)
+                {
+                    EDICT_TOK *lit=(EDICT_TOK *) cll;
+                    
+                    if (!(lit->flags&TOK_LIT))
+                        return printf("unexpected tok type in NAME\n"),tok;
+                    
+                    if ((nametok=resolve_lti(lit->flags&TOK_ADD)) && nametok->lti)
+                    {
+                        if (tok->flags&TOK_ADD) // add
+                            LTV_put(&nametok->lti->cll,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),tok->flags&TOK_REVERSE,&tok->ltvr);
+                        else // match
+                            LTV_get(&nametok->lti->cll,0,tok->flags&TOK_REVERSE,tok->data,tok->len,&tok->ltvr);
+                    }
+                    return NULL;
+                }
+
+                nametok=resolve_lti(tok->flags&TOK_ADD || (optok && optok->flags&TOK_ADD)); // in case there aren't any lits
+                errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_name,NULL); // in case there are
+                firstname=0;
+                return errtok;
+            }
+    
+            void *eval_atom(CLL *lnk,void *data)
+            {
+                EDICT_TOK *tok=(EDICT_TOK *) lnk;
+                switch(tok->flags&TOK_TYPES)
+                {
+                    case TOK_OP:   optok=op(tok); break;
+                    case TOK_NAME: nametok=name(tok); break;
+                    default: printf("unexpected tok type in ATOM\n"); break;
+                }
+                return NULL;
+            }
+
+            int done=0;
+            while(!done)
+            {
+                first=1;
+                if (!(errtok=CLL_traverse(&tok->items,FWD,eval_atom,NULL)))
+                {
+                    if (optok) switch(optok->data)
+                    {
+                        case '@': 
+                        case '/':
+                        default: printf("OP %c not implemented\n",optok->data); break;
+                    }
+                    else if (nametok && nametok->ltvr)
+                        LTV_put(&edict->anon,nametok->ltvr->ltv,0);
+                }
+            }
+            return errtok;
+        }
+    
+        EDICT_TOK *expr(EDICT_TOK *tok)
+        {
+            if (CLL_EMPTY(&tok->items)) edict_parse(edict,tok);
+            return (EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
+        }
+
+        EDICT_TOK *file(EDICT_TOK *tok)
+        {
+            int len;
+            char *line;
+            FILE *ifile=tok->data?fopen(tok->data,"r"):stdin;
+            while ((line=edict_read(ifile,&len)))
+            {
+                EDICT_TOK *expr_tok=TOK_new(TOK_EXPR,line,len);
+                err_tok=expr(expr_tok);
+                TOK_free(expr_tok);
+                free(line);
+            }
+            if (tok->data) fclose(ifile);
+            return err_tok;
+        }
+    
+        switch(tok->flags&TOK_TYPES)
+        {
+            case TOK_NONE:  return none(tok);
+            case TOK_LIT:   return lit(tok); 
+            case TOK_ATOM:  return atom(tok);
+            case TOK_EXPR:  return expr(tok);
+            case TOK_EXEC:  return expr(tok);
+            case TOK_SCOPE: return expr(tok);
+            case TOK_ITER:  return expr(tok);
+            case TOK_FILE:  return file(tok);
+            default: printf("unexpected tok type\n"); return tok;
+        }
+    }
+
     EDICT_TOK *tok=TOK_new(TOK_FILE,NULL,0); // read from stdin
-    EDICT_TOK *errtok=edict_tok(edict,tok);
+    EDICT_TOK *errtok=file(tok);
     TOK_free(tok);
     return errtok!=NULL;
 }

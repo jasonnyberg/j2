@@ -1,14 +1,20 @@
 /*
-  a.b.c  -> name
-  a.b,c  -> 2nd index?
-  !5  -> run 5 times
-  !name  -> map to items in name, i.e. *name
+ <number>         # numeric literal; <number>->TOS
+ [xyz a.b.c]      # literal; ->TOS
+ TOS @<name>      # apply name; TOS->dict
+ <name>           # deref name; dict->TOS
+ TOS!<name>       # for x matching <name>: eval(x TOS)
+ TOS(xyz a.b.c)   # eval(xyz a.b.c TOS) in context of a lexically-scoped subdict
+ TOS<xyz a.b.c>   # eval(xyz a.b.c) in context of TOS's subdictionary
+ {xyz a.b.c}      # "flatten" contents of "{}"; recursively unpack literals/deref names.
 
-  a.*.c  -> search for matches, i.e. [a.*.c] $
-  a.b.c -> [x]
-  a.b.* -> [[x] [y] [z]]
-  a.*.* -> [[[d] [e] [f]]  [[g] [h] [i]]  [[j] [k] [l]]
+ Numeric literal can be considered a virtual dictionary entry that evaluates to itself.
+ For "!" and "()" eval operations, TOS is popped once and applied repeatedly for each iteration.
+ 
+ snippets:
+ [x]@a.b.c [y]@a.b.c     # dict entries stack!
+ [xyz]!a.b.*             # eval xyz for each a.b.*
+ [xyz]!5                 # eval xyz 5 times (numeric lits not pushed to TOS)
 
-  need syntax for stack vs. queue naming  1@a  vs. 2$b?
 */
 

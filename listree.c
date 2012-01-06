@@ -279,7 +279,7 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata)
     return rval;
 }
 
-LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr)
+LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
 {
     void *ltv_match(CLL *cll,void *data)
     {
@@ -287,19 +287,20 @@ LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr)
         if (!ltvr || !ltvr->ltv || ltvr->ltv->len!=matchlen || memcmp(ltvr->ltv->data,match,matchlen)) return NULL;
         else return pop?CLL_pop(cll):cll;
     }
-    
+
+    LTVR *ltvr=NULL;
     LTV *rval=NULL;
-    (*ltvr)=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!((*ltvr)=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
         return NULL;
-    rval=(*ltvr)->ltv;
+    rval=ltvr->ltv;
     rval->refs-=pop;
     if (pop)
     {
-        LTVR_free(*ltvr);
-        (*ltvr)=NULL;
+        LTVR_free(ltvr);
+        ltvr=NULL;
     }
+    if (ltvr_ret) (*ltvr_ret)=ltvr;
     return rval;
 }
 

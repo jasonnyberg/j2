@@ -141,6 +141,7 @@ int edict_print(EDICT *edict,char *name,int len)
     
     struct LTOBJ_DATA ltobj_data = { LTOBJ_print_pre,NULL,0,NULL,0 };
     edict_traverse(&edict->anon,LTOBJ_print_pre,NULL);
+    edict_traverse(&edict->dict,LTOBJ_print_pre,NULL);
     return status;
 }
 

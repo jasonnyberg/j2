@@ -438,12 +438,13 @@ int edict_repl(EDICT *edict)
         
         EDICT_TOK *none(EDICT_TOK *tok)
         {
-            fstrnprint(stdout,tok->data,tok->len);
+            // /* opt */ fstrnprint(stdout,tok->data,tok->len);
+            return NULL;
         }
         
         EDICT_TOK *lit(EDICT_TOK *tok)
         {
-            fstrnprint(stdout,tok->data,tok->len);
+            // /* opt */ fstrnprint(stdout,tok->data,tok->len);
             LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),tok->flags&TOK_REVERSE,NULL);
         }
     
@@ -492,7 +493,10 @@ int edict_repl(EDICT *edict)
                     return NULL;
                 }
 
+                /* opt */ printf("looking up ");
+                /* opt */ fstrnprint(stdout,tok->data,tok->len);
                 nametok=resolve_lti((tok->flags&TOK_ADD) || (optok && (optok->flags&TOK_ADD))); // in case there aren't any lits
+                /* opt */ printf(": found %x\n",nametok?nametok->lti:NULL);
                 errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_namelits,NULL); // in case there are
                 firstname=0;
                 return errtok;
@@ -513,12 +517,22 @@ int edict_repl(EDICT *edict)
             int done=0;
             while(!done)
             {
+                LTV *ltv=NULL;
                 firstname=1;
                 if (!(errtok=CLL_traverse(&tok->items,FWD,eval_atom,NULL)))
                 {
                     if (optok) switch(*optok->data)
                     {
-                        case '@': 
+                        case '?':
+                            edict_print(edict,NULL,0);
+                            break;
+                            
+                        case '@':
+                            ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL);
+                            if (nametok && nametok->lti)
+                                LTV_put(&nametok->lti->cll,ltv?ltv:edict->nil,((optok->flags&TOK_REVERSE)!=0),NULL);
+                            break;
+                            
                         case '/':
                         default: printf("OP %c not implemented\n",*optok->data); break;
                     }

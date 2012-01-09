@@ -92,7 +92,7 @@ extern LTI *LT_find(RBR *rbr,char *name,int len,int insert);
 //////////////////////////////////////////////////
 
 typedef void *(*LTOBJ_OP)(LTVR *ltvr,LTI *lti,LTV *ltv,void *data);
-struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; int depth; void *data; int halt:1; };
+struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; unsigned depth; void *data; int halt:1; };
 
 void *LTV_traverse(LTV *ltv,void *data);
 void *LTVR_traverse(CLL *cll,void *data);

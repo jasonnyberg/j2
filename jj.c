@@ -108,10 +108,9 @@ int edict_dump(EDICT *edict)
     return status;
 }
 
-int edict_print(EDICT *edict,char *name,int len)
+int edict_print(EDICT *edict,char *name,int len,unsigned depth)
 {
     LTI *_lti=NULL;
-    unsigned uval=0;
 
     void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     {
@@ -128,7 +127,8 @@ int edict_print(EDICT *edict,char *name,int len)
         }
         if (lti)
         {
-            if (!_lti && ltobj_data->depth>uval) ltobj_data->halt=1;
+            if (!_lti && (ltobj_data->depth>depth))
+                ltobj_data->halt=1;
             fstrnprint(stdout,indent,ltobj_data->depth*4);
             fprintf(stdout,"\"%s\"\n",lti->name);
         }

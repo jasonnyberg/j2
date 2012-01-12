@@ -437,7 +437,7 @@ int edict_repl(EDICT *edict)
         
         EDICT_TOK *lit(EDICT_TOK *tok) {
             // /* opt */ fstrnprint(stdout,tok->data,tok->len);
-            LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),tok->flags&TOK_REVERSE,NULL);
+            return LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),tok->flags&TOK_REVERSE,NULL)?NULL:tok;
         }
     
         EDICT_TOK *atom(EDICT_TOK *tok) {
@@ -456,6 +456,7 @@ int edict_repl(EDICT *edict)
                         return tok->lti?tok:NULL;
                     }
                     
+                    errtok=NULL;
                     if (firstname)
                         return tok->data==ELLIPSIS?CLL_traverse(&edict->dict,0,lookup,NULL):lookup(CLL_get(&edict->dict,0,0),NULL);
                     else if (parenttok && parenttok->ltvr)
@@ -467,9 +468,9 @@ int edict_repl(EDICT *edict)
                 void *eval_namelits(CLL *cll,void *data) {
                     EDICT_TOK *lit=(EDICT_TOK *) cll;
                     
+                    errtok=NULL;
                     if (!(lit->flags&TOK_LIT))
                         return printf("unexpected tok type in NAME\n"),tok;
-
                     
                     if ((nametok=resolve_lti(lit->flags&TOK_ADD)) && nametok->lti)
                     {
@@ -478,7 +479,6 @@ int edict_repl(EDICT *edict)
                         else // match
                             LTV_get(&nametok->lti->cll,0,nametok->flags&TOK_REVERSE,tok->data,tok->len,&nametok->ltvr);
                     }
-
                     
                     return NULL;
                 }
@@ -493,6 +493,7 @@ int edict_repl(EDICT *edict)
             }
     
             void *eval_atom(CLL *lnk,void *data) {
+                errtok=NULL;
                 EDICT_TOK *tok=(EDICT_TOK *) lnk;
                 switch(tok->flags&TOK_TYPES)
                 {
@@ -539,6 +540,7 @@ int edict_repl(EDICT *edict)
         }
     
         EDICT_TOK *expr(EDICT_TOK *tok) {
+            errtok=NULL;
             if (CLL_EMPTY(&tok->items)) edict_parse(edict,tok);
             return (EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
         }
@@ -547,7 +549,7 @@ int edict_repl(EDICT *edict)
             int len;
             char *line;
             FILE *ifile=tok->data?fopen(tok->data,"r"):stdin;
-            EDICT_TOK *errtok=NULL;
+            errtok=NULL;
             while ((line=edict_read(ifile,&len)))
             {
                 EDICT_TOK *expr_tok=TOK_new(TOK_EXPR,line,len);
@@ -559,6 +561,7 @@ int edict_repl(EDICT *edict)
             return errtok;
         }
     
+        errtok=NULL;
         switch(tok->flags&TOK_TYPES)
         {
             case TOK_NONE:  return none(tok);

@@ -79,7 +79,7 @@ extern void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data);
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
 
-extern LTVR *LTVR_new(void *metadata);
+extern LTVR *LTVR_new(LTV *ltv,void *metadata);
 extern void *LTVR_free(LTVR *ltvr);
 
 extern LTI *LTI_new(char *name,int len);
@@ -109,7 +109,7 @@ extern void LTI_release(RBN *rbn);
 // Dictionary
 //////////////////////////////////////////////////
 
-extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata);
+extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr);
 extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
 extern void LT_init();

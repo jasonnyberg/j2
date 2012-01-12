@@ -84,11 +84,12 @@ void LTV_free(LTV *ltv)
 
 
 // get a new LTVR
-LTVR *LTVR_new(void *metadata)
+LTVR *LTVR_new(LTV *ltv,void *metadata)
 {
     LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,1,1);
     if (ltvr || (ltvr=NEW(LTVR)))
     {
+        ltvr->ltv=ltv;
         ltvr->metadata=metadata;
         ltvr_count++;
     }
@@ -266,17 +267,19 @@ void LTI_release(RBN *rbn)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-LTV *LTV_put(CLL *cll,LTV *ltv,int end,void *metadata)
+LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
-    LTV *rval=NULL;
-    LTVR *ltvr;
-    TRY(!(cll && ltv && (ltvr=LTVR_new(metadata))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
-    TRY(!CLL_put(cll,(CLL *) ltvr,end),0,done,"CLL_put(...) failed!\n",0);
-    rval=ltvr->ltv=ltv;
-    rval->refs++;
+    LTVR *ltvr=NULL;
+    TRY(!(cll && ltv && (ltvr=LTVR_new(ltv,NULL))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
+    TRY(!CLL_put(cll,(CLL *) ltvr,end),0,cll_put_failed,"CLL_put(...) failed!\n",0);
+    ltv->refs++;
+    if (ltvr_ret) *ltvr_ret=ltvr;
+    return ltv; //!!
+ cll_put_failed:
+    LTVR_free(ltvr);
  done:
-    return rval;
+    return NULL;
 }
 
 LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
@@ -289,19 +292,19 @@ LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
     }
 
     LTVR *ltvr=NULL;
-    LTV *rval=NULL;
+    LTV *ltv=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
     if (!(ltvr=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
         return NULL;
-    rval=ltvr->ltv;
-    rval->refs-=pop;
+    ltv=ltvr->ltv;
+    ltv->refs-=pop;
     if (pop)
     {
         LTVR_free(ltvr);
         ltvr=NULL;
     }
     if (ltvr_ret) (*ltvr_ret)=ltvr;
-    return rval;
+    return ltv;
 }
 
 void LT_init()

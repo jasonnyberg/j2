@@ -45,11 +45,11 @@ extern int edict_init(EDICT *edict,LTV *root);
 extern int edict_destroy(EDICT *edict);
 extern int edict_repl(EDICT *edict);
 
-extern LTV *edict_add(EDICT *edict,LTV *ltv,void *metadata);
-extern LTV *edict_rem(EDICT *edict,void **metadata);
-extern LTV *edict_name(EDICT *edict,char *name,int len,void *metadata);
-extern LTV *edict_get(EDICT *edict,char *name,int len,int pop,void **metadata,LTI **lti);
-extern LTV *edict_ref(EDICT *edict,char *name,int len,int pop,void *metadata);
+extern LTV *edict_add(EDICT *edict,LTV *ltv);
+extern LTV *edict_rem(EDICT *edict);
+extern LTV *edict_name(EDICT *edict,char *name,int len);
+extern LTV *edict_get(EDICT *edict,char *name,int len,int pop,LTI **lti);
+extern LTV *edict_ref(EDICT *edict,char *name,int len,int pop);
 
 /*
 extern LTV *edict_add(RBR *rbr,LTV *ltv);

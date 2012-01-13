@@ -84,25 +84,22 @@ void LTV_free(LTV *ltv)
 
 
 // get a new LTVR
-LTVR *LTVR_new(LTV *ltv,void *metadata)
+LTVR *LTVR_new(LTV *ltv)
 {
     LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,1,1);
     if (ltvr || (ltvr=NEW(LTVR)))
     {
         ltvr->ltv=ltv;
-        ltvr->metadata=metadata;
         ltvr_count++;
     }
     return ltvr;
 }
 
-void *LTVR_free(LTVR *ltvr)
+void LTVR_free(LTVR *ltvr)
 {
-    void *metadata=ltvr->metadata;
     ZERO(*ltvr);
     CLL_put(&ltvr_repo,&ltvr->repo[0],0);
     ltvr_count--;
-    return metadata;
 }
 
 
@@ -271,7 +268,7 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    TRY(!(cll && ltv && (ltvr=LTVR_new(ltv,NULL))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
+    TRY(!(cll && ltv && (ltvr=LTVR_new(ltv))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
     TRY(!CLL_put(cll,(CLL *) ltvr,end),0,cll_put_failed,"CLL_put(...) failed!\n",0);
     ltv->refs++;
     if (ltvr_ret) *ltvr_ret=ltvr;

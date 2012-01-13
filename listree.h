@@ -59,7 +59,6 @@ typedef struct
     CLL repo[0]; // union without union semantics
     CLL cll;
     LTV *ltv;
-    void *metadata;
 } LTVR; // LisTree Value Reference
 
 typedef struct
@@ -79,8 +78,8 @@ extern void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data);
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
 
-extern LTVR *LTVR_new(LTV *ltv,void *metadata);
-extern void *LTVR_free(LTVR *ltvr);
+extern LTVR *LTVR_new(LTV *ltv);
+extern void LTVR_free(LTVR *ltvr);
 
 extern LTI *LTI_new(char *name,int len);
 extern void LTI_free(LTI *lti);

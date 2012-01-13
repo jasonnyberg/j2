@@ -280,7 +280,7 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
 int edict_repl(EDICT *edict)
 {
     EDICT_TOK *errtok=NULL;
-    
+
     void *eval_expr(CLL *lnk,void *data) {
         EDICT_TOK *tok=(EDICT_TOK *) lnk;
         
@@ -291,12 +291,12 @@ int edict_repl(EDICT *edict)
         
         EDICT_TOK *lit(EDICT_TOK *tok) {
             // /* opt */ fstrnprint(stdout,tok->data,tok->len);
-            return LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),tok->flags&TOK_REVERSE,NULL)?NULL:tok;
+            return LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),(tok->flags&TOK_REVERSE)!=0,NULL)?NULL:tok;
         }
     
         EDICT_TOK *atom(EDICT_TOK *tok) {
             EDICT_TOK *optok=NULL,*nametok=NULL;
-            int ops;
+            int req_op=0;
             
             EDICT_TOK *op(EDICT_TOK *tok) { return tok->flags!=(tok->flags|=TOK_AVIS)?tok:NULL; } // transitions to flagged
             
@@ -329,9 +329,9 @@ int edict_repl(EDICT *edict)
                     if ((nametok=resolve_lti(lit->flags&TOK_ADD)) && nametok->lti)
                     {
                         if (nametok->flags&TOK_ADD || lit->flags&TOK_ADD) // add
-                            LTV_put(&nametok->lti->cll,LTV_new(lit->data,lit->len,LT_DUP|LT_ESC),nametok->flags&TOK_REVERSE,&nametok->ltvr);
+                            LTV_put(&nametok->lti->cll,LTV_new(lit->data,lit->len,LT_DUP|LT_ESC),(nametok->flags&TOK_REVERSE)!=0,&nametok->ltvr);
                         else // match
-                            LTV_get(&nametok->lti->cll,0,nametok->flags&TOK_REVERSE,lit->data,lit->len,&nametok->ltvr);
+                            LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,lit->data,lit->len,&nametok->ltvr);
                     }
                     
                     return NULL;
@@ -342,7 +342,7 @@ int edict_repl(EDICT *edict)
                 if (CLL_EMPTY(&tok->items)) // no lits
                 {
                     if ((nametok=resolve_lti((tok->flags&TOK_ADD) || (optok && (optok->flags&TOK_ADD)))))
-                        LTV_get(&nametok->lti->cll,0,nametok->flags&TOK_REVERSE,NULL,0,&nametok->ltvr);
+                        LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,NULL,0,&nametok->ltvr);
                 }
                 else
                 {
@@ -353,42 +353,42 @@ int edict_repl(EDICT *edict)
             }
     
             void *eval_atom(CLL *lnk,void *data) {
-                errtok=NULL;
                 EDICT_TOK *tok=(EDICT_TOK *) lnk;
+                errtok=NULL;
                 switch(tok->flags&TOK_TYPES)
                 {
-                    case TOK_OP:   optok=op(tok); break;
-                    case TOK_NAME: nametok=name(tok); break;
+                    case TOK_OP:   req_op=1; optok=op(tok); break;
+                    case TOK_NAME: if (!req_op || optok) nametok=name(tok); break;
                     default: printf("unexpected tok type in ATOM\n"); break;
                 }
                 return errtok;
             }
 
-            int done=0;
-            while(!done)
+            LTV *ltv=NULL;
+            while(optok=nametok=NULL,!(errtok=CLL_traverse(&tok->items,FWD,eval_atom,NULL)))
             {
-                LTV *ltv=NULL;
-                if (!(errtok=CLL_traverse(&tok->items,FWD,eval_atom,NULL)))
+                if (optok) switch(*optok->data)
                 {
-                    if (optok) switch(*optok->data)
-                    {
-                        case '?':
-                            edict_print(edict,NULL,0,-1);
-                            break;
-                            
-                        case '@':
-                            ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL);
-                            if (nametok && nametok->lti)
-                                LTV_put(&nametok->lti->cll,ltv?ltv:edict->nil,((nametok->flags&TOK_REVERSE)!=0),&nametok->ltvr);
-                            break;
-                            
-                        case '/':
-                        default: printf("OP %c not implemented\n",*optok->data); break;
-                    }
-                    else if (nametok && nametok->ltvr)
+                    case '?':
+                        edict_print(edict,NULL,0,-1);
+                        break;
+                        
+                    case '@':
+                        if (nametok && nametok->lti)
+                            LTV_put(&nametok->lti->cll,
+                                    (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:edict->nil,
+                                    ((nametok->flags&TOK_REVERSE)!=0),
+                                    &nametok->ltvr);
+                        break;
+                        
+                    case '/':
+                    default: printf("OP %c not implemented\n",*optok->data); break;
+                }
+                else
+                {
+                    if (nametok && nametok->ltvr)
                         LTV_put(&edict->anon,nametok->ltvr->ltv,0,NULL);
-                    else
-                        done=1;
+                    break;
                 }
             }
             return errtok;

@@ -277,6 +277,8 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
 }
 
 
+#define LTV_NIL (LTV_new("",0,LT_DUP))
+
 int edict_repl(EDICT *edict)
 {
     EDICT_TOK *errtok=NULL;
@@ -295,69 +297,67 @@ int edict_repl(EDICT *edict)
         }
     
         EDICT_TOK *atom(EDICT_TOK *tok) {
-            EDICT_TOK *optok=NULL,*nametok=NULL;
+            EDICT_TOK *optok,*nametok;
             int req_op=0;
             
-            EDICT_TOK *op(EDICT_TOK *tok) { return tok->flags!=(tok->flags|=TOK_AVIS)?tok:NULL; } // transitions to flagged
-            
-            EDICT_TOK *name(EDICT_TOK *tok) {
-                EDICT_TOK *parenttok=nametok;
-                
-                EDICT_TOK *resolve_lti(int insert) {
-                    void *lookup(CLL *cll,void *data) {
-                        LTVR *ltvr=(LTVR *) cll;
-                        if (!tok->lti && ltvr && ltvr->ltv) tok->lti=LT_find(&ltvr->ltv->rbr,tok->data,tok->len,insert);
-                        return tok->lti?tok:NULL;
-                    }
-                    
-                    errtok=NULL;
-                    if (!parenttok)
-                        return tok->data==ELLIPSIS?CLL_traverse(&edict->dict,0,lookup,NULL):lookup(CLL_get(&edict->dict,0,0),NULL);
-                    else if (parenttok && parenttok->ltvr)
-                        return lookup(CLL_get((CLL *) &parenttok->ltvr,0,0),NULL);
-                    else
-                        return NULL;
-                }
-                
-                void *eval_namelits(CLL *cll,void *data) {
-                    EDICT_TOK *lit=(EDICT_TOK *) cll;
-                    
-                    errtok=NULL;
-                    if (!(lit->flags&TOK_LIT))
-                        return printf("unexpected tok type in NAME\n"),tok;
-                    
-                    if ((nametok=resolve_lti(lit->flags&TOK_ADD)) && nametok->lti)
-                    {
-                        if (nametok->flags&TOK_ADD || lit->flags&TOK_ADD) // add
-                            LTV_put(&nametok->lti->cll,LTV_new(lit->data,lit->len,LT_DUP|LT_ESC),(nametok->flags&TOK_REVERSE)!=0,&nametok->ltvr);
-                        else // match
-                            LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,lit->data,lit->len,&nametok->ltvr);
-                    }
-                    
-                    return NULL;
-                }
-
-                /* opt */ printf("looking up ");
-                /* opt */ fstrnprint(stdout,tok->data,tok->len);
-                if (CLL_EMPTY(&tok->items)) // no lits
-                {
-                    if ((nametok=resolve_lti((tok->flags&TOK_ADD) || (optok && (optok->flags&TOK_ADD)))))
-                        LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,NULL,0,&nametok->ltvr);
-                }
-                else
-                {
-                    errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_namelits,NULL); // handle lits
-                }
-                /* opt */ printf(": found %x\n",nametok?nametok->lti:NULL);
-                return nametok;
-            }
-    
             void *eval_atom(CLL *lnk,void *data) {
                 EDICT_TOK *tok=(EDICT_TOK *) lnk;
+                
+                EDICT_TOK *op(EDICT_TOK *tok) { return tok->flags!=(tok->flags|=TOK_AVIS)?tok:NULL; } // transitions to flagged
+                
+                EDICT_TOK *name(EDICT_TOK *tok) {
+                    EDICT_TOK *parenttok=nametok;
+                    int insert=(tok->flags&TOK_ADD) || (optok && (optok->flags&TOK_ADD));
+                    
+                    EDICT_TOK *resolve_lti(int insert) {
+                        void *lookup(CLL *cll,void *data) {
+                            LTVR *ltvr=(LTVR *) cll;
+                            if (!tok->lti && ltvr && ltvr->ltv) tok->lti=LT_find(&ltvr->ltv->rbr,tok->data,tok->len,insert);
+                            return tok->lti?tok:NULL;
+                        }
+                        
+                        errtok=NULL;
+                        if (!parenttok)
+                            return tok->data==ELLIPSIS?CLL_traverse(&edict->dict,0,lookup,NULL):lookup(CLL_get(&edict->dict,0,0),NULL);
+                        else if (parenttok->ltvr)
+                            return lookup(CLL_get((CLL *) &parenttok->ltvr,0,0),NULL);
+                        else
+                            return NULL;
+                    }
+                    
+                    void *eval_namelits(CLL *cll,void *data) {
+                        EDICT_TOK *lit=(EDICT_TOK *) cll;
+                        
+                        errtok=NULL;
+                        if (!(lit->flags&TOK_LIT))
+                            return printf("unexpected tok type in NAME\n"),tok;
+                        
+                        if ((nametok=resolve_lti(insert || lit->flags&TOK_ADD)) && nametok->lti)
+                        {
+                            if (insert || lit->flags&TOK_ADD) // add
+                                LTV_put(&nametok->lti->cll,LTV_new(lit->data,lit->len,LT_DUP|LT_ESC),(nametok->flags&TOK_REVERSE)!=0,&nametok->ltvr);
+                            else // match
+                                LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,lit->data,lit->len,&nametok->ltvr);
+                        }
+                        
+                        return NULL;
+                    }
+                    
+                    // if inserting and parent wasn't found, add an empty value
+                    if (parenttok && !parenttok->ltvr && insert)
+                        LTV_put(&parenttok->lti->cll,LTV_NIL,(parenttok->flags&TOK_REVERSE)!=0,&parenttok->ltvr);
+                    
+                    if (!CLL_EMPTY(&tok->items)) // embedded lits
+                        errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_namelits,NULL);
+                    else if ((nametok=resolve_lti(insert)) && nametok->lti) // no embedded lits
+                        LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,NULL,0,&nametok->ltvr);
+                    return nametok;
+                }
+                
                 errtok=NULL;
                 switch(tok->flags&TOK_TYPES)
                 {
-                    case TOK_OP:   req_op=1; optok=op(tok); break;
+                    case TOK_OP:   req_op=1; if (!optok) optok=op(tok); break;
                     case TOK_NAME: if (!req_op || optok) nametok=name(tok); break;
                     default: printf("unexpected tok type in ATOM\n"); break;
                 }
@@ -376,7 +376,7 @@ int edict_repl(EDICT *edict)
                     case '@':
                         if (nametok && nametok->lti)
                             LTV_put(&nametok->lti->cll,
-                                    (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:edict->nil,
+                                    (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
                                     ((nametok->flags&TOK_REVERSE)!=0),
                                     &nametok->ltvr);
                         break;
@@ -496,7 +496,6 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!(CLL_init(&edict->toks)),-1,done,"\n");
     CLL_init(&tok_repo);
     LTV_put(&edict->dict,root,0,NULL);
-    edict->nil=LTV_new("nil",3,LT_RO);
     edict_bytecodes(edict);
     //edict_readfile(edict,stdin);
     //edict_readfile(edict,fopen("/tmp/jj.in","r"));

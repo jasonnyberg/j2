@@ -72,6 +72,7 @@ typedef struct
 typedef void *(*RB_OP)(RBN *rbn,void *data);
 
 extern RBR *RBR_init(RBR *rbr);
+extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
 extern void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data);
 

@@ -331,17 +331,14 @@ int edict_repl(EDICT *edict)
                     void *eval_namelits(CLL *cll,void *data) {
                         EDICT_TOK *lit=(EDICT_TOK *) cll;
                         EDICT_TOK *errtok=NULL;
+                        int insertlit=(insert || lit->flags&TOK_ADD);
                         
                         if (!(lit->flags&TOK_LIT))
                             return printf("unexpected tok type in NAME\n"),tok;
                         
-                        if ((nametok=resolve_lti(insert || lit->flags&TOK_ADD)) && nametok->lti)
-                        {
-                            if (insert || lit->flags&TOK_ADD) // add
+                        if ((nametok=resolve_lti(insertlit)) && nametok->lti)
+                            if (!LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,lit->data,lit->len,&nametok->ltvr) && insertlit)
                                 LTV_put(&nametok->lti->cll,LTV_new(lit->data,lit->len,LT_DUP|LT_ESC),(nametok->flags&TOK_REVERSE)!=0,&nametok->ltvr);
-                            else // match
-                                LTV_get(&nametok->lti->cll,0,(nametok->flags&TOK_REVERSE)!=0,lit->data,lit->len,&nametok->ltvr);
-                        }
                         
                         return NULL;
                     }

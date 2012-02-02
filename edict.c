@@ -420,8 +420,18 @@ int edict_repl(EDICT *edict)
         }
     
         EDICT_TOK *expr(EDICT_TOK *tok) {
+            EDICT_TOK *errtok=NULL;
             if (CLL_EMPTY(&tok->items)) edict_parse(edict,tok);
-            return (EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
+
+            if (tok->flags&TOK_SCOPE)
+            {
+                printf("enter scope(\n"); // push tos to head of dict
+                errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
+                printf(") exit scope\n"); // pop/release head of dict
+            }
+            else
+                errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
+            return errtok;
         }
 
         EDICT_TOK *file(EDICT_TOK *tok) {

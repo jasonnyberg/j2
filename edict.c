@@ -141,6 +141,7 @@ typedef struct
     LTV *parent_ltv;
     LTI *lti;
     LTVR *ltvr; // points to LTV
+    LTV *context; // for nestings
 } EDICT_TOK;
 
 EDICT_TOK *TOK_new(TOK_FLAGS flags,char *data,int len)
@@ -404,7 +405,7 @@ int edict_repl(EDICT *edict)
                         }
                         else
                         {
-                            LTV_release(LTV_get(&edict->anon,1,0,NULL,0,NULL));
+                            LTV_release(LTV_pop(&edict->anon));
                         }
                         break;
                     default: printf("OP %c not implemented\n",*optok->data); break;
@@ -412,25 +413,37 @@ int edict_repl(EDICT *edict)
                 else
                 {
                     if (nametok && nametok->ltvr)
-                        LTV_put(&edict->anon,nametok->ltvr->ltv,0,NULL);
+                        LTV_push(&edict->anon,nametok->ltvr->ltv);
                     break;
                 }
             }
             return errtok;
         }
-    
+        
         EDICT_TOK *expr(EDICT_TOK *tok) {
             EDICT_TOK *errtok=NULL;
-            if (CLL_EMPTY(&tok->items)) edict_parse(edict,tok);
 
-            if (tok->flags&TOK_SCOPE)
-            {
-                printf("enter scope(\n"); // push tos to head of dict
-                errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
-                printf(") exit scope\n"); // pop/release head of dict
+            EDICT_TOK *nest(int entering) {
+                EDICT_TOK *errtok=NULL;
+                if (tok->flags&TOK_SCOPE)
+                    errtok=entering?
+                        (LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon)))?NULL:tok):
+                        (LTV_release(LTV_pop(&edict->dict)),NULL);
+                return errtok;
             }
-            else
-                errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL);
+            
+            if (CLL_EMPTY(&tok->items))
+            {
+                edict_parse(edict,tok);
+                if ((errtok=nest(1)) ||
+                    (errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL)) ||
+                    (errtok=nest(0)))
+                {
+                    printf("Error: ");
+                    fstrnprint(stdout,errtok->data,errtok->len);
+                    printf("\n");
+                }
+            }
             return errtok;
         }
 
@@ -443,12 +456,6 @@ int edict_repl(EDICT *edict)
             {
                 EDICT_TOK *expr_tok=TOK_new(TOK_EXPR,line,len);
                 EDICT_TOK *errtok=expr(expr_tok);
-                if (errtok)
-                {
-                    printf("Error: ");
-                    fstrnprint(stdout,errtok->data,errtok->len);
-                    printf("\n");
-                }
                 TOK_free(expr_tok);
                 free(line);
             }
@@ -534,7 +541,7 @@ int edict_init(EDICT *edict,LTV *root)
     TRY(!(CLL_init(&edict->dict)),-1,done,"\n");
     TRY(!(CLL_init(&edict->toks)),-1,done,"\n");
     CLL_init(&tok_repo);
-    LTV_put(&edict->dict,root,0,NULL);
+    LTV_push(&edict->dict,root);
     edict_bytecodes(edict);
     //edict_readfile(edict,stdin);
     //edict_readfile(edict,fopen("/tmp/jj.in","r"));

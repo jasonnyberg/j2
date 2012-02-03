@@ -304,6 +304,9 @@ LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
     return ltv;
 }
 
+LTV *LTV_push(CLL *cll,LTV *ltv) { return LTV_put(cll,ltv,HEAD,NULL); }
+LTV *LTV_pop(CLL *cll)           { return LTV_get(cll,1,HEAD,NULL,0,NULL); }
+
 void LT_init()
 {
     CLL_init(&ltv_repo);

@@ -112,6 +112,9 @@ extern void LTI_release(RBN *rbn);
 extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr);
 extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
+extern LTV *LTV_push(CLL *cll,LTV *ltv);
+extern LTV *LTV_pop(CLL *cll);
+
 extern void LT_init();
 
 #endif

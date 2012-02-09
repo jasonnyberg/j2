@@ -232,6 +232,10 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
                 tlen=series(ws,NULL,0);
                 append(expr,TOK_NONE,expr->data,tlen,tlen);
                 break;
+            case '<':
+                tlen=series(NULL,NULL,'>');
+                append(expr,TOK_SCOPE|flags,expr->data+1,tlen-2,tlen);
+                break;
             case '(':
                 tlen=series(NULL,NULL,')');
                 append(expr,TOK_EXEC|flags,expr->data+1,tlen-2,tlen);
@@ -239,10 +243,6 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
             case '{':
                 tlen=series(NULL,NULL,'}');
                 append(expr,TOK_ITER|flags,expr->data+1,tlen-2,tlen);
-                break;
-            case '<':
-                tlen=series(NULL,NULL,'>');
-                append(expr,TOK_SCOPE|flags,expr->data+1,tlen-2,tlen);
                 break;
             case '[':
                 tlen=series(NULL,NULL,']');
@@ -426,9 +426,24 @@ int edict_repl(EDICT *edict)
             EDICT_TOK *nest(int entering) {
                 EDICT_TOK *errtok=NULL;
                 if (tok->flags&TOK_SCOPE)
-                    errtok=entering?
-                        (LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon)))?NULL:tok):
-                        (LTV_release(LTV_pop(&edict->dict)),NULL);
+                    errtok=(entering?
+                            (LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon)))?NULL:tok):
+                            (LTV_release(LTV_pop(&edict->dict)),NULL));
+                if (tok->flags&TOK_EXEC)
+                {
+                    if (entering)
+                    {
+                        EDICT_TOK *newtok=NULL;
+                        if (!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))) ||
+                            !(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)) ||
+                            !CLL_put(&tok->items,&newtok->cll,TAIL))
+                            errtok=tok;
+                    }
+                    else
+                    {
+                        LTV_release(LTV_pop(&edict->dict));
+                    }
+                }
                 return errtok;
             }
             

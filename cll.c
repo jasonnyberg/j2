@@ -53,6 +53,7 @@ CLL *CLL_splice(CLL *dst,int end,CLL *src)
     dst->lnk[end]=shead;
     dhead->lnk[!end]=stail;
     src->lnk[end]=src->lnk[!end]=src;
+    return dst;
 }
 
 CLL *CLL_pop(CLL *lnk)

@@ -29,6 +29,8 @@
 //#define myfree(p) myfree2((p),(__FILE__),(__LINE__))
 
 #define WHITESPACE " \t\n"
+#define NEWLINE "\r\n"
+
 
 #define BZERO(x) bzero((&x),sizeof(x))
 
@@ -62,12 +64,13 @@
 #define CODE_BGWITE     "\e[47m" // set white background
 #define CODE_BGDEFLT    "\e[49m" // set default background color
 
-
 typedef unsigned long long ull;
 
 //#define PEDANTIC(alt,args...) args
 #define PEDANTIC(alt,args...) alt
 
+#define CAR(first,rest...) first
+#define CDR(first,rest...) rest
 
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
@@ -75,27 +78,64 @@ typedef unsigned long long ull;
 static inline int minint(int a,int b) { return MIN(a,b); }
 static inline int maxint(int a,int b) { return MAX(a,b); }
 
-extern void try_error();
+extern int try_depth;
+extern int try_loglev;
+extern int try_infolev;
+extern int try_edepth;
 
-#define FORMAT_LEN(format,args...) (strlen(format))
+#define TRY_STRLEN 1024
+typedef char TRY_STRING[TRY_STRLEN];
+
+typedef struct TRY_CONTEXT
+{
+    int depth;
+    int edepth;
+    int eid;
+    TRY_STRING msgstr;
+    TRY_STRING errstr;
+} TRY_CONTEXT;
+
+extern __thread TRY_CONTEXT try_context;
+
+extern int try_init();
+extern void try_seterr(int eid,const char *estr);
+extern void try_reset();
+extern void try_loginfo(const char *func,const char *cond,int fail_status);
+extern void try_logerror(const char *func,const char *cond,int status);
+
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
-#define TRY(cond,fail_status,exitpoint,args...)                                                                          \
-    {                                                                                                                    \
-        if ((cond))                                                                                                      \
-        {                                                                                                                \
-            status = (int) fail_status;                                                                                  \
-            try_error();                                                                                                 \
-            if (status && FORMAT_LEN(args))                                                                              \
-            {                                                                                                            \
-                fprintf(stderr,CODE_RED "TRY_ERR in %s: " #cond "=%d: Jumping to " #exitpoint ": ",__func__,status);     \
-                fprintf(stderr,args); fprintf(stderr,CODE_RESET);                                                        \
-            }                                                                                                            \
-            goto exitpoint;                                                                                              \
-        }                                                                                                                \
+#define TRY(_cond_,_fail_status_,_exitpoint_,_args_...)                 \
+    {                                                                   \
+        if (try_context.depth<try_depth)                                \
+        {                                                               \
+            snprintf(try_context.msgstr,TRY_STRLEN,_args_);             \
+            try_loginfo(__func__,#_cond_,(int) _fail_status_);          \
+        }                                                               \
+                                                                        \
+        try_context.depth++;                                            \
+        int _pass_=!(_cond_);                                           \
+        try_context.depth--;                                            \
+                                                                        \
+        if (!_pass_)                                                    \
+        {                                                               \
+            status=(_fail_status_);                                     \
+            if (status)                                                 \
+            {                                                           \
+                snprintf(try_context.msgstr,TRY_STRLEN,_args_);         \
+                try_seterr((int) status,try_context.msgstr);            \
+                try_logerror((__func__),#_cond_,(int) status);          \
+            }                                                           \
+            else                                                        \
+            {                                                           \
+                try_reset();                                            \
+            }                                                           \
+                                                                        \
+            goto _exitpoint_;                                           \
+        }                                                               \
     }
 
-/** A version of TRY that also reports what it's doing as well as just errors */
-#define TRYLOG(cond,fail_status,exitpoint,args...) { fprintf(stderr,"%s: " #cond "\n",__func__); TRY(cond,fail_status,exitpoint,args) }
+
+#define STRY(_cond_,_args_...) TRY((status=_cond_),status,done,_args_)
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 

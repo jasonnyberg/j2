@@ -35,12 +35,92 @@ long long *STRTOLL_PTR;
 char *STRTOLL_TAIL;
 
 int Gmymalloc=0;
-int Gerrs;
 
-void try_error()
+int try_depth=1;
+int try_loglev=1;
+int try_infolev=1;
+int try_edepth=2;
+
+__thread TRY_CONTEXT try_context;
+
+void try_seterr(int eid,const char *estr)
 {
-    Gerrs++;
+    char str[TRY_STRLEN];
+
+    if (try_context.edepth++<try_edepth)
+    {
+        if (!try_context.eid)
+        {
+            try_context.eid=eid;
+            snprintf(try_context.errstr,TRY_STRLEN,"Failed while %s",estr);
+        }
+        else
+        {
+            snprintf(str,TRY_STRLEN,"%s, while %s",try_context.errstr,estr);
+            snprintf(try_context.errstr,TRY_STRLEN,"%s",str);
+        }
+    }
 }
+
+void try_loginfo(const char *func,const char *cond,int fail_status)
+{
+    char logstr[TRY_STRLEN];
+    int indent=try_context.depth;
+    if (indent<0) indent=0;
+    if (indent>TRY_STRLEN-1) indent=TRY_STRLEN-1;
+    
+    memset(logstr,' ',TRY_STRLEN);
+    switch (try_infolev)
+    {
+        case 3:
+            snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr);
+            break;
+        case 2:
+            snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr);
+            break;
+        case 1:
+            snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr);
+            break;
+        case 0:
+            snprintf(logstr+indent,TRY_STRLEN,"%s","");
+            break;
+    }
+        
+    printf(CODE_GREEN "%s" CODE_RESET NEWLINE,logstr); // prints to stdout!
+    fflush(stdout);
+}
+
+void try_logerror(const char *func,const char *cond,int status)
+{
+    char errstr[TRY_STRLEN];
+    switch (try_loglev)
+    {
+        case 3:
+            snprintf(errstr,TRY_STRLEN,"QOS:%s:%s:Failed while %s",func,cond,try_context.msgstr);
+            break;
+        case 2:
+            snprintf(errstr,TRY_STRLEN,"QOS:%s:Failed while %s",func,try_context.msgstr);
+            break;
+        case 1:
+            snprintf(errstr,TRY_STRLEN,"QOS:Failed while %s",try_context.msgstr);
+            break;
+        case 0:
+            snprintf(errstr,TRY_STRLEN,"QOS:%s","");
+            break;
+    }
+            
+    printf(CODE_RED "%s" CODE_RESET NEWLINE,errstr); // prints to stdout!
+    fflush(stdout);
+}
+
+void try_reset(int context)
+{
+    try_context.eid=0;
+    try_context.edepth=0;
+    try_context.msgstr[0]=0;
+    try_context.errstr[0]=0;
+}
+
 
 void *mymalloc(int size)
 {

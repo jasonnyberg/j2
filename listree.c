@@ -268,14 +268,16 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    TRY(!(cll && ltv && (ltvr=LTVR_new(ltv))),0,done,"cll/ltv/ltvr:0x%x/0x%x/0x%x\n",cll,ltv,ltvr);
-    TRY(!CLL_put(cll,(CLL *) ltvr,end),0,cll_put_failed,"CLL_put(...) failed!\n",0);
-    ltv->refs++;
-    if (ltvr_ret) *ltvr_ret=ltvr;
-    return ltv; //!!
- cll_put_failed:
-    LTVR_free(ltvr);
- done:
+    if (cll && ltv && (ltvr=LTVR_new(ltv)))
+    {
+        if (CLL_put(cll,(CLL *) ltvr,end))
+        {
+            ltv->refs++;
+            if (ltvr_ret) *ltvr_ret=ltvr;
+            return ltv; //!!
+        }
+        else LTVR_free(ltvr);
+    }
     return NULL;
 }
 

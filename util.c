@@ -62,7 +62,7 @@ void try_seterr(int eid,const char *estr)
     }
 }
 
-void try_loginfo(const char *func,const char *cond,int fail_status)
+void try_loginfo(const char *func,const char *cond)
 {
     char logstr[TRY_STRLEN];
     int indent=try_context.depth;

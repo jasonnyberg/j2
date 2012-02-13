@@ -100,7 +100,7 @@ extern __thread TRY_CONTEXT try_context;
 extern int try_init();
 extern void try_seterr(int eid,const char *estr);
 extern void try_reset();
-extern void try_loginfo(const char *func,const char *cond,int fail_status);
+extern void try_loginfo(const char *func,const char *cond);
 extern void try_logerror(const char *func,const char *cond,int status);
 
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
@@ -109,7 +109,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
         if (try_context.depth<try_depth)                                \
         {                                                               \
             snprintf(try_context.msgstr,TRY_STRLEN,_args_);             \
-            try_loginfo(__func__,#_cond_,(int) _fail_status_);          \
+            try_loginfo(__func__,#_cond_);                              \
         }                                                               \
                                                                         \
         try_context.depth++;                                            \

@@ -296,10 +296,9 @@ int edict_repl(EDICT *edict)
         int status=0;
         EDICT_TOK *tok=(EDICT_TOK *) lnk;
         
-        EDICT_TOK *lit(EDICT_TOK *tok) {
-            
+        int lit(EDICT_TOK *tok) {
             // /* opt */ fstrnprint(stdout,tok->data,tok->len);
-            return LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),(tok->flags&TOK_REVERSE)!=0,NULL)?NULL:tok;
+            return !LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),(tok->flags&TOK_REVERSE)!=0,NULL);
         }
     
         int atom(EDICT_TOK *tok) {
@@ -411,7 +410,7 @@ int edict_repl(EDICT *edict)
                         }
                         else
                         {
-                            LTV_release(LTV_pop(&edict->anon));
+                            STRY((LTV_release(LTV_pop(&edict->anon)),0),"releasing TOS");
                         }
                         break;
                     default: STRY(-1,"processing unimplemented OP %c",*optok->data);
@@ -429,59 +428,54 @@ int edict_repl(EDICT *edict)
         
         int expr(EDICT_TOK *tok) {
             int status=0;
+            EDICT_TOK *newtok=NULL;
 
-            int nest(int entering) {
-                int status=0;
-                if (tok->flags&TOK_SCOPE)
-                    errtok=(entering?
-                            (LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon)))?NULL:tok):
-                            (LTV_release(LTV_pop(&edict->dict)),NULL));
+            if (CLL_EMPTY(&tok->items))
+                edict_parse(edict,tok);
+            
+            { // enter scope if necessary
+                if (tok->flags&TOK_SCOPE || tok->flags&TOK_EXEC)
+                    STRY(!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))),"pushing scope");
                 if (tok->flags&TOK_EXEC)
                 {
-                    if (entering)
-                    {
-                        EDICT_TOK *newtok=NULL;
-                        if (!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))) ||
-                            !(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)) ||
-                            !CLL_put(&tok->items,&newtok->cll,TAIL))
-                            errtok=tok;
-                    }
-                    else
-                    {
-                        LTV_release(LTV_pop(&edict->dict));
-                    }
+                    STRY(!(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)),"allocating function token");
+                    STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
                 }
-                return status;
             }
             
-            if (CLL_EMPTY(&tok->items))
-            {
-                edict_parse(edict,tok);
-                if ((errtok=nest(1)) ||
-                    (errtok=(EDICT_TOK *) CLL_traverse(&tok->items,FWD,eval_expr,NULL)) ||
-                    (errtok=nest(0)))
-                {
-                    printf("Error: ");
-                    fstrnprint(stdout,errtok->data,errtok->len);
-                    printf("\n");
-                }
+            STRY(CLL_traverse(&tok->items,FWD,eval_expr,NULL)==NULL,"traversing expr token");
+            
+            { // exit scope if necessary
+                if (tok->flags&TOK_SCOPE || tok->flags&TOK_EXEC)
+                    STRY((LTV_release(LTV_pop(&edict->dict)),0),"releasing scope");
             }
+            
+         done:
             return status;
         }
 
         int file(EDICT_TOK *tok) {
+            int status=0;
             int len;
             char *line;
-            FILE *ifile=tok->data?fopen(tok->data,"r"):stdin;
-            if (!ifile) return tok;
-            while ((line=edict_read(ifile,&len)))
+            FILE *ifile=NULL;
+            
+            STRY(!(ifile=tok->data?fopen(tok->data,"r"):stdin),"validating file opened properly");
+            
+            while (!status && (line=edict_read(ifile,&len)))
             {
-                EDICT_TOK *expr_tok=TOK_new(TOK_EXPR,line,len);
-                EDICT_TOK *errtok=expr(expr_tok);
+                EDICT_TOK *expr_tok=NULL;
+                EDICT_TOK *errtok=NULL;
+                TRY(!(expr_tok=TOK_new(TOK_EXPR,line,len)),-1,free_line,"allocating file token");
+                TRY((status=expr(expr_tok)),status,free_tok,"processing file expr");
+            free_tok:
                 TOK_free(expr_tok);
+            free_line:
                 free(line);
             }
-            if (tok->data) fclose(ifile);
+
+            if (tok->data && ifile) fclose(ifile);
+         done:
             return 0;
         }
     
@@ -495,7 +489,7 @@ int edict_repl(EDICT *edict)
             case TOK_SCOPE: STRY(expr(tok),"evaluating TOK_SCOPE expr"); break;
             case TOK_ITER:  STRY(expr(tok),"evaluating TOK_ITER expr");  break;
             case TOK_FILE:  STRY(file(tok),"evaluating TOK_FILE expr");  break;
-            default: STRY(tok,"evaluating unexpected token expr");       break;
+            default: STRY(-1,"evaluating unexpected token expr");        break;
         }
 
  done:
@@ -504,7 +498,7 @@ int edict_repl(EDICT *edict)
 
     try_reset();
     EDICT_TOK *tok=TOK_new(TOK_FILE,NULL,0); // read from stdin
-    STRY(eval_expr((CLL *) tok,NULL),"eval expr");
+    STRY((int) eval_expr((CLL *) tok,NULL),"eval expr");
     TOK_free(tok);
     
  done:

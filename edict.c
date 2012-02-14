@@ -428,26 +428,30 @@ int edict_repl(EDICT *edict)
         
         int expr(EDICT_TOK *tok) {
             int status=0;
-            EDICT_TOK *newtok=NULL;
 
             if (CLL_EMPTY(&tok->items))
                 edict_parse(edict,tok);
             
-            { // enter scope if necessary
-                if (tok->flags&TOK_SCOPE || tok->flags&TOK_EXEC)
-                    STRY(!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))),"pushing scope");
-                if (tok->flags&TOK_EXEC)
-                {
-                    STRY(!(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)),"allocating function token");
-                    STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
-                }
+            if (tok->flags&TOK_SCOPE)
+            {
+                STRY(!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))),"pushing scope");
+            }
+            else if (tok->flags&TOK_EXEC)
+            {
+                EDICT_TOK *newtok=NULL;
+                STRY(!(tok->context=LTV_pop(&edict->anon)),"popping anon function");
+                STRY(!LTV_push(&edict->dict,LTV_NIL),"pushing null scope");
+                STRY(!(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)),"allocating function token");
+                STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
             }
             
-            STRY(CLL_traverse(&tok->items,FWD,eval_expr,NULL)==NULL,"traversing expr token");
+            STRY(CLL_traverse(&tok->items,FWD,eval_expr,NULL)!=NULL,"traversing expr token");
             
-            { // exit scope if necessary
-                if (tok->flags&TOK_SCOPE || tok->flags&TOK_EXEC)
-                    STRY((LTV_release(LTV_pop(&edict->dict)),0),"releasing scope");
+            if (tok->flags&TOK_EXEC || tok->flags&TOK_SCOPE)
+            { 
+                LTV *ltv=NULL;
+                STRY(!(ltv=LTV_pop(&edict->dict)),"popping scope");
+                STRY((LTV_release(ltv),0),"releasing scope");
             }
             
          done:

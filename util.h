@@ -66,6 +66,9 @@
 
 typedef unsigned long long ull;
 
+#define false 0
+#define true !false
+
 //#define PEDANTIC(alt,args...) args
 #define PEDANTIC(alt,args...) alt
 
@@ -116,7 +119,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
         int _pass_=!(_cond_);                                           \
         try_context.depth--;                                            \
                                                                         \
-        if (!_pass_)                                                    \
+        if (!(_pass_))                                                  \
         {                                                               \
             status=(_fail_status_);                                     \
             if (status)                                                 \

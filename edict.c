@@ -385,16 +385,21 @@ int edict_repl(EDICT *edict)
                 if (optok) switch(*optok->data)
                 {
                     case '?':
+                    {
                         edict_print(edict,NULL,0,-1);
                         break;
+                    }
                     case '@':
+                    {
                         if (nametok && nametok->lti)
                             STRY(!LTV_put(&nametok->lti->cll,
                                           (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
                                           ((nametok->flags&TOK_REVERSE)!=0),
                                           &nametok->ltvr),"processing assignment op");
                         break;
+                    }
                     case '/':
+                    {
                         if (nametok)
                         {
                             if (nametok->ltvr)
@@ -413,6 +418,25 @@ int edict_repl(EDICT *edict)
                             STRY((LTV_release(LTV_pop(&edict->anon)),0),"releasing TOS");
                         }
                         break;
+                    }
+                    case '!':
+                    {
+                        if (nametok)
+                        {
+                        }
+                        else
+                        {
+                            if (CLL_EMPTY(&tok->items))
+                            {
+                                EDICT_TOK *newtok=NULL;
+                                STRY(!(tok->context=LTV_pop(&edict->anon)),"popping anon function");
+                                STRY(!(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)),"allocating function token");
+                                STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
+                            }
+                            STRY(CLL_traverse(&tok->items,FWD,eval_expr,NULL)!=NULL,"traversing expr token");
+                        }
+                        break;
+                    }
                     default: STRY(-1,"processing unimplemented OP %c",*optok->data);
                 }
                 else
@@ -421,6 +445,10 @@ int edict_repl(EDICT *edict)
                         STRY(!LTV_push(&edict->anon,nametok->ltvr->ltv),"dereferencing name");
                     break;
                 }
+
+                if (nametok)
+                    // reverse-traverse nametok, preparing for iteration
+                    ;
             }
          done:
             return status;

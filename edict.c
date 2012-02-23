@@ -260,7 +260,7 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
                 case '/':
                     append(curatom(name!=NULL),TOK_OP|TOK_REM,edata,1,1); // op after name resets atom
                     break;
-                case '&': case '|': case '?':
+                case '&': case '|': case '?': case '!':
                     append(curatom(name!=NULL),TOK_OP,edata,1,1); // op after name resets atom
                     break;
                 case '.':
@@ -426,14 +426,14 @@ int edict_repl(EDICT *edict)
                         }
                         else
                         {
-                            if (CLL_EMPTY(&tok->items))
+                            if (CLL_EMPTY(&optok->items))
                             {
                                 EDICT_TOK *newtok=NULL;
-                                STRY(!(tok->context=LTV_pop(&edict->anon)),"popping anon function");
-                                STRY(!(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)),"allocating function token");
-                                STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
+                                STRY(!(optok->context=LTV_pop(&edict->anon)),"popping anon function");
+                                STRY(!(newtok=TOK_new(TOK_EXPR,optok->context->data,optok->context->len)),"allocating function token");
+                                STRY(!CLL_put(&optok->items,&newtok->cll,TAIL),"appending function token");
                             }
-                            STRY(CLL_traverse(&tok->items,FWD,eval_expr,NULL)!=NULL,"traversing expr token");
+                            STRY(CLL_traverse(&optok->items,FWD,eval_expr,NULL)!=NULL,"traversing expr token");
                         }
                         break;
                     }
@@ -515,6 +515,8 @@ int edict_repl(EDICT *edict)
         {
             case TOK_NONE:  break;
             case TOK_LIT:   STRY(lit(tok), "evaluating TOK_LIT expr");   break;
+            case TOK_OP:
+            case TOK_NAME:
             case TOK_ATOM:  STRY(atom(tok),"evaluating TOK_ATOM expr");  break;
             case TOK_EXPR:  STRY(expr(tok),"evaluating TOK_EXPR expr");  break;
             case TOK_EXEC:  STRY(expr(tok),"evaluating TOK_EXEC expr");  break;

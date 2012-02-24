@@ -116,14 +116,15 @@ typedef enum {
     TOK_LIT      =1<<0x6,
     TOK_OP       =1<<0x7,
     TOK_NAME     =1<<0x8,
+    TOK_END      =1<<0x9
 
     // modifiers
-    TOK_ADD      =1<<0x9,
-    TOK_REM      =1<<0xa,
-    TOK_REVERSE  =1<<0xb,
-    TOK_REGEXP   =1<<0xc,
-    TOK_AVIS     =1<<0xd,
-    TOK_RVIS     =1<<0xe,
+    TOK_ADD      =1<<0xa,
+    TOK_REM      =1<<0xb,
+    TOK_REVERSE  =1<<0xc,
+    TOK_REGEXP   =1<<0xd,
+    TOK_AVIS     =1<<0xe,
+    TOK_RVIS     =1<<0xf,
 
     // masks
     TOK_TYPES     = TOK_FILE | TOK_EXPR | TOK_EXEC | TOK_SCOPE | TOK_ITER | TOK_ATOM | TOK_LIT | TOK_OP | TOK_NAME,
@@ -291,17 +292,56 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
 int edict_repl(EDICT *edict)
 {
     int status=0;
+    CLL stack;
+
+    EDICT_TOK *deq() { return (EDICT_TOK *) CLL_pop(&stack); }
+    EDICT_TOK *enq(EDICT_TOK *tok) { return CLL_put(&stack,(CLL *) tok,HEAD); }
+    EDICT_TOK *req(EDICT_TOK *tok) { return CLL_put(&stack,(CLL *) tok,TAIL); }
     
-    void *eval_expr(CLL *lnk,void *data) {
+    int eval() {
         int status=0;
         EDICT_TOK *tok=(EDICT_TOK *) lnk;
         
+        void *show_tok(CLL *lnk,void *data) {
+            EDICT_TOK *tok=(EDICT_TOK *) lnk;
+            
+            if (tok->flags&TOK_FILE)    printf("FILE ");
+            if (tok->flags&TOK_EXPR)    printf("EXPR ");
+            if (tok->flags&TOK_EXEC)    printf("EXEC ");
+            if (tok->flags&TOK_SCOPE)   printf("SCOPE ");
+            if (tok->flags&TOK_ITER)    printf("ITER ");
+            if (tok->flags&TOK_ATOM)    printf("ATOM ");
+            if (tok->flags&TOK_LIT)     printf("LIT ");
+            if (tok->flags&TOK_OP)      printf("OP ");
+            if (tok->flags&TOK_NAME)    printf("NAME ");
+            if (tok->flags&TOK_ADD)     printf("ADD ");
+            if (tok->flags&TOK_REM)     printf("REM ");
+            if (tok->flags&TOK_REVERSE) printf("REVERSE ");
+            if (tok->flags&TOK_REGEXP)  printf("REGEXP ");
+            if (tok->flags&TOK_AVIS)    printf("AVIS ");
+            if (tok->flags&TOK_RVIS)    printf("RVIS ");
+            if (tok->flags==TOK_NONE)   printf("NONE ");
+            printf("(");
+            CLL_traverse(&tok->items,FWD,dump,NULL);
+            printf(") ");
+            
+            return NULL;
+        }
+
         int lit(EDICT_TOK *tok) {
             // /* opt */ fstrnprint(stdout,tok->data,tok->len);
             return !LTV_put(&edict->anon,LTV_new(tok->data,tok->len,LT_DUP|LT_ESC),(tok->flags&TOK_REVERSE)!=0,NULL);
         }
     
         int atom(EDICT_TOK *tok) {
+
+
+            // TODO: test last item to see if it's a "name", if so rotate list to head of name
+            // then process name if present and ops if present without traversing for each op
+
+            // or, maybe have parser distinguish between "name" and "op+name"
+
+            
             int status=0;
             EDICT_TOK *optok,*nametok;
             int req_op=0;
@@ -433,7 +473,7 @@ int edict_repl(EDICT *edict)
                                 STRY(!(newtok=TOK_new(TOK_EXPR,optok->context->data,optok->context->len)),"allocating function token");
                                 STRY(!CLL_put(&optok->items,&newtok->cll,TAIL),"appending function token");
                             }
-                            STRY(CLL_traverse(&optok->items,FWD,eval_expr,NULL)!=NULL,"traversing expr token");
+                            STRY(CLL_traverse(&optok->items,FWD,eval,NULL)!=NULL,"traversing expr token");
                         }
                         break;
                     }
@@ -459,7 +499,10 @@ int edict_repl(EDICT *edict)
 
             if (CLL_EMPTY(&tok->items))
                 edict_parse(edict,tok);
-            
+
+            CLL_traverse(&stack,FWD,show_tok,NULL);
+            printf("\n");
+
             if (tok->flags&TOK_SCOPE)
             {
                 STRY(!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))),"pushing scope");
@@ -473,7 +516,7 @@ int edict_repl(EDICT *edict)
                 STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
             }
             
-            STRY(CLL_traverse(&tok->items,FWD,eval_expr,NULL)!=NULL,"traversing expr token");
+            STRY(CLL_traverse(&tok->items,FWD,eval,NULL)!=NULL,"traversing expr token");
             
             if (tok->flags&TOK_EXEC || tok->flags&TOK_SCOPE)
             { 
@@ -510,30 +553,39 @@ int edict_repl(EDICT *edict)
          done:
             return 0;
         }
-    
-        switch(tok->flags&TOK_TYPES)
+
+        req((CLL *) TOK_new(TOK_END,NULL,0));
+
+        while ((tok=deq()))
         {
-            case TOK_NONE:  break;
-            case TOK_LIT:   STRY(lit(tok), "evaluating TOK_LIT expr");   break;
-            case TOK_OP:
-            case TOK_NAME:
-            case TOK_ATOM:  STRY(atom(tok),"evaluating TOK_ATOM expr");  break;
-            case TOK_EXPR:  STRY(expr(tok),"evaluating TOK_EXPR expr");  break;
-            case TOK_EXEC:  STRY(expr(tok),"evaluating TOK_EXEC expr");  break;
-            case TOK_SCOPE: STRY(expr(tok),"evaluating TOK_SCOPE expr"); break;
-            case TOK_ITER:  STRY(expr(tok),"evaluating TOK_ITER expr");  break;
-            case TOK_FILE:  STRY(file(tok),"evaluating TOK_FILE expr");  break;
-            default: STRY(-1,"evaluating unexpected token expr");        break;
+            switch(tok->flags&TOK_TYPES)
+            {
+                case TOK_NONE:  break;
+                case TOK_END:   goto end;
+                case TOK_LIT:   STRY(lit(tok), "evaluating TOK_LIT expr");   break;
+                case TOK_OP:
+                case TOK_NAME:
+                case TOK_ATOM:  STRY(atom(tok),"evaluating TOK_ATOM expr");  break;
+                case TOK_EXPR:  STRY(expr(tok),"evaluating TOK_EXPR expr");  break;
+                case TOK_EXEC:  STRY(expr(tok),"evaluating TOK_EXEC expr");  break;
+                case TOK_SCOPE: STRY(expr(tok),"evaluating TOK_SCOPE expr"); break;
+                case TOK_ITER:  STRY(expr(tok),"evaluating TOK_ITER expr");  break;
+                case TOK_FILE:  STRY(file(tok),"evaluating TOK_FILE expr");  break;
+                default: STRY(-1,"evaluating unexpected token expr");        break;
+            }
         }
 
+ end:
+        // reverse-process remaining tokens
+
  done:
-        return (void *) status;
+        return status;
     }
 
     try_reset();
-    EDICT_TOK *tok=TOK_new(TOK_FILE,NULL,0); // read from stdin
-    STRY((int) eval_expr((CLL *) tok,NULL),"eval expr");
-    TOK_free(tok);
+    CLL_init(stack);
+    req((CLL *) TOK_new(TOK_FILE,NULL,0)); // queue tok to read from stdin
+    while(eval());
     
  done:
     return status;

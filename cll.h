@@ -44,8 +44,9 @@ extern CLL *CLL_pop(CLL *lnk);
 extern CLL *CLL_get(CLL *lst,int pop,int end);
 extern CLL *CLL_find(CLL *lst,void *data,int len);
 
-extern void *CLL_traverse(CLL *lst,int end,CLL_OP op,void *data);
+extern void *CLL_traverse(CLL *lst,int dir,CLL_OP op,void *data);
 
 #define CLL_EMPTY(lst) (!CLL_get((lst),0,0))
+#define CLL_ROT(lst,dir) (CLL_put(lst,CLL_get(lst,1,dir),!dir))
 
 #endif

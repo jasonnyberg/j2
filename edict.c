@@ -123,12 +123,11 @@ typedef enum {
     TOK_REM      =1<<0xb,
     TOK_REVERSE  =1<<0xc,
     TOK_REGEXP   =1<<0xd,
-    TOK_AVIS     =1<<0xe,
-    TOK_RVIS     =1<<0xf,
+    TOK_VIS      =1<<0xe,
 
     // masks
     TOK_TYPES     = TOK_FILE | TOK_EXPR | TOK_EXEC | TOK_SCOPE | TOK_ITER | TOK_ATOM | TOK_LIT | TOK_OP | TOK_NAME,
-    TOK_MODIFIERS = TOK_ADD | TOK_REM | TOK_REVERSE | TOK_REGEXP | TOK_AVIS | TOK_RVIS,
+    TOK_MODIFIERS = TOK_ADD | TOK_REM | TOK_REVERSE | TOK_REGEXP | TOK_VIS,
 } TOK_FLAGS;
 
 
@@ -139,10 +138,9 @@ typedef struct
     int len;
     TOK_FLAGS flags;
     CLL items;
-    LTV *parent_ltv;
     LTI *lti;
     LTVR *ltvr; // points to LTV
-    LTV *context; // for nestings
+    LTV *context; // for name or op nestings
 } EDICT_TOK;
 
 EDICT_TOK *TOK_new(TOK_FLAGS flags,char *data,int len)
@@ -360,7 +358,7 @@ int edict_repl(EDICT *edict)
                     int resolve_lti(int insert) {
                         void *lookup(CLL *cll,void *data) {
                             LTVR *ltvr=(LTVR *) cll;
-                            if (!name_item->lti && ltvr && (name_item->parent_ltv=ltvr->ltv))
+                            if (!name_item->lti && ltvr && (name_item->context=ltvr->ltv))
                                 name_item->lti=LT_find(&ltvr->ltv->rbr,name_item->data,name_item->len,insert);
                             return name_item->lti?name_item:NULL;
                         }
@@ -450,9 +448,10 @@ int edict_repl(EDICT *edict)
                                 LTVR_release(CLL_pop(&name->ltvr->cll));
                                 name->ltvr=NULL;
                             }
+                            // cleanup!!!
                             if (name->lti && CLL_EMPTY(&name->lti->cll))
                             {
-                                RBN_release(&name->parent_ltv->rbr,&name->lti->rbn,LTI_release);
+                                RBN_release(&name->context->rbr,&name->lti->rbn,LTI_release);
                                 name->lti=NULL;
                             }
                         }
@@ -471,10 +470,10 @@ int edict_repl(EDICT *edict)
                         {
                             if (CLL_EMPTY(&op->items))
                             {
-                                EDICT_TOK *newtok=NULL;
+                                EDICT_TOK *sub_expr=NULL;
                                 STRY(!(op->context=LTV_pop(&edict->anon)),"popping anon function");
-                                STRY(!(newtok=TOK_new(TOK_EXPR,op->context->data,op->context->len)),"allocating function token");
-                                STRY(!CLL_put(&op->items,&newtok->cll,TAIL),"appending function token");
+                                STRY(!(sub_expr=TOK_new(TOK_EXPR,op->context->data,op->context->len)),"allocating function token");
+                                STRY(!CLL_put(&op->items,&sub_expr->cll,TAIL),"appending function token");
                             }
                             STRY(CLL_traverse(&op->items,FWD,eval,NULL)!=NULL,"traversing expr token");
                         }
@@ -497,31 +496,31 @@ int edict_repl(EDICT *edict)
             return status;
         }
         
-        int eval_expr(EDICT_TOK *tok) {
+        int eval_expr(EDICT_TOK *expr) {
             int status=0;
 
-            if (CLL_EMPTY(&tok->items))
-                edict_parse(edict,tok);
+            if (CLL_EMPTY(&expr->items))
+                edict_parse(edict,expr);
 
             CLL_traverse(&stack,FWD,show_tok,NULL);
             printf("\n");
 
-            if (tok->flags&TOK_SCOPE)
+            if (expr->flags&TOK_SCOPE)
             {
-                STRY(!LTV_push(&edict->dict,(tok->context=LTV_pop(&edict->anon))),"pushing scope");
+                STRY(!LTV_push(&edict->dict,(expr->context=LTV_pop(&edict->anon))),"pushing scope");
             }
-            else if (tok->flags&TOK_EXEC)
+            else if (expr->flags&TOK_EXEC)
             {
-                EDICT_TOK *newtok=NULL;
-                STRY(!(tok->context=LTV_pop(&edict->anon)),"popping anon function");
+                EDICT_TOK *sub_expr=NULL;
+                STRY(!(expr->context=LTV_pop(&edict->anon)),"popping anon function");
                 STRY(!LTV_push(&edict->dict,LTV_NIL),"pushing null scope");
-                STRY(!(newtok=TOK_new(TOK_EXPR,tok->context->data,tok->context->len)),"allocating function token");
-                STRY(!CLL_put(&tok->items,&newtok->cll,TAIL),"appending function token");
+                STRY(!(sub_expr=TOK_new(TOK_EXPR,expr->context->data,expr->context->len)),"allocating function token");
+                STRY(!CLL_put(&expr->items,&sub_expr->cll,TAIL),"appending function token");
             }
             
-            STRY(CLL_traverse(&tok->items,FWD,eval,NULL)!=NULL,"traversing expr token");
+            STRY(CLL_traverse(&expr->items,FWD,eval,NULL)!=NULL,"traversing expr token");
             
-            if (tok->flags&TOK_EXEC || tok->flags&TOK_SCOPE)
+            if (expr->flags&TOK_EXEC || expr->flags&TOK_SCOPE)
             { 
                 LTV *ltv=NULL;
                 STRY(!(ltv=LTV_pop(&edict->dict)),"popping scope");

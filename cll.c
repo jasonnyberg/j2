@@ -31,7 +31,7 @@ CLL *CLL_init(CLL *lst) { return lst->lnk[0]=lst->lnk[1]=lst; }
 void CLL_release(CLL *lst,void (*op)(CLL *lnk))
 {
     CLL *cll;
-    while (cll=CLL_get(lst,1,0)) op(cll);
+    while (cll=CLL_get(lst,POP,HEAD)) op(cll);
 }
 
 CLL *CLL_put(CLL *lst,CLL *lnk,int end)
@@ -71,10 +71,10 @@ CLL *CLL_get(CLL *lst,int pop,int end)
     return pop?CLL_pop(lst->lnk[end]):lst->lnk[end];
 }
 
-void *CLL_traverse(CLL *lst,int end,CLL_OP op,void *data)
+void *CLL_traverse(CLL *lst,int dir,CLL_OP op,void *data)
 {
-    CLL *result=NULL,*next=NULL,*lnk=lst->lnk[end];
-    while (lnk && lnk!=lst && (next=lnk->lnk[end]) && !(result=op(lnk,data)))
+    CLL *result=NULL,*next=NULL,*lnk=lst->lnk[dir];
+    while (lnk && lnk!=lst && (next=lnk->lnk[dir]) && !(result=op(lnk,data)))
         lnk=next;
     return result;
 }

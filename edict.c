@@ -146,7 +146,7 @@ typedef struct
 EDICT_TOK *TOK_new(TOK_FLAGS flags,char *data,int len)
 {
     EDICT_TOK *tok=NULL;
-    if ((flags || len) && (tok=(EDICT_TOK *) CLL_get(&tok_repo,1,1)) || (tok=NEW(EDICT_TOK)))
+    if ((flags || len) && (tok=(EDICT_TOK *) CLL_get(&tok_repo,POP,TAIL)) || (tok=NEW(EDICT_TOK)))
     {
         tok_count++;
         BZERO(*tok);
@@ -166,7 +166,7 @@ void TOK_free(EDICT_TOK *tok)
         TOK_free(subtok);
 
     BZERO(*tok);
-    CLL_put(&tok_repo,&tok->cll,0);
+    CLL_put(&tok_repo,&tok->cll,HEAD);
     tok_count--;
 }
 
@@ -364,11 +364,11 @@ int edict_repl(EDICT *edict)
                         }
                         
                         if (!parent)
-                            name=(name_item->data==ELLIPSIS)?name_item:lookup(CLL_get(&edict->dict,0,0),NULL);
+                            name=(name_item->data==ELLIPSIS)?name_item:lookup(CLL_get(&edict->dict,KEEP,HEAD),NULL);
                         else if (parent->data==ELLIPSIS)
-                            name=CLL_traverse(&edict->dict,0,lookup,NULL);
+                            name=CLL_traverse(&edict->dict,FWD,lookup,NULL);
                         else if (parent->ltvr)
-                            name=lookup(CLL_get((CLL *) &parent->ltvr,0,0),NULL);
+                            name=lookup(CLL_get((CLL *) &parent->ltvr,KEEP,HEAD),NULL);
                         return name!=NULL;
                     }
                     

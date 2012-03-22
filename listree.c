@@ -63,7 +63,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
         flags|=LT_DUP;
         len=0;
     }
-    if ((ltv=(LTV *) CLL_get(&ltv_repo,1,1)) || (ltv=NEW(LTV)))
+    if ((ltv=(LTV *) CLL_get(&ltv_repo,POP,TAIL)) || (ltv=NEW(LTV)))
     {
         ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
@@ -78,7 +78,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 void LTV_free(LTV *ltv)
 {
     ZERO(*ltv);
-    CLL_put(&ltv_repo,&ltv->repo[0],0);
+    CLL_put(&ltv_repo,&ltv->repo[0],HEAD);
     ltv_count--;
 }
 
@@ -86,7 +86,7 @@ void LTV_free(LTV *ltv)
 // get a new LTVR
 LTVR *LTVR_new(LTV *ltv)
 {
-    LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,1,1);
+    LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,POP,TAIL);
     if (ltvr || (ltvr=NEW(LTVR)))
     {
         ltvr->ltv=ltv;
@@ -98,7 +98,7 @@ LTVR *LTVR_new(LTV *ltv)
 void LTVR_free(LTVR *ltvr)
 {
     ZERO(*ltvr);
-    CLL_put(&ltvr_repo,&ltvr->repo[0],0);
+    CLL_put(&ltvr_repo,&ltvr->repo[0],HEAD);
     ltvr_count--;
 }
 
@@ -107,7 +107,7 @@ void LTVR_free(LTVR *ltvr)
 LTI *LTI_new(char *name,int len)
 {
     LTI *lti;
-    if (name && ((lti=(LTI *) CLL_get(&lti_repo,1,1)) || (lti=NEW(LTI))))
+    if (name && ((lti=(LTI *) CLL_get(&lti_repo,POP,TAIL)) || (lti=NEW(LTI))))
     {
         lti_count++;
         lti->name=bufdup(name,len);
@@ -119,7 +119,7 @@ LTI *LTI_new(char *name,int len)
 void LTI_free(LTI *lti)
 {
     ZERO(*lti);
-    CLL_put(&lti_repo,&lti->repo[0],0);
+    CLL_put(&lti_repo,&lti->repo[0],HEAD);
     lti_count--;
 }
 
@@ -214,7 +214,7 @@ void *LTI_traverse(RBN *rbn,void *data)
     if (!lti) goto done;
     
     if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(NULL,lti,NULL,data))) goto done;
-    if ((!ltobj_data || !ltobj_data->halt) && (rval=CLL_traverse(&lti->cll,0,LTVR_traverse,data))) goto done;
+    if ((!ltobj_data || !ltobj_data->halt) && (rval=CLL_traverse(&lti->cll,FWD,LTVR_traverse,data))) goto done;
     if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(NULL,lti,NULL,data))) goto done;
     
  done:

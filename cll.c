@@ -18,9 +18,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "cll.h"
-
 #include <stdlib.h>
+#include "cll.h"
 
 //////////////////////////////////////////////////
 // Circular Linked List

@@ -334,18 +334,9 @@ int edict_repl(EDICT *edict)
             return !LTV_put(&edict->anon,LTV_new(lit_tok->data,lit_tok->len,LT_DUP|LT_ESC),(lit_tok->flags&TOK_REVERSE)!=0,NULL);
         }
     
-        int eval_atom(EDICT_TOK *atom) {
-
-
-            // TODO: test last item to see if it's a "name", if so rotate list to head of name
-            // then process name if present and ops if present without traversing for each op
-
-            // or, maybe have parser distinguish between "name" and "op+name"
-
-            
+        int eval_atom(EDICT_TOK *atom) {            
             int status=0;
             EDICT_TOK *op,*name;
-            int req_op=0;
 
             void *eval_atom_item(CLL *lnk,void *data) {
                 int status=0;
@@ -400,98 +391,95 @@ int edict_repl(EDICT *edict)
                         LTV_get(&name->lti->cll,0,(name->flags&TOK_REVERSE)!=0,NULL,0,&name->ltvr);
                     return name==NULL;
                 }
-                
-                switch(atom_item->flags&TOK_TYPES)
-                {
-                    case TOK_OP:
-                        req_op=1; // atom has ops
-                        if (!op && atom_item->flags!=(atom_item->flags|=TOK_AVIS))
-                            op=atom_item;
-                        break;
-                    case TOK_NAME:
-                        if (!req_op || op)
-                            STRY(eval_name(atom_item),"eval name");
-                        break;
-                    default:
-                        STRY(-1,"processing unexpected tok type in ATOM");
-                        break;
-                }
-             done:
-                return status?atom_item:NULL;
-            }
 
-            LTV *ltv=NULL;
-            while(op=name=NULL,!CLL_traverse(&atom->items,FWD,eval_atom_item,NULL))
-            {
-                if (op) switch(*op->data)
-                {
-                    case '?':
+                int eval_op(EDICT_TOK *op_item) {
+                    switch(*op_item->data)
                     {
-                        edict_print(edict,NULL,0,-1);
-                        break;
-                    }
-                    case '@':
-                    {
-                        if (name && name->lti)
-                            STRY(!LTV_put(&name->lti->cll,
-                                          (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
-                                          ((name->flags&TOK_REVERSE)!=0),
-                                          &name->ltvr),"processing assignment op");
-                        break;
-                    }
-                    case '/':
-                    {
-                        if (name)
-                        {
-                            if (name->ltvr)
+                        case '?': edict_print(edict,NULL,0,-1); break;
+                        case '@':
+                            if (name && name->lti)
+                                STRY(!LTV_put(&name->lti->cll,
+                                              (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
+                                              ((name->flags&TOK_REVERSE)!=0),
+                                              &name->ltvr),"processing assignment op");
+                            break;
+                        case '/':
+                            if (!name)
+                            {
+                                STRY((LTV_release(LTV_pop(&edict->anon)),0),"releasing TOS");
+                            }
+                            else if (name->ltvr)
                             {
                                 LTVR_release(CLL_pop(&name->ltvr->cll));
                                 name->ltvr=NULL;
                             }
-                            // cleanup!!!
-                            if (name->lti && CLL_EMPTY(&name->lti->cll))
+                            break;
+                        case '!':
+                            if (name)
                             {
-                                RBN_release(&name->context->rbr,&name->lti->rbn,LTI_release);
-                                name->lti=NULL;
                             }
-                        }
-                        else
-                        {
-                            STRY((LTV_release(LTV_pop(&edict->anon)),0),"releasing TOS");
-                        }
-                        break;
-                    }
-                    case '!':
-                    {
-                        if (name)
-                        {
-                        }
-                        else
-                        {
-                            if (CLL_EMPTY(&op->items))
+                            else
                             {
-                                EDICT_TOK *sub_expr=NULL;
-                                STRY(!(op->context=LTV_pop(&edict->anon)),"popping anon function");
-                                STRY(!(sub_expr=TOK_new(TOK_EXPR,op->context->data,op->context->len)),"allocating function token");
-                                STRY(!CLL_put(&op->items,&sub_expr->cll,TAIL),"appending function token");
+                                if (CLL_EMPTY(&op_item->items))
+                                {
+                                    EDICT_TOK *sub_expr=NULL;
+                                    STRY(!(op_item->context=LTV_pop(&edict->anon)),"popping anon function");
+                                    STRY(!(sub_expr=TOK_new(TOK_EXPR,op_item->context->data,op_item->context->len)),"allocating function token");
+                                    STRY(!CLL_put(&op_item->items,&sub_expr->cll,TAIL),"appending function token");
+                                }
+                                STRY(CLL_traverse(&op_item->items,FWD,eval,NULL)!=NULL,"traversing expr token");
                             }
-                            STRY(CLL_traverse(&op->items,FWD,eval,NULL)!=NULL,"traversing expr token");
-                        }
-                        break;
+                            break;
+                        default: STRY(-1,"processing unimplemented OP %c",*op_item->data);
                     }
-                    default: STRY(-1,"processing unimplemented OP %c",*op->data);
-                }
-                else
-                {
-                    if (name && name->ltvr)
-                        STRY(!LTV_push(&edict->anon,name->ltvr->ltv),"dereferencing name");
-                    break;
                 }
 
-                if (name)
-                    // reverse-traverse name, preparing for iteration
-                    ;
+                switch(atom_item->flags&TOK_TYPES)
+                {
+                    case TOK_NAME: STRY(eval_name(atom_item),"eval name"); break;
+                    case TOK_OP:   STRY(eval_op(atom_item),"eval op"); break;
+                    default:       STRY(-1,"processing unexpected tok type in ATOM"); break;
+                }
+                
+             done:
+                return status?atom_item:NULL;
             }
+
+            void *rewind_atom_item(CLL *lnk,void *data) {
+                int rewind_name(EDICT_TOK *name_item) {
+                    // pushed existing cleanup to here
+                    // still need to deal with placeholder lti's
+                    if (name_item->lti && CLL_EMPTY(&name_item->lti->cll))
+                    {
+                        RBN_release(&name_item->context->rbr,&name_item->lti->rbn,LTI_release);
+                        name_item->lti=NULL;
+                    }
+                    return 0; // ?
+                }
+                
+                int rewind_op(EDICT_TOK *op_item) {
+                    return 0;
+                }
+
+                switch (atom_item->flags&TOK_TYPES)
+                {
+                    case TOK_NAME: STRY(rewind_name(atom_item),"eval name"); break;
+                    case TOK_OP:   STRY(rewind_op(atom_item),"eval op"); break;
+                    default:       STRY(-1,"processing unexpected tok type in ATOM"); break;
+                }
+                
+            }
+            
+            // Rotate ops to tail of list so we can process names first
+            if (CLL_HEAD(&atom->items)->flags&TOK_OP && CLL_TAIL(&atom->items)->flags&TOK_NAME)
+                while (CLL_HEAD(&atom->items)->flags&TOK_OP)
+                    CLL_ROT(&atom->items,FWD);
+            
+            STRY(CLL_traverse(&atom->items,FWD,eval_atom_item,NULL),"evaluating atom's items");
+            if (name && name->ltvr && CLL_TAIL(&atom->items)->flags&TOK_NAME) // tok is a simple deref
+                STRY(!LTV_push(&edict->anon,name->ltvr->ltv),"dereferencing name");
+            STRY(CLL_traverse(&atom->items,REV,rewind_atom_item,NULL),"rewinding atom's items");
+
          done:
             return status;
         }

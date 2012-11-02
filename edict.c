@@ -1,3 +1,4 @@
+
 /*
  * j2 - A simple concatenative programming language that can understand
  *      the structure of and dynamically link with compatible C binaries.
@@ -46,7 +47,7 @@ static char *ANONYMOUS="";
 char *edict_read(FILE *ifile,int *exprlen)
 {
     char *expr=NULL;
-
+    
     char *nextline(int *len) {
         static char *line=NULL;
         static size_t buflen=0;
@@ -144,7 +145,7 @@ typedef struct
 } EDICT_TOK;
 
 #define SUBTOK(lst,end) ((EDICT_TOK *) CLL_get((lst),KEEP,(end)))
-#define DEQ(lst) ((EDICT_TOK *) CLL_pop(lst))
+#define DEQ(lst) ((EDICT_TOK *) CLL_get((lst),POP,HEAD))
 #define ENQ(lst,tok) ((EDICT_TOK *) CLL_put(lst,&tok->cll,HEAD))
 #define REQ(lst,tok) ((EDICT_TOK *) CLL_put(lst,&tok->cll,TAIL))
 
@@ -395,7 +396,8 @@ int edict_repl(EDICT *edict)
                             name=CLL_traverse(&edict->dict,FWD,lookup,NULL);
                         else if (parent->ltvr)
                             name=lookup(CLL_get((CLL *) &parent->ltvr,KEEP,HEAD),NULL);
-                        if (name->data==ELLIPSIS)
+                        if (name && name->data==ELLIPSIS)
+                            ;
                         return name!=NULL;
                     }
                     
@@ -536,8 +538,11 @@ int edict_repl(EDICT *edict)
         }
         
  done:
-        if (status) show_tok(&tok->cll,"ERROR! token: ");
-        TOK_free(tok);
+        if (tok)
+        {
+            if (status) show_tok(&tok->cll,"ERROR! token: ");
+            TOK_free(tok);
+        }
         return status;
     }
 

@@ -96,16 +96,16 @@ void try_logerror(const char *func,const char *cond,int status)
     switch (try_loglev)
     {
         case 3:
-            snprintf(errstr,TRY_STRLEN,"QOS:%s:%s:Failed while %s",func,cond,try_context.msgstr);
+            snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr);
             break;
         case 2:
-            snprintf(errstr,TRY_STRLEN,"QOS:%s:Failed while %s",func,try_context.msgstr);
+            snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr);
             break;
         case 1:
-            snprintf(errstr,TRY_STRLEN,"QOS:Failed while %s",try_context.msgstr);
+            snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr);
             break;
         case 0:
-            snprintf(errstr,TRY_STRLEN,"QOS:%s","");
+            snprintf(errstr,TRY_STRLEN,"%s","");
             break;
     }
             

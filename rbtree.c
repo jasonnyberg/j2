@@ -21,7 +21,6 @@
 */
 
 #include <rbtree.h>
-//#include <linux/module.h>
 
 static void __rb_rotate_left(struct rb_node *node, struct rb_root *root)
 {

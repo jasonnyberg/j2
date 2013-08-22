@@ -308,20 +308,20 @@ int edict_repl(EDICT *edict)
         void *show_tok(CLL *lnk,void *data) {
             EDICT_TOK *tok=(EDICT_TOK *) lnk;
             if (data) printf("%s",(char *) data);
-            if (tok->flags&TOK_FILE)    printf("FILE %s",tok->data);
-            if (tok->flags&TOK_EXPR)    printf("EXPR %s",tok->data);
-            if (tok->flags&TOK_EXEC)    printf("EXEC %s",tok->data);
-            if (tok->flags&TOK_SCOPE)   printf("SCOPE %s",tok->data);
-            if (tok->flags&TOK_CURLY)   printf("CURLY %s",tok->data);
-            if (tok->flags&TOK_ATOM)    printf("ATOM %s",tok->data);
+            if (tok->flags&TOK_FILE)    printf("FILE %s ",tok->data);
+            if (tok->flags&TOK_EXPR)    printf("EXPR ");
+            if (tok->flags&TOK_EXEC)    printf("EXEC " );
+            if (tok->flags&TOK_SCOPE)   printf("SCOPE");
+            if (tok->flags&TOK_CURLY)   printf("CURLY ");
+            if (tok->flags&TOK_ATOM)    printf("ATOM ");
             if (tok->flags&TOK_LIT)     printf("LIT %s",tok->data);
-            if (tok->flags&TOK_OP)      printf("OP %s",tok->data);
-            if (tok->flags&TOK_NAME)    printf("NAME %s",tok->data);
-            if (tok->flags&TOK_ADD)     printf("ADD %s",tok->data);
-            if (tok->flags&TOK_REM)     printf("REM %s",tok->data);
-            if (tok->flags&TOK_REVERSE) printf("REVERSE %s",tok->data);
-            if (tok->flags&TOK_REGEXP)  printf("REGEXP %s",tok->data);
-            if (tok->flags&TOK_VIS)     printf("VIS %s",tok->data);
+            if (tok->flags&TOK_OP)      printf("OP %c ",*tok->data);
+            if (tok->flags&TOK_NAME)    printf("NAME %s ",tok->data);
+            if (tok->flags&TOK_ADD)     printf("ADD ");
+            if (tok->flags&TOK_REM)     printf("REM ");
+            if (tok->flags&TOK_REVERSE) printf("REVERSE ");
+            if (tok->flags&TOK_REGEXP)  printf("REGEXP ");
+            if (tok->flags&TOK_VIS)     printf("VIS ");
             if (tok->flags==TOK_NONE)   printf("NONE ");
             printf("(");
             CLL_traverse(&tok->subtoks,FWD,show_tok,NULL);
@@ -449,34 +449,24 @@ int edict_repl(EDICT *edict)
                     {
                         case '?':
                         {
-                            if (name_subtok)
-                                // replace with lambda
-                                edict_print(edict,(name && name->lti)?name->lti:NULL,-1);
-                            else
-                                edict_print(edict,NULL,-1);
+                            edict_print(edict,(name && name->lti)?name->lti:NULL,-1);
                             break;
                         }
                         case '@':
                         {
-                            if (name_subtok)
-                                // replace with lambda
-                                if (name && name->lti)
-                                    STRY(!LTV_put(&name->lti->cll,
-                                                  (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
-                                                  ((name->flags&TOK_REVERSE)!=0),
-                                                  &name->ltvr),"processing assignment op");
+                            if (name && name->lti)
+                                STRY(!LTV_put(&name->lti->cll,
+                                              (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
+                                              ((name->flags&TOK_REVERSE)!=0),
+                                              &name->ltvr),"processing assignment op");
                             break;
                         }
                         case '/':
                         {
-                            if (name_subtok)
+                            if (name && name->ltvr)
                             {
-                                // replace with lambda
-                                if (name->ltvr)
-                                {
-                                    LTVR_release(CLL_pop(&name->ltvr->cll));
-                                    name->ltvr=NULL; // seems heavy handed
-                                }
+                                LTVR_release(CLL_pop(&name->ltvr->cll));
+                                name->ltvr=NULL; // seems heavy handed
                             }
                             else
                             {
@@ -486,9 +476,8 @@ int edict_repl(EDICT *edict)
                         }
                         case '!':
                         {
-                            if (name_subtok)
+                            if (name)
                             {
-                                // write lambda
                             }
                             else
                             {

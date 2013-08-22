@@ -72,18 +72,6 @@ void *LTOBJ_graph_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
 char *indent="                                                                                                                ";
 extern int Gmymalloc;
 
-
-void *edict_traverse(CLL *cll,LTOBJ_OP preop,LTOBJ_OP postop)
-{
-    void *rval=NULL;
-    struct LTOBJ_DATA ltobj_data = { preop,postop,0,NULL,0 };
-    void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,data); }
-    rval=CLL_traverse(cll,FWD,ltvr_op,&ltobj_data);
-    CLL_traverse(cll,FWD,ltvr_op,NULL); // cleanup "visited" flags
-    return rval;
-}
-
-
 int edict_dump(EDICT *edict)
 {
     int status=0;

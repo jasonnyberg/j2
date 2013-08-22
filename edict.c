@@ -38,6 +38,16 @@ static char *ANONYMOUS="";
 // Edict
 //////////////////////////////////////////////////
 
+void *edict_traverse(CLL *cll,LTOBJ_OP preop,LTOBJ_OP postop)
+{
+    void *rval=NULL;
+    struct LTOBJ_DATA ltobj_data = { preop,postop,0,NULL,0 };
+    void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,data); }
+    rval=CLL_traverse(cll,FWD,ltvr_op,&ltobj_data);
+    CLL_traverse(cll,FWD,ltvr_op,NULL); // cleanup "visited" flags
+    return rval;
+}
+
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
 // PARSER
@@ -308,15 +318,15 @@ int edict_repl(EDICT *edict)
         void *show_tok(CLL *lnk,void *data) {
             EDICT_TOK *tok=(EDICT_TOK *) lnk;
             if (data) printf("%s",(char *) data);
-            if (tok->flags&TOK_FILE)    printf("FILE %s ",tok->data);
+            if (tok->flags&TOK_FILE)    printf("FILE "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
             if (tok->flags&TOK_EXPR)    printf("EXPR ");
             if (tok->flags&TOK_EXEC)    printf("EXEC " );
             if (tok->flags&TOK_SCOPE)   printf("SCOPE");
             if (tok->flags&TOK_CURLY)   printf("CURLY ");
             if (tok->flags&TOK_ATOM)    printf("ATOM ");
-            if (tok->flags&TOK_LIT)     printf("LIT %s",tok->data);
-            if (tok->flags&TOK_OP)      printf("OP %c ",*tok->data);
-            if (tok->flags&TOK_NAME)    printf("NAME %s ",tok->data);
+            if (tok->flags&TOK_LIT)     printf("LIT "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
+            if (tok->flags&TOK_OP)      printf("OP "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
+            if (tok->flags&TOK_NAME)    printf("NAME "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
             if (tok->flags&TOK_ADD)     printf("ADD ");
             if (tok->flags&TOK_REM)     printf("REM ");
             if (tok->flags&TOK_REVERSE) printf("REVERSE ");
@@ -391,7 +401,7 @@ int edict_repl(EDICT *edict)
                             return name_subtok->lti?name_subtok:NULL;
                         }
                         
-                        if (!parent) // possibly a lead ellipsis
+                        if (!parent) // possibly a leading ellipsis
                             name=(name_subtok->data==ELLIPSIS)?name_subtok:lookup(CLL_get(&edict->dict,KEEP,HEAD),NULL);
                         else if (parent->data==ELLIPSIS) // trailing ellipsis
                             name=CLL_traverse(&edict->dict,FWD,lookup,NULL);
@@ -442,7 +452,7 @@ int edict_repl(EDICT *edict)
                         EDICT_TOK *tok=(EDICT_TOK *) cll;
                         return (tok->flags&TOK_NAME && eval_name(tok))?tok:NULL; // returns error tok or success
                     }
-                    STRY(CLL_traverse(&atom->subtoks,FWD,eval_names,NULL),"pre-evaluating names on behalf of op %c",*op_subtok->data);
+                    STRY((CLL_traverse(&atom->subtoks,FWD,eval_names,NULL)!=NULL),"pre-evaluating name toks");
 
                     // for each op, supply a lambda to a dict traverser that presents wildcard matches to the lambdas
                     switch(*op_subtok->data)

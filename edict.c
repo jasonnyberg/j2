@@ -112,7 +112,7 @@ typedef enum {
     TOK_EXPR     =1<<0x1,
     TOK_EXEC     =1<<0x2,
     TOK_SCOPE    =1<<0x3,
-    TOK_ITER     =1<<0x4,
+    TOK_CURLY    =1<<0x4,
     TOK_ATOM     =1<<0x5,
     TOK_LIT      =1<<0x6,
     TOK_OP       =1<<0x7,
@@ -127,7 +127,7 @@ typedef enum {
     TOK_VIS      =1<<0xe,
 
     // masks
-    TOK_TYPES     = TOK_FILE | TOK_EXPR | TOK_EXEC | TOK_SCOPE | TOK_ITER | TOK_ATOM | TOK_LIT | TOK_OP | TOK_NAME,
+    TOK_TYPES     = TOK_FILE | TOK_EXPR | TOK_EXEC | TOK_SCOPE | TOK_CURLY | TOK_ATOM | TOK_LIT | TOK_OP | TOK_NAME,
     TOK_MODIFIERS = TOK_ADD | TOK_REM | TOK_REVERSE | TOK_REGEXP | TOK_VIS,
 } TOK_FLAGS;
 
@@ -253,7 +253,7 @@ int edict_parse(EDICT *edict,EDICT_TOK *expr)
                     break;
                 case '{':
                     tlen=series(NULL,NULL,'}');
-                    append(expr,TOK_ITER|flags,edata+1,tlen-2,tlen);
+                    append(expr,TOK_CURLY|flags,edata+1,tlen-2,tlen);
                     break;
                 case '[':
                     tlen=series(NULL,NULL,']');
@@ -308,20 +308,20 @@ int edict_repl(EDICT *edict)
         void *show_tok(CLL *lnk,void *data) {
             EDICT_TOK *tok=(EDICT_TOK *) lnk;
             if (data) printf("%s",(char *) data);
-            if (tok->flags&TOK_FILE)    printf("FILE ");
-            if (tok->flags&TOK_EXPR)    printf("EXPR ");
-            if (tok->flags&TOK_EXEC)    printf("EXEC ");
-            if (tok->flags&TOK_SCOPE)   printf("SCOPE ");
-            if (tok->flags&TOK_ITER)    printf("ITER ");
-            if (tok->flags&TOK_ATOM)    printf("ATOM ");
-            if (tok->flags&TOK_LIT)     printf("LIT ");
-            if (tok->flags&TOK_OP)      printf("OP ");
-            if (tok->flags&TOK_NAME)    printf("NAME ");
-            if (tok->flags&TOK_ADD)     printf("ADD ");
-            if (tok->flags&TOK_REM)     printf("REM ");
-            if (tok->flags&TOK_REVERSE) printf("REVERSE ");
-            if (tok->flags&TOK_REGEXP)  printf("REGEXP ");
-            if (tok->flags&TOK_VIS)     printf("VIS ");
+            if (tok->flags&TOK_FILE)    printf("FILE %s",tok->data);
+            if (tok->flags&TOK_EXPR)    printf("EXPR %s",tok->data);
+            if (tok->flags&TOK_EXEC)    printf("EXEC %s",tok->data);
+            if (tok->flags&TOK_SCOPE)   printf("SCOPE %s",tok->data);
+            if (tok->flags&TOK_CURLY)   printf("CURLY %s",tok->data);
+            if (tok->flags&TOK_ATOM)    printf("ATOM %s",tok->data);
+            if (tok->flags&TOK_LIT)     printf("LIT %s",tok->data);
+            if (tok->flags&TOK_OP)      printf("OP %s",tok->data);
+            if (tok->flags&TOK_NAME)    printf("NAME %s",tok->data);
+            if (tok->flags&TOK_ADD)     printf("ADD %s",tok->data);
+            if (tok->flags&TOK_REM)     printf("REM %s",tok->data);
+            if (tok->flags&TOK_REVERSE) printf("REVERSE %s",tok->data);
+            if (tok->flags&TOK_REGEXP)  printf("REGEXP %s",tok->data);
+            if (tok->flags&TOK_VIS)     printf("VIS %s",tok->data);
             if (tok->flags==TOK_NONE)   printf("NONE ");
             printf("(");
             CLL_traverse(&tok->subtoks,FWD,show_tok,NULL);
@@ -341,7 +341,7 @@ int edict_repl(EDICT *edict)
             if (CLL_EMPTY(&expr->subtoks))
                 edict_parse(edict,expr);
 
-            CLL_traverse(stack,FWD,show_tok,NULL);
+            CLL_traverse(&expr->subtoks,FWD,show_tok,NULL);
             printf("\n");
 
             if (expr->flags&TOK_SCOPE)
@@ -372,11 +372,12 @@ int edict_repl(EDICT *edict)
 
         int eval_atom(EDICT_TOK *atom) {            
             int status=0;
+            EDICT_TOK *name_subtok=NULL;
             EDICT_TOK *op=NULL,*name=NULL;
-
-            void *eval_atom_subtok(CLL *lnk,void *data) {
+            
+            void *eval_atom_subtok(CLL *cll,void *data) {
+                EDICT_TOK *atom_subtok=(EDICT_TOK *) cll;
                 int status=0;
-                EDICT_TOK *atom_subtok=(EDICT_TOK *) lnk;
                 
                 int eval_name(EDICT_TOK *name_subtok) {
                     EDICT_TOK *parent=NULL;
@@ -415,6 +416,7 @@ int edict_repl(EDICT *edict)
                         return NULL;
                     }
 
+                    if (name_subtok->flags&TOK_NAME)
                     parent=name;
                     name=NULL;
                     insert=(atom_subtok->flags&TOK_ADD) || (op && (op->flags&TOK_ADD));
@@ -434,30 +436,59 @@ int edict_repl(EDICT *edict)
                 int eval_op(EDICT_TOK *op_subtok) {
                     int status=0;
                     LTV *ltv=NULL;
+                    op=op_subtok;
+
+                    void *eval_names(CLL *cll,void *data) {
+                        EDICT_TOK *tok=(EDICT_TOK *) cll;
+                        return (tok->flags&TOK_NAME && eval_name(tok))?tok:NULL; // returns error tok or success
+                    }
+                    STRY(CLL_traverse(&atom->subtoks,FWD,eval_names,NULL),"pre-evaluating names on behalf of op %c",*op_subtok->data);
+
+                    // for each op, supply a lambda to a dict traverser that presents wildcard matches to the lambdas
                     switch(*op_subtok->data)
                     {
-                        case '?': edict_print(edict,NULL,0,-1); break;
-                        case '@':
-                            if (name && name->lti)
-                                STRY(!LTV_put(&name->lti->cll,
-                                              (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
-                                              ((name->flags&TOK_REVERSE)!=0),
-                                              &name->ltvr),"processing assignment op");
+                        case '?':
+                        {
+                            if (name_subtok)
+                                // replace with lambda
+                                edict_print(edict,(name && name->lti)?name->lti:NULL,-1);
+                            else
+                                edict_print(edict,NULL,-1);
                             break;
+                        }
+                        case '@':
+                        {
+                            if (name_subtok)
+                                // replace with lambda
+                                if (name && name->lti)
+                                    STRY(!LTV_put(&name->lti->cll,
+                                                  (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL,
+                                                  ((name->flags&TOK_REVERSE)!=0),
+                                                  &name->ltvr),"processing assignment op");
+                            break;
+                        }
                         case '/':
-                            if (!name)
+                        {
+                            if (name_subtok)
+                            {
+                                // replace with lambda
+                                if (name->ltvr)
+                                {
+                                    LTVR_release(CLL_pop(&name->ltvr->cll));
+                                    name->ltvr=NULL; // seems heavy handed
+                                }
+                            }
+                            else
                             {
                                 STRY((LTV_release(LTV_pop(&edict->anon)),0),"releasing TOS");
                             }
-                            else if (name->ltvr)
-                            {
-                                LTVR_release(CLL_pop(&name->ltvr->cll));
-                                name->ltvr=NULL;
-                            }
                             break;
+                        }
                         case '!':
-                            if (name)
+                        {
+                            if (name_subtok)
                             {
+                                // write lambda
                             }
                             else
                             {
@@ -471,6 +502,7 @@ int edict_repl(EDICT *edict)
                                 STRY(eval(&op_subtok->subtoks),"evaluating expr subtoks");
                             }
                             break;
+                        }
                         default: STRY(-1,"processing unimplemented OP %c",*op_subtok->data);
                     }
                  done:
@@ -479,8 +511,8 @@ int edict_repl(EDICT *edict)
 
                 switch(atom_subtok->flags&TOK_TYPES)
                 {
-                    case TOK_NAME: STRY(eval_name(atom_subtok),"eval name"); break;
-                    case TOK_OP:   STRY(eval_op(atom_subtok),"eval op"); break;
+                    case TOK_OP:   STRY(eval_op(atom_subtok),"evaluating op"); break;
+                    case TOK_NAME: if (!op) STRY(eval_name(atom_subtok),"evaluating name"); break;
                     default:       STRY(-1,"processing unexpected tok type in ATOM"); break;
                 }
                 
@@ -489,7 +521,8 @@ int edict_repl(EDICT *edict)
             }
             
             STRY(CLL_traverse(&atom->subtoks,FWD,eval_atom_subtok,NULL)!=NULL,"evaluating atom's subtoks");
-            if (name && name->ltvr && SUBTOK(&atom->subtoks,HEAD)->flags&TOK_NAME) // atom is a simple name deref
+
+            if (name && name->ltvr && !op) // atom is a simple name deref
                 STRY(!LTV_push(&edict->anon,name->ltvr->ltv),"dereferencing name");
 
          done:
@@ -522,17 +555,17 @@ int edict_repl(EDICT *edict)
         {
             switch(tok->flags&TOK_TYPES)
             {
-                case TOK_NONE:  break;
-                case TOK_LIT:   STRY(eval_lit(tok), "evaluating TOK_LIT expr");   break;
+                case TOK_NONE:   break;
+                case TOK_LIT:    STRY(eval_lit(tok), "evaluating TOK_LIT expr");    break;
+                case TOK_ATOM:   STRY(eval_atom(tok),"evaluating TOK_ATOM expr");   break;
+                case TOK_EXPR:   STRY(eval_expr(tok),"evaluating TOK_EXPR expr");   break;
+                case TOK_EXEC:   STRY(eval_expr(tok),"evaluating TOK_EXEC expr");   break;
+                case TOK_SCOPE:  STRY(eval_expr(tok),"evaluating TOK_SCOPE expr");  break;
+                case TOK_CURLY:  STRY(eval_expr(tok),"evaluating TOK_CURLY expr");  break;
+                case TOK_FILE:   STRY(eval_file(tok),"evaluating TOK_FILE expr");   break;
                 case TOK_OP:
                 case TOK_NAME:
-                case TOK_ATOM:  STRY(eval_atom(tok),"evaluating TOK_ATOM expr");  break;
-                case TOK_EXPR:  STRY(eval_expr(tok),"evaluating TOK_EXPR expr");  break;
-                case TOK_EXEC:  STRY(eval_expr(tok),"evaluating TOK_EXEC expr");  break;
-                case TOK_SCOPE: STRY(eval_expr(tok),"evaluating TOK_SCOPE expr"); break;
-                case TOK_ITER:  STRY(eval_expr(tok),"evaluating TOK_ITER expr");  break;
-                case TOK_FILE:  STRY(eval_file(tok),"evaluating TOK_FILE expr");  break;
-                default: STRY(-1,"evaluating unexpected token expr");        break;
+                default:         STRY(-1,"evaluating unexpected token expr");       break;
             }
             TOK_free(tok);
         }
@@ -548,8 +581,10 @@ int edict_repl(EDICT *edict)
 
     try_reset();
     CLL_init(&root);
-    ENQ(&root,TOK_new(TOK_FILE,NULL,0)); // queue tok to read from stdin
-    while(eval(&root));
+    while(1) {
+        ENQ(&root,TOK_new(TOK_FILE,NULL,0)); // queue tok to read from stdin
+        eval(&root);
+    }
     
  done:
     return status;
@@ -585,18 +620,18 @@ int edict_bytecodes(EDICT *edict)
     for (i=0;i<256;i++)
         edict->bcf[i]=0;
     
-    edict_bytecode(edict,'[',bc_dummy);
-    edict_bytecode(edict,'.',bc_dummy);
-    edict_bytecode(edict,'@',bc_dummy);
-    edict_bytecode(edict,'/',bc_dummy);
-    edict_bytecode(edict,'<',bc_dummy);
-    edict_bytecode(edict,'>',bc_dummy);
+    edict_bytecode(edict,'[',bc_dummy); // lit
+    edict_bytecode(edict,'.',bc_dummy); // namesep
+    edict_bytecode(edict,'@',bc_dummy); // assign
+    edict_bytecode(edict,'/',bc_dummy); // deassign/free
+    edict_bytecode(edict,'<',bc_dummy); // scope open
+    edict_bytecode(edict,'>',bc_dummy); // scope close
     edict_bytecode(edict,'(',bc_dummy); // exec_enter same as namespace_enter
-    edict_bytecode(edict,')',bc_dummy);
-    edict_bytecode(edict,'{',bc_dummy);
-    edict_bytecode(edict,'}',bc_dummy);
-    edict_bytecode(edict,'+',bc_dummy);
-    edict_bytecode(edict,'-',bc_dummy);
+    edict_bytecode(edict,')',bc_dummy); // exec exit
+    edict_bytecode(edict,'{',bc_dummy); // ??? open
+    edict_bytecode(edict,'}',bc_dummy); // ??? close
+    edict_bytecode(edict,'+',bc_dummy); // add immediate lit if neccessary
+    edict_bytecode(edict,'-',bc_dummy); // reverse
     edict_bytecode(edict,'!',bc_dummy); // bc_map
     edict_bytecode(edict,'&',bc_dummy); // bc_and
     edict_bytecode(edict,'|',bc_dummy); // bc_or

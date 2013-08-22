@@ -108,10 +108,8 @@ int edict_dump(EDICT *edict)
     return status;
 }
 
-int edict_print(EDICT *edict,char *name,int len,unsigned depth)
+int edict_print(EDICT *edict,LTI *target_lti,unsigned depth)
 {
-    LTI *_lti=NULL;
-
     void *LTOBJ_print_pre(LTVR *ltvr,LTI *lti,LTV *ltv,void *data)
     {
         struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
@@ -119,7 +117,6 @@ int edict_print(EDICT *edict,char *name,int len,unsigned depth)
     
         if (ltv)
         {
-            if (_lti) ltobj_data->halt=1;
             fstrnprint(stdout,indent,ltobj_data->depth*4+2);
             fprintf(stdout,"[");
             fstrnprint(stdout,ltv->data,ltv->len);
@@ -127,8 +124,7 @@ int edict_print(EDICT *edict,char *name,int len,unsigned depth)
         }
         if (lti)
         {
-            if (!_lti && (ltobj_data->depth>depth))
-                ltobj_data->halt=1;
+            if (ltobj_data->depth>depth) ltobj_data->halt=1;
             fstrnprint(stdout,indent,ltobj_data->depth*4);
             fprintf(stdout,"\"%s\"\n",lti->name);
         }
@@ -140,10 +136,17 @@ int edict_print(EDICT *edict,char *name,int len,unsigned depth)
     void *md;
     
     struct LTOBJ_DATA ltobj_data = { LTOBJ_print_pre,NULL,0,NULL,0 };
-    printf("anons:\n");
-    edict_traverse(&edict->anon,LTOBJ_print_pre,NULL);
-    printf("dict:\n");
-    edict_traverse(&edict->dict,LTOBJ_print_pre,NULL);
+    if (target_lti)
+    {
+        edict_traverse(&target_lti->cll,LTOBJ_print_pre,NULL);
+    }
+    else
+    {
+        printf("anons:\n");
+        edict_traverse(&edict->anon,LTOBJ_print_pre,NULL);
+        printf("dict:\n");
+        edict_traverse(&edict->dict,LTOBJ_print_pre,NULL);
+    }
     return status;
 }
 

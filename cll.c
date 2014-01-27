@@ -25,55 +25,24 @@
 // Circular Linked List
 //////////////////////////////////////////////////
 
-CLL *CLL_init(CLL *lst) { return lst->lnk[0]=lst->lnk[1]=lst; }
+#define SIB(x,end) ((x)->lnk[end])
+#define LINK(x,y,end) (SIB((y),!(end))=(x),SIB((x),(end))=(y))
 
-void CLL_release(CLL *lst,void (*op)(CLL *lnk))
-{
+CLL *CLL_init(CLL *cll) { return SIB(cll,FWD)=SIB(cll,REV)=cll; }
+void CLL_release(CLL *sentinel,void (*op)(CLL *cll)) { for (CLL *cll=NULL;cll=CLL_get(sentinel,POP,HEAD);op(cll)); }
+
+// sumi-gaeshi - 4 corners throw
+// convert a<->a' and b<->b' to a'<->b' and a<->b
+CLL *CLL_sumi(CLL *a,CLL *b,int end) { return a && b? (LINK(SIB(a,end),SIB(b,!end),!end),LINK(a,b,end)):NULL; }
+CLL *CLL_pop(CLL *lnk) { return lnk?CLL_init(CLL_sumi(SIB(lnk,FWD),SIB(lnk,REV),REV)):NULL; }
+CLL *CLL_get(CLL *sentinel,int end,pop) {
     CLL *cll;
-    while (cll=CLL_get(lst,POP,HEAD)) op(cll);
+    return sentinel && (cll=SIB(sentinel,end))!=sentinel? (pop?CLL_pop(cll):cll):NULL;
 }
-
-CLL *CLL_put(CLL *lst,CLL *lnk,int end)
+void *CLL_traverse(CLL *sentinel,int dir,CLL_OP op,void *data)
 {
-    if (!lst || !lnk) return NULL;
-    lnk->lnk[end]=lst->lnk[end];
-    lnk->lnk[!end]=lst;
-    lnk->lnk[end]->lnk[!end]=lst->lnk[end]=lnk;
-    return lnk;
-}
-
-// prepend or postpend src to dest
-CLL *CLL_splice(CLL *dst,int end,CLL *src)
-{
-    if (!dst || !src || CLL_EMPTY(src)) return NULL;
-    CLL *dhead=dst->lnk[end],*shead=src->lnk[end],*stail=src->lnk[!end];
-    shead->lnk[!end]=dst;
-    stail->lnk[end]=dhead;
-    dst->lnk[end]=shead;
-    dhead->lnk[!end]=stail;
-    src->lnk[end]=src->lnk[!end]=src;
-    return dst;
-}
-
-CLL *CLL_pop(CLL *lnk)
-{
-    if (!lnk) return NULL;
-    lnk->lnk[0]->lnk[1]=lnk->lnk[1];
-    lnk->lnk[1]->lnk[0]=lnk->lnk[0];
-    lnk->lnk[0]=lnk->lnk[1]=NULL;
-    return lnk;
-}
-
-CLL *CLL_get(CLL *lst,int pop,int end)
-{
-    if (!lst || lst==lst->lnk[end]) return NULL;
-    return pop?CLL_pop(lst->lnk[end]):lst->lnk[end];
-}
-
-void *CLL_traverse(CLL *lst,int dir,CLL_OP op,void *data)
-{
-    CLL *result=NULL,*next=NULL,*lnk=lst->lnk[dir];
-    while (lnk && lnk!=lst && (next=lnk->lnk[dir]) && !(result=op(lnk,data)))
-        lnk=next;
-    return result;
+    for(CLL *rval=NULL,sib=SIB(sentinel,dir),next;
+        sib && sib!=sentinel && (next=SIB(sib,dir)) && !(rval=op(sib,data));
+        sib=next);
+    return rval;
 }

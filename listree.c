@@ -42,7 +42,8 @@ RBR *RBR_init(RBR *rbr)
 void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn))
 {
     rb_erase(rbn,rbr);
-    rbn_release(rbn);
+    if (rbn_release)
+        rbn_release(rbn);
 }
 
 void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
@@ -149,11 +150,11 @@ LTI *LT_find(RBR *rbr,char *name,int len,int insert)
 
 void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data)
 {
-    RBN *rbn=NULL,*result=NULL;
+    RBN *rbn=NULL,*next,*result=NULL;
     if (reverse)
-        for (rbn=rb_last(rbr);rbn && !(result=op(rbn,data));rbn=rb_prev(rbn));
+        for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=op(rbn,data)));rbn=next);
     else
-        for (rbn=rb_first(rbr);rbn && !(result=op(rbn,data));rbn=rb_next(rbn));
+        for (rbn=rb_first(rbr);rbn && (next=rb_next(rbn),!(result=op(rbn,data)));rbn=next);
     return result;
 }
 
@@ -169,7 +170,7 @@ void *LTV_traverse(LTV *ltv,void *data)
     
     if (!ltobj_data) // remove absoloute visited flag
         return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && ltv->rbr.rb_node)?
-            RBR_traverse(&ltv->rbr,0,LTI_traverse,data):NULL;
+            RBR_traverse(&ltv->rbr,0,LTI_traverse,NULL):NULL;
     else if (!(ltv->flags&LT_RVIS))
     {
         if (ltobj_data->preop && (rval=ltobj_data->preop(NULL,NULL,ltv,data))) goto done;
@@ -197,9 +198,9 @@ void *LTVR_traverse(CLL *cll,void *data)
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
     if (!ltvr) goto done;
     
-    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(ltvr,NULL,NULL,data))) goto done;
+    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(NULL,ltvr,NULL,data))) goto done;
     if ((!ltobj_data || !ltobj_data->halt) && ltvr->ltv && (rval=LTV_traverse(ltvr->ltv,data))) goto done;
-    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(ltvr,NULL,NULL,data))) goto done;
+    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(NULL,ltvr,NULL,data))) goto done;
     
  done:
     if (ltobj_data) ltobj_data->halt=0;
@@ -213,15 +214,29 @@ void *LTI_traverse(RBN *rbn,void *data)
     struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
     if (!lti) goto done;
     
-    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(NULL,lti,NULL,data))) goto done;
+    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(lti,NULL,NULL,data))) goto done;
     if ((!ltobj_data || !ltobj_data->halt) && (rval=CLL_traverse(&lti->cll,FWD,LTVR_traverse,data))) goto done;
-    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(NULL,lti,NULL,data))) goto done;
+    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(lti,NULL,NULL,data))) goto done;
     
  done:
     if (ltobj_data) ltobj_data->halt=0;
     return rval;
 }
 
+
+//////////////////////////////////////////////////
+// Tag Team of traverse methods for LT elements
+//////////////////////////////////////////////////
+
+void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data)
+{
+    void *rval=NULL;
+    struct LTOBJ_DATA ltobj_data = { preop,postop,data,0,0 };
+    void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,data); }
+    rval=CLL_traverse(ltvr_cll,FWD,ltvr_op,&ltobj_data);
+    CLL_traverse(ltvr_cll,FWD,ltvr_op,NULL); // cleanup "visited" flags
+    return rval;
+}
 
 //////////////////////////////////////////////////
 // Tag Team of release methods for LT elements

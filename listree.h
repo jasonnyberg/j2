@@ -91,12 +91,18 @@ extern LTI *LT_find(RBR *rbr,char *name,int len,int insert);
 // Tag Team of traverse methods for LT elements
 //////////////////////////////////////////////////
 
-typedef void *(*LTOBJ_OP)(LTVR *ltvr,LTI *lti,LTV *ltv,void *data);
-struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; unsigned depth; void *data; int halt:1; };
-
 void *LTV_traverse(LTV *ltv,void *data);
 void *LTVR_traverse(CLL *cll,void *data);
 void *LTI_traverse(RBN *rbn,void *data);
+
+//////////////////////////////////////////////////
+// Combined pre-, in-, and post-fix LT traversal
+//////////////////////////////////////////////////
+
+typedef void *(*LTOBJ_OP)(LTI *lti,LTVR *ltvr,LTV *ltv,void *data);
+struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; void *data; unsigned depth; int halt; };
+
+void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data)
 
 //////////////////////////////////////////////////
 // Tag Team of release methods for LT elements

@@ -20,7 +20,7 @@
 
 
 //////////////////////////////////////////////////
-// Circular list (StaQ) (sentinel implementation)
+// Circular linked-list (nee StaQ) (sentinel implementation)
 //////////////////////////////////////////////////
 
 #ifndef CLL_H
@@ -28,25 +28,23 @@
 
 // head=lnk[0],tail=lnk[1]
 struct CLL { struct CLL *lnk[2]; } __attribute__((aligned(sizeof(long))));
-
 typedef struct CLL CLL;
-typedef void *(*CLL_OP)(CLL *lnk,void *data); // allowed to pop lnk but not neighbors.
 
 enum { HEAD=0,TAIL=1,FWD=0,REV=1,KEEP=0,POP=1 };
 
-extern CLL *CLL_init(CLL *lst);
-extern void CLL_release(CLL *lst,void (*cll_release)(CLL *cll));
+extern CLL *CLL_init(CLL *lst);                         // init and return lst
+extern void CLL_release(CLL *lst,void (*op)(CLL *cll)); // pop each list item and call op on it
+
+extern CLL *CLL_sumi(CLL *a,CLL *b,int end); //
+extern CLL *CLL_pop(CLL *lnk);                  // pop lnk from list it's in and return it/NULL
+extern CLL *CLL_get(CLL *lst,int dir,int pop);  // get/pop lst's head or tail, return it/NULL
 
 
-extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);
-extern CLL *CLL_splice(CLL *dst,int end,CLL *src);
-extern CLL *CLL_pop(CLL *lnk);
-extern CLL *CLL_get(CLL *lst,int pop,int end);
-extern CLL *CLL_find(CLL *lst,void *data,int len);
+// call op(lnk,data) for each lnk in lst until op returns non-zero; return what last op returns
+extern void *CLL_traverse(CLL *lst,int dir,void *(*op)(CLL *lnk,void *data),void *data);
 
-extern void *CLL_traverse(CLL *lst,int dir,CLL_OP op,void *data);
-
-#define CLL_EMPTY(lst) (!CLL_get((lst),0,0))
-#define CLL_ROT(lst,dir) (CLL_put(lst,CLL_get(lst,1,dir),!dir))
+#define CLL_EMPTY(sentinel) (!CLL_get((sentinel),FWD,KEEP))
+#define CLL_ROT(sentinel,dir) (CLL_put((sentinel),CLL_get((sentinel),POP,(dir)),!(dir)))
 
 #endif
+C

@@ -40,9 +40,6 @@ typedef struct EDICT
 // Edict
 //////////////////////////////////////////////////
 
-// util
-extern void *edict_traverse(CLL *cll,LTOBJ_OP preop,LTOBJ_OP postop);
-
 //  vm
 extern int edict_init(EDICT *edict,LTV *root);
 extern int edict_destroy(EDICT *edict);

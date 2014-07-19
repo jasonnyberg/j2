@@ -25,24 +25,27 @@
 // Circular Linked List
 //////////////////////////////////////////////////
 
-#define SIB(x,end) ((x)->lnk[end])
-#define LINK(x,y,end) (SIB((y),!(end))=(x),SIB((x),(end))=(y))
+#define LINK(x,y,end) (CLL_SIB((y),!(end))=(x),CLL_SIB((x),(end))=(y))
 
-CLL *CLL_init(CLL *cll) { return SIB(cll,FWD)=SIB(cll,REV)=cll; }
-void CLL_release(CLL *sentinel,void (*op)(CLL *cll)) { for (CLL *cll=NULL;cll=CLL_get(sentinel,POP,HEAD);op(cll)); }
+CLL *CLL_init(CLL *cll) { return CLL_SIB(cll,FWD)=CLL_SIB(cll,REV)=cll; }
+void CLL_release(CLL *sentinel,void (*op)(CLL *cll)) { CLL *cll; for (cll=NULL;cll=CLL_get(sentinel,POP,HEAD);op(cll)); }
 
 // sumi-gaeshi - 4 corners throw
-// convert a<->a' and b<->b' to a'<->b' and a<->b
-CLL *CLL_sumi(CLL *a,CLL *b,int end) { return a && b? (LINK(SIB(a,end),SIB(b,!end),!end),LINK(a,b,end)):NULL; }
-CLL *CLL_pop(CLL *lnk) { return lnk?CLL_init(CLL_sumi(SIB(lnk,FWD),SIB(lnk,REV),REV)):NULL; }
-CLL *CLL_get(CLL *sentinel,int end,pop) {
-    CLL *cll;
-    return sentinel && (cll=SIB(sentinel,end))!=sentinel? (pop?CLL_pop(cll):cll):NULL;
-}
-void *CLL_traverse(CLL *sentinel,int dir,CLL_OP op,void *data)
+// convert a<->a' and b<->b' to a<->b and a'<->b'
+CLL *CLL_sumi(CLL *a,CLL *b,int end) { return a && b? (LINK(CLL_SIB(a,end),CLL_SIB(b,!end),!end),LINK(a,b,end)):NULL; }
+CLL *CLL_pop(CLL *lnk) { return lnk?CLL_init(CLL_sumi(CLL_SIB(lnk,FWD),CLL_SIB(lnk,REV),REV)):NULL; }
+
+CLL *CLL_get(CLL *sentinel,int end,int pop)
 {
-    for(CLL *rval=NULL,sib=SIB(sentinel,dir),next;
-        sib && sib!=sentinel && (next=SIB(sib,dir)) && !(rval=op(sib,data));
+    CLL *cll;
+    return sentinel && (cll=CLL_SIB(sentinel,end))!=sentinel? (pop?CLL_pop(cll):cll):NULL;
+}
+
+void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk,void *data),void *data)
+{
+    CLL *rval,*sib,*next;
+    for(rval=NULL,sib=CLL_SIB(sentinel,dir);
+        sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib,data));
         sib=next);
     return rval;
 }

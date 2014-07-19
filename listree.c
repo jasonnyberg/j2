@@ -215,7 +215,7 @@ void *LTI_traverse(RBN *rbn,void *data)
     if (!lti) goto done;
     
     if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(lti,NULL,NULL,data))) goto done;
-    if ((!ltobj_data || !ltobj_data->halt) && (rval=CLL_traverse(&lti->cll,FWD,LTVR_traverse,data))) goto done;
+    if ((!ltobj_data || !ltobj_data->halt) && (rval=CLL_map(&lti->cll,FWD,LTVR_traverse,data))) goto done;
     if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(lti,NULL,NULL,data))) goto done;
     
  done:
@@ -233,8 +233,8 @@ void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data)
     void *rval=NULL;
     struct LTOBJ_DATA ltobj_data = { preop,postop,data,0,0 };
     void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,data); }
-    rval=CLL_traverse(ltvr_cll,FWD,ltvr_op,&ltobj_data);
-    CLL_traverse(ltvr_cll,FWD,ltvr_op,NULL); // cleanup "visited" flags
+    rval=CLL_map(ltvr_cll,FWD,ltvr_op,&ltobj_data);
+    CLL_map(ltvr_cll,FWD,ltvr_op,NULL); // cleanup "visited" flags
     return rval;
 }
 
@@ -308,7 +308,7 @@ LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_traverse(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_map(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
         return NULL;
     ltv=ltvr->ltv;
     ltv->refs-=pop;

@@ -18,7 +18,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 //////////////////////////////////////////////////
 // Circular linked-list (nee StaQ) (sentinel implementation)
 //////////////////////////////////////////////////
@@ -35,16 +34,15 @@ enum { HEAD=0,TAIL=1,FWD=0,REV=1,KEEP=0,POP=1 };
 extern CLL *CLL_init(CLL *lst);                         // init and return lst
 extern void CLL_release(CLL *lst,void (*op)(CLL *cll)); // pop each list item and call op on it
 
-extern CLL *CLL_sumi(CLL *a,CLL *b,int end); //
+extern CLL *CLL_sumi(CLL *a,CLL *b,int end);    // convert a<->a' and b<->b' to a<->b and a'<->b'
 extern CLL *CLL_pop(CLL *lnk);                  // pop lnk from list it's in and return it/NULL
 extern CLL *CLL_get(CLL *lst,int dir,int pop);  // get/pop lst's head or tail, return it/NULL
 
+// calls op(lnk,data) for each lnk in lst until op returns non-zero; returns what last op returns
+extern void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk,void *data),void *data);
 
-// call op(lnk,data) for each lnk in lst until op returns non-zero; return what last op returns
-extern void *CLL_traverse(CLL *lst,int dir,void *(*op)(CLL *lnk,void *data),void *data);
-
+#define CLL_SIB(x,end) ((x)->lnk[end])
 #define CLL_EMPTY(sentinel) (!CLL_get((sentinel),FWD,KEEP))
 #define CLL_ROT(sentinel,dir) (CLL_put((sentinel),CLL_get((sentinel),POP,(dir)),!(dir)))
 
 #endif
-C

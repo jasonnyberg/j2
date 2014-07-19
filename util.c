@@ -72,18 +72,10 @@ void try_loginfo(const char *func,const char *cond)
     memset(logstr,' ',TRY_STRLEN);
     switch (try_infolev)
     {
-        case 3:
-            snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr);
-            break;
-        case 2:
-            snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr);
-            break;
-        case 1:
-            snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr);
-            break;
-        case 0:
-            snprintf(logstr+indent,TRY_STRLEN,"%s","");
-            break;
+        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr); break;
+        case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr); break;
+        case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
         
     printf(CODE_GREEN "%s" CODE_RESET NEWLINE,logstr); // prints to stdout!
@@ -95,18 +87,10 @@ void try_logerror(const char *func,const char *cond,int status)
     char errstr[TRY_STRLEN];
     switch (try_loglev)
     {
-        case 3:
-            snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr);
-            break;
-        case 2:
-            snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr);
-            break;
-        case 1:
-            snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr);
-            break;
-        case 0:
-            snprintf(errstr,TRY_STRLEN,"%s","");
-            break;
+        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr); break;
+        case 1: snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr); break;
+        case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
             
     printf(CODE_RED "%s" CODE_RESET NEWLINE,errstr); // prints to stdout!
@@ -124,22 +108,15 @@ void try_reset(int context)
 
 void *mymalloc(int size)
 {
-    void *r=malloc(size);
-    if (r)
-    {
-        bzero(r,size);
-        Gmymalloc+=1;
-    }
-    //printf(CODE_RED "%d\n" CODE_RESET,Gmymalloc);
+    void *r=calloc(size,1);
+    if (r) Gmymalloc+=1;
     return r;
 }
 
 void *myrealloc(void *buf, int newsize)
 {
     char *r=realloc(buf,newsize);
-    if (r)
-        Gmymalloc+=1;
-    //printf(CODE_RED "%d\n" CODE_RESET,Gmymalloc);
+    if (r) Gmymalloc+=1;
     return r;
 }
 

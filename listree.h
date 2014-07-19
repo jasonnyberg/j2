@@ -102,7 +102,7 @@ void *LTI_traverse(RBN *rbn,void *data);
 typedef void *(*LTOBJ_OP)(LTI *lti,LTVR *ltvr,LTV *ltv,void *data);
 struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; void *data; unsigned depth; int halt; };
 
-void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data)
+void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data);
 
 //////////////////////////////////////////////////
 // Tag Team of release methods for LT elements

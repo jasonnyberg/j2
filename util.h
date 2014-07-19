@@ -171,5 +171,41 @@ extern int strnncmp(char *a,int alen,char *b,int blen);
 extern int strnspn(char *str,int len,char *accept);
 extern int strncspn(char *str,int len,char *reject);
 extern int fnmatch_len(char *pat,int plen,char *str,int slen);
+
+/*********************************************************************/
+/* Macros implementing a linked-list based stack, where list head is same type as list element.
+ * Given any "struct X" that has a self-referencing "struct X *next" member, these macros can
+ * manage push, pop, and traversal operations.
+ * "head": A pointer to a "struct X" object acting as the head of a list.
+ * "iter": A pointer to a "struct X" object that trails one node behind the "active" node during a traversal.
+ * "elem": A pointer to a "struct X" object that is to be pushed onto a stack.
+ *
+ * Example uses: reverse a stack's elements:
+ *
+ * main()
+ * {
+ *     int i;
+ *     struct XXX { struct XXX *next; int i; } head,node[100],*item,*iter;
+ *     memset(&head,0,sizeof(head));
+ *     memset(&node,0,sizeof(node));
+ *
+ *     for (i=0;i<20;i++)
+ *         node[i].i=i, STACK_PUSH(&head,&node[i]); // add 20 nodes to a stack/list
+ *
+ *     for(item=STACK_NEWITER(iter,&head);item;item=STACK_ITERATE(iter))
+ *         printf("%d\n",item->i); // display the nodes
+ *
+ *     while(item=STACK_NEWITER(iter,&head)) // don't iterate while popping, just reset iter
+ *         STACK_POP(iter); // pop the nodes off of the list
+ * }
+ */
+#define STACK_NEWITER(iter,head) (((iter)=(__typeof__(iter))(head))?(iter)->next:NULL) ///< setup an iterator, return first list item
+#define STACK_ITERATE(iter)      (((iter) && ((iter)=(iter)->next))?(iter)->next:NULL) ///< step iterator, return next list item
+#define STACK_PUSH(iter,item)    ((iter) && (item) && ((item)->next=(iter)->next, (iter)->next=(item))) ///< push item onto stack, returning true on success and false on failure
+#define STACK_POP(iter)          ((iter) && ((!(iter)->next) || (((iter)->next=(iter)->next->next),TRUE))) ///< pop item associated with iter off of stack returning true on success and false on failure
+
+
+
+
 #endif
 

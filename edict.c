@@ -148,7 +148,7 @@ typedef struct TOK {
     struct TOK *next;
     char *data;
     int len;
-    char ops;
+    char *ops;
     TOK_FLAGS flags;
     struct TOK *subtoks;
     struct TOK *curtok; // use as tail ptr while constructing expr
@@ -195,7 +195,7 @@ main {
 TOK *tokpush(TOK *lst,TOK *tok) { return STACK_PUSH(lst,tok); }
 TOK *tokpop(TOK *lst) { TOK *iter,*item=STACK_NEWITER(iter,lst); if (item) STACK_POP(iter); return item; }
 
-TOK *TOK_new(TOK_FLAGS flags,char *data,int len,int ops)
+TOK *TOK_new(TOK_FLAGS flags,char *data,int len,char *ops)
 {
     TOK *tok=NULL;
     if ((flags || len) && (tok=DEQ(&tok_repo)) || (tok=NEW(TOK)))
@@ -204,7 +204,7 @@ TOK *TOK_new(TOK_FLAGS flags,char *data,int len,int ops)
         tok->flags=flags;
         tok->data=data;
         tok->len=len;
-        tok->ops=ops; // reach backwards from data "ops" bytes...
+        tok->ops=ops;
     }
     return tok;
 }
@@ -231,6 +231,7 @@ int edict_parse(EDICT *edict,TOK *expr)
     int elen=0;
     int tlen;
     char *ops=NULL;
+    int oplen=0;
 
     // check for balance/matchset/notmatchset 
     int series(char *include,char *exclude,char balance) {
@@ -268,8 +269,9 @@ int edict_parse(EDICT *edict,TOK *expr)
         if (parent==expr) atom=name=NULL;
         advance(adv);
         return (TOK *) CLL_sumi(&parent->subtoks,(CLL *) TOK_new(flags,data,len,tops),TAIL);
-        return tok;
     }
+
+    void op(int flag) { if (!ops) ops=edata; flags|=flag; advance(1); }
 
     if (expr && expr->data)
     {
@@ -280,45 +282,21 @@ int edict_parse(EDICT *edict,TOK *expr)
         {
             switch(*edata)
             {
-                case '-':
-                    flags|=TOK_REVERSE;
-                    advance(1);
-                    continue; // !!!
-                case '+':
-                    flags|=TOK_ADD;
-                    advance(1);
-                    continue; // !!!
-                case ' ': case '\t': case '\n':
-                    tlen=series(WHITESPACE,NULL,0);
-                    append(expr,TOK_NONE,edata,tlen,tlen);
-                    break;
-                case '<':
-                    tlen=series(NULL,NULL,'>');
-                    append(expr,TOK_SCOPE|flags,edata+1,tlen-2,tlen);
-                    break;
-                case '(':
-                    tlen=series(NULL,NULL,')');
-                    append(expr,TOK_EXEC|flags,edata+1,tlen-2,tlen);
-                    break;
-                case '{':
-                    tlen=series(NULL,NULL,'}');
-                    append(expr,TOK_CURLY|flags,edata+1,tlen-2,tlen);
-                    break;
-                case '[':
-                    tlen=series(NULL,NULL,']');
-                    append(name,TOK_LIT|flags,edata+1,tlen-2,tlen); // if name is null, reverts to expr
-                    break;
-                case '-': // cll reverse
-                case '+': // add (vs. search)
-                case '@': // push @name
-                case '/': // pop @name
-                case '$': // substitute???
-                case '&': // logical and
-                case '|': // logical or
-                case '?': // print value?
-                    if (ops) ops=edata;
-                    advance(1);
-                    break;
+                case ' ':
+                case '\t':
+                case '\n': tlen=series(WHITESPACE,NULL,0); append(expr,TOK_NONE,edata,tlen,tlen);        break;
+                case '<':  tlen=series(NULL,NULL,'>'); append(expr,TOK_SCOPE|flags,edata+1,tlen-2,tlen); break;
+                case '(':  tlen=series(NULL,NULL,')'); append(expr,TOK_EXEC|flags,edata+1,tlen-2,tlen);  break;
+                case '{':  tlen=series(NULL,NULL,'}'); append(expr,TOK_CURLY|flags,edata+1,tlen-2,tlen); break;
+                case '[':  tlen=series(NULL,NULL,']'); append(name,TOK_LIT|flags,edata+1,tlen-2,tlen);   break;// if name is null, reverts to expr
+                case '-':  op(TOK_REVERSE); break; // cll reverse
+                case '+':  op(TOK_ADD);     break; // add (vs. search)
+                case '@':  op(0);           break; // push @name
+                case '/':  op(0);           break; // pop @name
+                case '$':  op(0);           break; // substitute???
+                case '&':  op(0);           break; // logical and
+                case '|':  op(0);           break; // logical or
+                case '?' : op(0);           break; // print value?
                 case '.':
                     tlen=series(".",NULL,0);
                     if (tlen>2)
@@ -400,7 +378,6 @@ int edict_repl(EDICT *edict)
 
         int eval_atom(TOK *atom) {
             int status=0;
-            CLL ops;
             TOK *op_subtok=NULL,*name_subtok=NULL;
             TOK *op=NULL,*name=NULL;
 

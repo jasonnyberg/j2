@@ -1,3 +1,8 @@
 build
 cscope*
 test
+.cproject
+.idea/
+.project
+a.out
+j2.iml

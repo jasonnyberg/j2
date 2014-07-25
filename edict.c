@@ -230,7 +230,7 @@ int edict_parse(EDICT *edict,TOK *expr)
     char *edata=NULL;
     int elen=0;
     int tlen;
-    int ops=0;
+    char *ops=NULL;
 
     // check for balance/matchset/notmatchset 
     int series(char *include,char *exclude,char balance) {
@@ -262,12 +262,12 @@ int edict_parse(EDICT *edict,TOK *expr)
     }
 
     TOK *append(TOK *parent,TOK_FLAGS flags,char *data,int len,int adv) {
-        int olen=ops;
-        ops=0;
+        char *tops=ops;
+        ops=NULL;
         if (parent==NULL) parent=expr;
         if (parent==expr) atom=name=NULL;
         advance(adv);
-        return (TOK *) CLL_sumi(&parent->subtoks,(CLL *) TOK_new(flags,data,len,ops),TAIL);
+        return (TOK *) CLL_sumi(&parent->subtoks,(CLL *) TOK_new(flags,data,len,tops),TAIL);
         return tok;
     }
 
@@ -316,7 +316,7 @@ int edict_parse(EDICT *edict,TOK *expr)
                 case '&': // logical and
                 case '|': // logical or
                 case '?': // print value?
-                    ops++;
+                    if (ops) ops=edata;
                     advance(1);
                     break;
                 case '.':
@@ -723,4 +723,3 @@ int edict_destroy(EDICT *edict)
  done:
     return status;
 }
-

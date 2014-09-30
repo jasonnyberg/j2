@@ -139,27 +139,27 @@ typedef enum {
 
 
 typedef struct NAME {
-    struct NAME *next;
+    CLL cll;
     LTI *lti;
     LTVR *ltvr; // points to LTV
 } NAME;
 
 typedef struct TOK {
-    struct TOK *next;
+    CLL cll;
+    TOK_FLAGS flags;
     char *data;
     int len;
     char *ops;
-    TOK_FLAGS flags;
-    struct TOK *subtoks;
-    struct TOK *curtok; // use as tail ptr while constructing expr
-    struct NAME *namestack;
+    CLL subtoks;
+    LTI *lti;   // current name
+    LTVR *ltvr; // current item
 } TOK;
 
-
 typedef struct CONTEXT {
-    struct CONTEXT *next;
-    CLL anons;
-    CLL exprs;
+    CLL cll;
+    CLL anon;
+    CLL expr;
+    CLL atom;
 } CONTEXT;
 
 
@@ -192,13 +192,13 @@ main {
  * atoms keep track of their namestacks.
  */
 
-TOK *tokpush(TOK *lst,TOK *tok) { return STACK_PUSH(lst,tok); }
-TOK *tokpop(TOK *lst) { TOK *iter,*item=STACK_NEWITER(iter,lst); if (item) STACK_POP(iter); return item; }
+TOK *tokpush(CLL *lst,TOK *tok) { return (TOK *) CLL_sumi(lst,&tok->cll,HEAD); }
+TOK *tokpop(CLL *lst) { return (TOK *) cll_pop(lst); }
 
 TOK *TOK_new(TOK_FLAGS flags,char *data,int len,char *ops)
 {
     TOK *tok=NULL;
-    if ((flags || len) && (tok=DEQ(&tok_repo)) || (tok=NEW(TOK)))
+    if ((tok=tokpop(&tok_repo)) || (tok=NEW(TOK)))
     {
         tok_count++;
         tok->flags=flags;
@@ -211,11 +211,8 @@ TOK *TOK_new(TOK_FLAGS flags,char *data,int len,char *ops)
 
 void TOK_free(TOK *tok)
 {
-    TOK *item,*iter;
-    
-    while ((item=STACK_NEWITER(iter,&tok->subtoks)))
-        STACK_POP(iter),TOK_free(item);
-
+    TOK *subtok;
+    while ((subtok=tokpop(&tok->subtoks))) TOK_free(subtok);
     BZERO(*tok);
     tokpush(&tok_repo,tok);
     tok_count--;
@@ -259,7 +256,7 @@ int edict_parse(EDICT *edict,TOK *expr)
     TOK *curatom(int reset) {
         name=NULL;
         if (reset) atom=NULL;
-        return atom?atom:(atom=(TOK *) CLL_sumi(&expr->subtoks,(CLL *) TOK_new(TOK_ATOM,"",0),TAIL));
+        return atom?atom:(atom=(TOK *) CLL_sumi(&expr->subtoks,(CLL *) TOK_new(TOK_ATOM,"",0,NULL),TAIL));
     }
 
     TOK *append(TOK *parent,TOK_FLAGS flags,char *data,int len,int adv) {
@@ -315,7 +312,7 @@ int edict_parse(EDICT *edict,TOK *expr)
             flags=TOK_NONE;
         }
         if (ops)
-            printf(stdout,CODE_RED,"Unassociated ops: "),fstrnprint(stdout,edata-ops,ops),printf("\n" CODE RESET);
+            append(curatom(1),TOK_NAME | flags,edata,tlen,tlen); // ops with no name...
     }
 
     return elen;
@@ -552,9 +549,9 @@ int edict_repl(EDICT *edict)
             
             STRY(!file_tok->data,"validating file");
             TRY((line=edict_read((FILE *) file_tok->data,&len))==NULL,-1,read_failed,"reading from file");
-            TRY((expr=TOK_new(TOK_EXPR,line,len))==NULL,-1,tok_failed,"allocating file-sourced expr token");
+            TRY((expr=TOK_new(TOK_EXPR,line,len,NULL))==NULL,-1,tok_failed,"allocating file-sourced expr token");
             
-            tokpush(&edict->toks,file);
+            tokpush(&edict->toks,file_tok);
             toppush(&edict->toks,expr);
             goto done; // success!
             
@@ -562,7 +559,7 @@ int edict_repl(EDICT *edict)
         tokpop(toklist);
             free(line);
         read_failed:
-            fclose((FILE *) file->data);
+            fclose((FILE *) file_tok->data);
             TOK_free(file_tok);
         done:
             return status;
@@ -578,7 +575,6 @@ int edict_repl(EDICT *edict)
             case TOK_SCOPE:  STRY(eval_expr(tok),"evaluating TOK_SCOPE expr");  break;
             case TOK_CURLY:  STRY(eval_expr(tok),"evaluating TOK_CURLY expr");  break;
             case TOK_FILE:   STRY(eval_file(tok),"evaluating TOK_FILE expr");   break;
-            case TOK_OP:
             case TOK_NAME:
             default:         STRY(-1,"evaluating unexpected token expr");       break;
         }
@@ -590,7 +586,7 @@ int edict_repl(EDICT *edict)
     void *show_tok(CLL *lnk,void *data) {
         TOK *tok=(TOK *) lnk;
         if (data) printf("%s",(char *) data);
-        if (ops) fstrnprintf(stdout,tok->data-tok->ops,tok->ops),printf(":");
+        if (tok->ops) fstrnprintf(stdout,tok->data-tok->ops,tok->ops),printf(":");
         if (tok->flags&TOK_FILE)    printf("FILE "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
         if (tok->flags&TOK_EXPR)    printf("EXPR ");
         if (tok->flags&TOK_EXEC)    printf("EXEC " );
@@ -598,7 +594,6 @@ int edict_repl(EDICT *edict)
         if (tok->flags&TOK_CURLY)   printf("CURLY ");
         if (tok->flags&TOK_ATOM)    printf("ATOM ");
         if (tok->flags&TOK_LIT)     printf("LIT "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
-        if (tok->flags&TOK_OP)      printf("OP "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
         if (tok->flags&TOK_NAME)    printf("NAME "),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
         if (tok->flags&TOK_ADD)     printf("ADD ");
         if (tok->flags&TOK_REM)     printf("REM ");
@@ -614,9 +609,9 @@ int edict_repl(EDICT *edict)
     }
 
     try_reset();
-    while(tokpush(&edict->toks,TOK_new(TOK_FILE,stdin,sizeof(FILE *))))
+    while(tokpush(&edict->toks,TOK_new(TOK_FILE,stdin,sizeof(FILE *),NULL)))
     {
-        tok *item,*iter;
+        TOK *item,*iter;
         do CLL_map(&edict->toks,FWD,show_tok,NULL), printf("\n");
         while (eval(edict->toks));
     

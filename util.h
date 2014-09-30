@@ -172,6 +172,13 @@ extern int strnspn(char *str,int len,char *accept);
 extern int strncspn(char *str,int len,char *reject);
 extern int fnmatch_len(char *pat,int plen,char *str,int slen);
 
+#ifndef FALSE
+#define FALSE 0
+#endif
+#ifndef TRUE
+#define TRUE !FALSE
+#endif
+
 /*********************************************************************/
 /* Macros implementing a linked-list based stack, where list head is same type as list element.
  * Given any "struct X" that has a self-referencing "struct X *next" member, these macros can

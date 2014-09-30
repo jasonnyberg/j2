@@ -40,7 +40,7 @@ CLL *CLL_get(CLL *sentinel,int end,int pop)
     CLL *cll;
     return sentinel && (cll=CLL_SIB(sentinel,end))!=sentinel? (pop?CLL_pop(cll):cll):NULL;
 }
-,
+
 void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk,void *data),void *data)
 {
     CLL *rval,*sib,*next;

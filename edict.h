@@ -27,9 +27,8 @@ typedef int (*edict_bc_impl)(struct EDICT *edict,char *name,int len);
 
 typedef struct EDICT
 {
-    CLL anon;
     CLL dict;
-    CLL toks;
+    CLL context;
     int numbc;
     char bc[256];
     edict_bc_impl bcf[256];

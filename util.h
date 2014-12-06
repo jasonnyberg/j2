@@ -212,6 +212,12 @@ extern int fnmatch_len(char *pat,int plen,char *str,int slen);
 #define STACK_POP(iter)          ((iter) && ((!(iter)->next) || (((iter)->next=(iter)->next->next),TRUE))) ///< pop item associated with iter off of stack returning true on success and false on failure
 
 
+#define SHEXDUMP_OPT_UNPADDED 0x1
+#define SHEXDUMP_OPT_REVERSE  0x2
+#define SHEXDUMP_OPT_NOSPACE  0x4
+
+extern int shexdump(char *buf,int size,int width,int opts);
+extern int hexdump(char *buf,int size);
 
 
 #endif

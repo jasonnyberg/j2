@@ -28,7 +28,7 @@ typedef int (*edict_bc_impl)(struct EDICT *edict,char *name,int len);
 typedef struct EDICT
 {
     CLL dict;
-    CLL context;
+    CLL contexts;
     int numbc;
     char bc[256];
     edict_bc_impl bcf[256];
@@ -50,6 +50,8 @@ extern LTV *edict_rem(EDICT *edict);
 extern LTV *edict_name(EDICT *edict,char *name,int len);
 extern LTV *edict_get(EDICT *edict,char *name,int len,int pop,LTI **lti);
 extern LTV *edict_ref(EDICT *edict,char *name,int len,int pop);
+
+extern void *CONTEXT_show(CLL *lnk,void *data);
 
 /*
 extern LTV *edict_add(RBR *rbr,LTV *ltv);

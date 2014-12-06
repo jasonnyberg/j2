@@ -236,3 +236,19 @@ int fnmatch_len(char *pat,int plen,char *str,int slen)
     pat[plen]=peos,str[slen]=seos;
     return result;
 }
+
+int shexdump(char *buf,int size,int width,int opts)
+{
+    int i=0;
+    int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
+    int pad=!(opts&SHEXDUMP_OPT_UNPADDED);
+    char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
+    int shexbyte(int c) { return printf(pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); }
+    void readable(int j) { for (;j && o(i-j)<size;j--) printf("%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); }
+    void hex(int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):printf("  %s",sep); }
+
+    while (i<size) printf("%8d: ",i),hex(width),readable(width),printf("\n");
+    return size;
+}
+
+int hexdump(char *buf,int size) { return shexdump(buf,size,16,0); }

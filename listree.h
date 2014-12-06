@@ -115,11 +115,11 @@ extern void LTI_release(RBN *rbn);
 // Dictionary
 //////////////////////////////////////////////////
 
-extern LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr);
-extern LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr);
+extern LTV *LTV_put(CLL *ltvr_cll,LTV *ltv,int end,LTVR **ltvr);
+extern LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
-extern LTV *LTV_push(CLL *cll,LTV *ltv);
-extern LTV *LTV_pop(CLL *cll);
+extern LTV *LTV_push(CLL *ltvr_cll,LTV *ltv);
+extern LTV *LTV_pop(CLL *ltvr_cll);
 
 extern void LT_init();
 

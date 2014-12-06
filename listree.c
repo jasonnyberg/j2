@@ -79,7 +79,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 void LTV_free(LTV *ltv)
 {
     ZERO(*ltv);
-    CLL_put(&ltv_repo,&ltv->repo[0],HEAD);
+    CLL_put(&ltv_repo,ltv->repo,HEAD);
     ltv_count--;
 }
 
@@ -99,7 +99,7 @@ LTVR *LTVR_new(LTV *ltv)
 void LTVR_free(LTVR *ltvr)
 {
     ZERO(*ltvr);
-    CLL_put(&ltvr_repo,&ltvr->repo[0],HEAD);
+    CLL_put(&ltvr_repo,ltvr->repo,HEAD);
     ltvr_count--;
 }
 
@@ -120,7 +120,7 @@ LTI *LTI_new(char *name,int len)
 void LTI_free(LTI *lti)
 {
     ZERO(*lti);
-    CLL_put(&lti_repo,&lti->repo[0],HEAD);
+    CLL_put(&lti_repo,lti->repo,HEAD);
     lti_count--;
 }
 
@@ -279,13 +279,13 @@ void LTI_release(RBN *rbn)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr_ret)
+LTV *LTV_put(CLL *ltvr_cll,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    if (cll && ltv && (ltvr=LTVR_new(ltv)))
+    if (ltvr_cll && ltv && (ltvr=LTVR_new(ltv)))
     {
-        if (CLL_put(cll,(CLL *) ltvr,end))
+        if (CLL_put(ltvr_cll,&ltvr->cll,end))
         {
             ltv->refs++;
             if (ltvr_ret) *ltvr_ret=ltvr;
@@ -296,19 +296,19 @@ LTV *LTV_put(CLL *cll,LTV *ltv,int end,LTVR **ltvr_ret)
     return NULL;
 }
 
-LTV *LTV_get(CLL *cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
+LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
 {
-    void *ltv_match(CLL *cll,void *data)
+    void *ltv_match(CLL *lnk,void *data)
     {
-        LTVR *ltvr=(LTVR *) cll;
+        LTVR *ltvr=(LTVR *) lnk;
         if (!ltvr || !ltvr->ltv || ltvr->ltv->len!=matchlen || memcmp(ltvr->ltv->data,match,matchlen)) return NULL;
-        else return pop?CLL_pop(cll):cll;
+        else return pop?lnk:CLL_cut(lnk);
     }
 
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_map(cll,end,ltv_match,NULL):CLL_get(cll,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_map(ltvr_cll,end,ltv_match,NULL):CLL_get(ltvr_cll,pop,end)))
         return NULL;
     ltv=ltvr->ltv;
     ltv->refs-=pop;

@@ -84,13 +84,10 @@ int edict_dump(EDICT *edict)
     fprintf(dumpfile,"ltvr_count [label=\"ltvr_count %d\"]\n",ltvr_count);
     fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
     fprintf(dumpfile,"%1$d [label=\"dict\" color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
-    fprintf(dumpfile,"%1$d [label=\"anon\" color=blue] %1$d -> %2$d\n",&edict->anon,edict->anon.lnk[0]);
-    fprintf(dumpfile,"%1$d [label=\"toks\" color=blue] %1$d -> %2$d\n",&edict->toks,edict->toks.lnk[0]);
 
-    edict_traverse(&edict->dict,graph_pre,NULL,NULL);
-    edict_traverse(&edict->anon,graph_pre,NULL,NULL);
-    edict_traverse(&edict->toks,graph_pre,NULL,NULL); 
-    
+    listree_traverse(&edict->dict,graph_pre,NULL,NULL);
+    CLL_map(&edict->contexts,FWD,CONTEXT_show,dumpfile);
+
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
 
@@ -126,16 +123,9 @@ int edict_print(EDICT *edict,LTI *target_lti,unsigned depth)
     void *md;
     
     if (target_lti)
-    {
-        edict_traverse(&target_lti->cll,print_pre,NULL,NULL);
-    }
+        listree_traverse(&target_lti->cll,print_pre,NULL,NULL);
     else
-    {
-        printf("anons:\n");
-        edict_traverse(&edict->anon,print_pre,NULL,NULL);
-        printf("dict:\n");
-        edict_traverse(&edict->dict,print_pre,NULL,NULL);
-    }
+        listree_traverse(&edict->dict,print_pre,NULL,NULL);
     return status;
 }
 
@@ -144,6 +134,6 @@ int main()
 {
     EDICT edict;
     edict_init(&edict,LTV_new("ROOT",-1,0));
-    edict_repl(&edict);
+    edict_eval(&edict);
     edict_destroy(&edict);
 }

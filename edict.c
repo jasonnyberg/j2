@@ -123,7 +123,7 @@ typedef enum {
     TOK_OP       =1<<0x06,
     TOK_REF      =1<<0x07,
 
-    TOK_POP      =1<<0x08,
+    TOK_CONT     =1<<0x08,
     TOK_ADD      =1<<0x09,
     TOK_REM      =1<<0x0a,
     TOK_REV      =1<<0x0b,
@@ -178,10 +178,6 @@ void TOK_free(TOK *tok)
 void *TOK_show(CLL *lnk,void *data) {
     TOK *tok=(TOK *) lnk;
     if (data) printf("%s",(char *) data);
-    if (tok->flags&TOK_POP)     printf("POP ");
-    if (tok->flags&TOK_ADD)     printf("ADD ");
-    if (tok->flags&TOK_REM)     printf("REM ");
-    if (tok->flags&TOK_REV)     printf("REV ");
     if (tok->flags&TOK_FILE)    printf("FILE "), fprintf(stdout,"0x%x",tok->data),putchar(' ');
     if (tok->flags&TOK_EXPR)    printf("EXPR "), fstrnprint(stdout,tok->data,tok->len),putchar(' ');
     if (tok->flags&TOK_EXEC)    printf("EXEC " ),fstrnprint(stdout,tok->data,tok->len),putchar(' ');
@@ -190,6 +186,10 @@ void *TOK_show(CLL *lnk,void *data) {
     if (tok->flags&TOK_LIT)     printf("LIT "),  fstrnprint(stdout,tok->data,tok->len),putchar(' ');
     if (tok->flags&TOK_OP)      printf("OP "),   fstrnprint(stdout,tok->data,tok->len),putchar(' ');
     if (tok->flags&TOK_REF)     printf("REF "),  fstrnprint(stdout,tok->data,tok->len),putchar(' ');
+    if (tok->flags&TOK_ADD)     printf("ADD ");
+    if (tok->flags&TOK_REM)     printf("REM ");
+    if (tok->flags&TOK_REV)     printf("REV ");
+    if (tok->flags&TOK_CONT)    printf("CONT ");
     if (tok->flags==TOK_NONE)   printf("_ ");
     else {
         printf("(");
@@ -236,15 +236,17 @@ int edict_eval(EDICT *edict)
     int status=0;
     char *bc_ws=CONCATA(bc_ws,edict->bc,WHITESPACE);
 
-    int repl(CONTEXT *context) {
-        TOK *tok=NULL;
+    int eval_context(CONTEXT *context) {
         int status=0;
-        int add=0,reverse=0;
-        char op;
-        
+
+        int eval_tok(TOK *tok) {
+            int status=0;
+            int add=0,reverse=0;
+            char op;
+
 
 #if 0
-           if (expr->flags&TOK_SCOPE)
+            if (expr->flags&TOK_SCOPE)
                 STRY(!LTV_push(&edict->dict,(expr->context=LTV_pop(&edict->anon))),"pushing scope");
             else if (expr->flags&TOK_EXEC)
             {
@@ -257,15 +259,15 @@ int edict_eval(EDICT *edict)
 
             // WRONG do not process recursively; push expr subtoks into edict->toks instead
             STRY(eval(&expr->subtoks),"traversing expr token");
-            
+
             if (expr->flags&TOK_EXEC || expr->flags&TOK_SCOPE)
             { 
                 LTV *ltv=NULL;
                 STRY(!(ltv=LTV_pop(&edict->dict)),"popping scope");
                 STRY((LTV_release(ltv),0),"releasing scope");
             }
-            
-         done:
+
+            done:
             TOK_free(expr); // FIXME: skip this on error;
             return status;
         }
@@ -293,7 +295,7 @@ int edict_eval(EDICT *edict)
                     case '@':
                         if (ref&&ref->lti)
                             STRY(!LTV_put(&ref->lti->cll, (ltv=LTV_get(&edict->anon,1,0,NULL,0,NULL))?ltv:LTV_NIL, ((ref->flags&TOK_REVERSE)!=0), &ref->ltvr),
-                                 "processing assignment op");
+                                    "processing assignment op");
                         break;
                     case '/':
                         if (ref&&ref->ltvr)
@@ -410,7 +412,7 @@ int edict_eval(EDICT *edict)
                     if (op)
                         STRY(eval_op(),"evaluating op");
                     else if (ref && ref->ltvr)
-                    STRY(!LTV_push(&edict->anon,ref->ltvr->ltv),"dereferencing ref");
+                        STRY(!LTV_push(&edict->anon,ref->ltvr->ltv),"dereferencing ref");
 
                     done:return tok;
                 }
@@ -419,7 +421,7 @@ int edict_eval(EDICT *edict)
 
                 done:return status;
             }
-            
+
             // rather than traverse atoms, it's better to record the current position within the expression
             // and evaluate the expression stack's top expression at it's curpos at each iteration.
             STRY(CLL_map(&atom->subtoks,FWD,eval_atom_subtok,NULL)!=NULL,"traversing atom subtoks");
@@ -427,112 +429,108 @@ int edict_eval(EDICT *edict)
 #endif
 
 
-        int eval_opref(TOK *tok) {
-            int status=0;
-            int depth=0;
-            int flags=0;
-            LTI *lti=NULL;
-            LTVR *ltvr=NULL;
+            int eval_op_ref(TOK *tok) {
+                int status=0;
+                int depth=0;
+                int flags=0;
+                LTI *lti=NULL;
+                LTVR *ltvr=NULL;
 
-            void *descend(CLL *lnk,void *data) {
-                TOK *curtok=(TOK *) lnk;
+                void *descend(CLL *lnk,void *data) {
+                    TOK *curtok=(TOK *) lnk;
 
-                flags|=curtok->flags; // account for mods, at least
-                printf("eval_opref: ");
+                    flags|=curtok->flags; // account for mods, at least
+                    printf("eval_op_ref: ");
 
-                if (curtok->flags&TOK_OP)
-                {
-                    TOK_show(lnk,data);
+                    if (curtok->flags&TOK_OP)
+                    {
+                        TOK_show(lnk,data);
+                    }
+                    if (curtok->flags&TOK_REF)
+                    {
+                        TOK_show(lnk,data);
+                    }
+                    printf("\n");
+
+                    if (CLL_EMPTY(&curtok->subtoks))
+                    {
+                        printf("eval_op_ref finish\n");
+                    }
+                    else
+                    {
+                        depth++;
+                        CLL_map(&curtok->subtoks,FWD,descend,NULL);
+                    }
+
+                    if (depth==1 && curtok->flags&TOK_OP)
+                        tokpush(&context->cll,(TOK *) CLL_cut(&curtok->cll));
                 }
-                if (curtok->flags&TOK_REF)
-                {
-                    TOK_show(lnk,data);
-                }
-                printf("\n");
 
-                if (CLL_EMPTY(&curtok->subtoks))
-                {
-                    printf("eval_opref finish\n");
-                }
-                else
-                {
-                    depth++;
-                    CLL_map(&curtok->subtoks,FWD,descend,NULL);
-                }
-
-                if (depth==1 && curtok->flags&TOK_OP)
-                    tokpush(&context->cll,(TOK *) CLL_cut(&curtok->cll));
+                descend(&tok->cll,NULL);
+                TOK_free((TOK *) CLL_cut(&tok->cll));
+                done:
+                return status;
             }
 
-            descend(&tok->cll,NULL);
-
-            TOK_free(tok);
-            done:
-            return status;
-        }
-
-        int eval_lit(TOK *lit) {
-            int status=0;
-            LTV *anon=NULL;
-            STRY((anon=LTV_new(lit->data,lit->len,LT_DUP|LT_ESC))==NULL,"allocating anon lit");
-            STRY(!LTV_put(&context->anons,anon,reverse,NULL),"pushing anon");
-            TOK_free(lit);
-            done:
-            return status;
-        }
-
-        int eval_expr(TOK *expr) {
-            int status=0;
-
-            if (expr->flags&TOK_POP) // placeholder
-                goto done;
-
-            int parse(CLL *toks)
-            {
+            int eval_lit(TOK *lit) {
                 int status=0;
-                TOK *curtok=NULL;
-                char *edata=NULL;
-                int elen=0;
-                int flags=TOK_NONE;
+                LTV *anon=NULL;
+                STRY((anon=LTV_new(lit->data,lit->len,LT_DUP|LT_ESC))==NULL,"allocating anon lit");
+                STRY(!LTV_put(&context->anons,anon,reverse,NULL),"pushing anon");
+                TOK_free((TOK *) CLL_cut(&lit->cll));
+                done:
+                return status;
+            }
 
-                // sequence of include chars, then sequence of not-exclude chars, then terminate balanced sequence
-                int series(char *include,char *exclude,char balance) {
-                    int i=0,depth=0;
-                    int inclen=include?strlen(include):0;
-                    int exclen=exclude?strlen(exclude):0;
-                    if (include) for (;i<elen;i++) if (edata[i]=='\\') i++; else if (!memchr(include,edata[i],inclen)) break;
-                    if (exclude) for (;i<elen;i++) if (edata[i]=='\\') i++; else if (memchr(exclude,edata[i],exclen)) break;
-                    if (balance) for (;i<elen;i++) if (edata[i]=='\\') i++; else if (!(depth+=(edata[i]==edata[0])?1:(edata[i]==balance)?-1:0)) { i+=1; break; }
-                    return i;
-                }
+            int eval_expr(TOK *expr) {
+                int status=0;
 
-                void advance(adv) {
-                    adv=MIN(adv,elen);
-                    edata+=adv;
-                    elen-=adv;
-                }
-
-                void append(int reset,TOK *tok,int adv) {
-                    tok->flags|=flags;
-                    flags=TOK_NONE;
-                    advance(adv);
-                    if (curtok && !(curtok->flags&TOK_OP) && (tok->flags&TOK_OP))
-                        curtok=NULL;
-                    if (reset)
-                        curtok=NULL;
-                    curtok=(TOK *) CLL_splice(curtok?&curtok->subtoks:toks,&tok->cll,TAIL);
-                    if (reset)
-                        curtok=NULL;
-                }
-
-                if (expr && expr->data)
+                int parse(CLL *toks)
                 {
-                    int tlen;
-                    edata=expr->data;
-                    elen=expr->len;
+                    int status=0;
+                    TOK *curtok=NULL;
+                    char *edata=NULL;
+                    int elen=0;
+                    int flags=TOK_NONE;
 
-                    while (elen>0) {
-                        switch(*edata) {
+                    // sequence of include chars, then sequence of not-exclude chars, then terminate balanced sequence
+                    int series(char *include,char *exclude,char balance) {
+                        int i=0,depth=0;
+                        int inclen=include?strlen(include):0;
+                        int exclen=exclude?strlen(exclude):0;
+                        if (include) for (;i<elen;i++) if (edata[i]=='\\') i++; else if (!memchr(include,edata[i],inclen)) break;
+                        if (exclude) for (;i<elen;i++) if (edata[i]=='\\') i++; else if (memchr(exclude,edata[i],exclen)) break;
+                        if (balance) for (;i<elen;i++) if (edata[i]=='\\') i++; else if (!(depth+=(edata[i]==edata[0])?1:(edata[i]==balance)?-1:0)) { i+=1; break; }
+                        return i;
+                    }
+
+                    void advance(adv) {
+                        adv=MIN(adv,elen);
+                        edata+=adv;
+                        elen-=adv;
+                    }
+
+                    void append(int reset,TOK *tok,int adv) {
+                        tok->flags|=flags;
+                        flags=TOK_NONE;
+                        advance(adv);
+                        if (curtok && !(curtok->flags&TOK_OP) && (tok->flags&TOK_OP))
+                            curtok=NULL;
+                        if (reset)
+                            curtok=NULL;
+                        curtok=(TOK *) CLL_splice(curtok?&curtok->subtoks:toks,&tok->cll,TAIL);
+                        if (reset)
+                            curtok=NULL;
+                    }
+
+                    if (expr && expr->data)
+                    {
+                        int tlen;
+                        edata=expr->data;
+                        elen=expr->len;
+
+                        while (elen>0) {
+                            switch(*edata) {
                             case ' ':
                             case '\t':
                             case '\n': tlen=series(WHITESPACE,NULL,0); advance(tlen); curtok=NULL; break;
@@ -550,78 +548,79 @@ int edict_eval(EDICT *edict)
                             case '|':
                             case '?':  append(0,TOK_new(TOK_OP,edata,1),1); break;
                             case '.':  tlen=series(".",NULL,0);
-                                switch(tlen) {
-                                    case 1:  advance(tlen); break;
-                                    case 2:  append(0,TOK_new(TOK_REF,ANONYMOUS,0),tlen); break;
-                                    default: append(0,TOK_new(TOK_REF,ELLIPSIS,3),tlen); break;
-                                }
-                                break;
+                            switch(tlen) {
+                            case 1:  advance(tlen); break;
+                            case 2:  append(0,TOK_new(TOK_REF,ANONYMOUS,0),tlen); break;
+                            default: append(0,TOK_new(TOK_REF,ELLIPSIS,3),tlen); break;
+                            }
+                            break;
                             default: tlen=series(NULL,bc_ws,0); if (tlen) append(0,TOK_new(TOK_REF,edata,tlen),tlen); break;
+                            }
                         }
                     }
+
+                    append(1,TOK_new(expr->flags|TOK_CONT,ANONYMOUS,0),0);
+
+                    return elen;
                 }
 
-                append(1,TOK_new(expr->flags|TOK_POP,ANONYMOUS,0),0);
+                if (expr->flags&TOK_CONT) // placeholder
+                {
+                    TOK_free((TOK *) CLL_cut(&expr->cll));
+                    goto done;
+                }
 
-                return elen;
+                STRY(parse(&expr->subtoks),"parse expr");
+                CLL_MERGE(&context->toks,&expr->subtoks,HEAD);
+                expr->flags|=TOK_CONT;
+
+                done:
+                return status;
             }
 
-            STRY(parse(&expr->subtoks),"eval expr");
-            CLL_MERGE(&context->toks,&expr->subtoks,HEAD);
 
-        done:
-            TOK_free(expr); // FIXME: skip this on error;
-            return status;
-        }
-        
+            int eval_file(TOK *file_tok) {
+                int status=0;
+                int len;
+                char *line=NULL;
+                TOK *expr=NULL;
 
-        int eval_file(TOK *file_tok) {
-            int status=0;
-            int len;
-            char *line=NULL;
-            TOK *expr=NULL;
+                STRY(!file_tok->data,"validating file");
+                TRY((line=edict_read((FILE *) file_tok->data,&len))==NULL,-1,read_failed,"reading from file");
+                TRY((expr=TOK_new(TOK_EXPR,line,len))==NULL,-1,tok_failed,"allocating file-sourced expr token");
+                tokpush(&context->toks,expr);
+                goto done; // success!
 
-            STRY(!file_tok->data,"validating file");
-            TRY((line=edict_read((FILE *) file_tok->data,&len))==NULL,-1,read_failed,"reading from file");
-            TRY((expr=TOK_new(TOK_EXPR,line,len))==NULL,-1,tok_failed,"allocating file-sourced expr token");
-            tokpush(&context->toks,expr);
-            goto done; // success!
+                tok_failed:
+                free(line);
+                read_failed:
+                fclose((FILE *) file_tok->data);
+                TOK_free((TOK *) CLL_cut(&file_tok->cll));
+                done:
+                return status;
+            }
 
-            tok_failed:
-            free(line);
-            read_failed:
-            fclose((FILE *) file_tok->data);
-            TOK_free(file_tok);
+            switch(tok->flags&TOK_TYPES)
+            {
+                case TOK_NONE:   TOK_free(tok); break;
+                case TOK_LIT:    STRY(eval_lit(tok), "evaluating TOK_LIT expr");   break;
+                case TOK_EXPR:   STRY(eval_expr(tok),"evaluating TOK_EXPR expr");  break;
+                case TOK_EXEC:   STRY(eval_expr(tok),"evaluating TOK_EXEC expr");  break;
+                case TOK_SCOPE:  STRY(eval_expr(tok),"evaluating TOK_SCOPE expr"); break;
+                case TOK_CURLY:  STRY(eval_expr(tok),"evaluating TOK_CURLY expr"); break;
+                case TOK_FILE:   STRY(eval_file(tok),"evaluating TOK_FILE expr");  break;
+                case TOK_OP:     STRY(eval_op_ref(tok),"evaluating TOK_OP expr");  break;
+                case TOK_REF:    STRY(eval_op_ref(tok),"evaluating TOK_REF expr"); break;
+                default:         STRY(-1,"evaluating unexpected token expr");      break;
+            }
+
             done:
             return status;
         }
 
-        CLL_map(&context->toks,FWD,TOK_show,NULL), printf("\n");
-
-        tok=(TOK *) CLL_get(&context->toks,KEEP,HEAD);
-        switch(tok->flags&TOK_TYPES)
-        {
-            case TOK_NONE:   TOK_free(tok); break;
-            case TOK_LIT:    STRY(eval_lit(tok), "evaluating TOK_LIT expr");   break;
-            case TOK_EXPR:   STRY(eval_expr(tok),"evaluating TOK_EXPR expr");  break;
-            case TOK_EXEC:   STRY(eval_expr(tok),"evaluating TOK_EXEC expr");  break;
-            case TOK_SCOPE:  STRY(eval_expr(tok),"evaluating TOK_SCOPE expr"); break;
-            case TOK_CURLY:  STRY(eval_expr(tok),"evaluating TOK_CURLY expr"); break;
-            case TOK_FILE:   STRY(eval_file(tok),"evaluating TOK_FILE expr");  break;
-            case TOK_OP:     STRY(eval_opref(tok),"evaluating TOK_OP expr");   break;
-            case TOK_REF:    STRY(eval_opref(tok),"evaluating TOK_REF expr");  break;
-            default:         STRY(-1,"evaluating unexpected token expr");      break;
-        }
-        
-     done:
-        return status;
-    }
-
-
-    int eval_context(CONTEXT *context) {
-        int status=0;
         STRY(!context,"testing for null context");
-        TRY((status=repl(context)),status,free_context,"stepping repl");
+        CLL_map(&context->toks,FWD,TOK_show,NULL), printf("\n");
+        TRY((status=eval_tok((TOK *) CLL_get(&context->toks,KEEP,HEAD))),status,free_context,"running eval_tok");
         CLL_put(&edict->contexts,&context->cll,TAIL);
         goto done;
         free_context:

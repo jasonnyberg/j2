@@ -68,7 +68,7 @@ void try_loginfo(const char *func,const char *cond)
     int indent=try_context.depth;
     if (indent<0) indent=0;
     if (indent>TRY_STRLEN-1) indent=TRY_STRLEN-1;
-    
+
     memset(logstr,' ',TRY_STRLEN);
     switch (try_infolev)
     {
@@ -77,7 +77,7 @@ void try_loginfo(const char *func,const char *cond)
         case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr); break;
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
-        
+
     printf(CODE_GREEN "%s" CODE_RESET NEWLINE,logstr); // prints to stdout!
     fflush(stdout);
 }
@@ -92,7 +92,7 @@ void try_logerror(const char *func,const char *cond,int status)
         case 1: snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr); break;
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
-            
+
     printf(CODE_RED "%s" CODE_RESET NEWLINE,errstr); // prints to stdout!
     fflush(stdout);
 }
@@ -136,7 +136,7 @@ char *strstrip(char *buf,int *len)
     int i,offset;
     for (i=offset=0;(i+offset)<(*len);i++)
     {
-        if (buf[i+offset]=='\\') offset++,buf[i]=buf[i+offset],i++;
+        if (buf[i+offset]=='\\') offset++;
         if (offset) buf[i]=buf[i+offset];
     }
     (*len)-=offset;
@@ -203,7 +203,7 @@ int strnncmp(char *a,int alen,char *b,int blen)
     alen=(alen<0)?strlen(a):alen;
     blen=(blen<0)?strlen(b):blen;
     mismatch=strncmp(a,b,MIN(alen,blen));
-    
+
     return mismatch?mismatch:alen-blen;
 }
 
@@ -252,3 +252,82 @@ int shexdump(char *buf,int size,int width,int opts)
 }
 
 int hexdump(char *buf,int size) { return shexdump(buf,size,16,0); }
+
+// sequence of include chars, then sequence of not-exclude chars, then terminate balanced sequence
+int series(char *buf,int len,char *include,char *exclude,char *balance) {
+    int inclen=include?strlen(include):0;
+    int exclen=exclude?strlen(exclude):0;
+    int ballen=balance?strlen(balance)/2:0;
+    int i=0,depth=0;
+    int checkbal() {
+        int ddepth=0,minlen=MIN(len-i,ballen);
+        if      (!strncmp(buf+i,balance,minlen))        ddepth++;
+        else if (!strncmp(buf+i,balance+ballen,minlen)) ddepth--;
+        i+=ddepth?ballen:1;
+        return depth+=ddepth;
+    }
+    if (include) for (;i<len;i++) if (buf[i]=='\\') i++; else if (!memchr(include,buf[i],inclen)) break;
+    if (exclude) for (;i<len;i++) if (buf[i]=='\\') i++; else if (memchr(exclude,buf[i],exclen)) break;
+    if (balance) for (;i<len;)    if (buf[i]=='\\') i++; else if (checkbal()==0) break;
+    return i;
+}
+
+char *balanced_readline(FILE *ifile,int *length) {
+     char *expr=NULL;
+
+     char *nextline(int *linelen) {
+         static char *line=NULL;
+         static size_t buflen=0;
+
+         if ((*linelen=getline(&line,&buflen,ifile))>0)
+         {
+             if ((expr=realloc(expr,(*length)+(*linelen)+1)))
+                 memmove(expr+(*length),line,(*linelen)+1);
+             return expr;
+         }
+         return NULL;
+     }
+
+     int depth=0;
+     char delimiter[1024]; // balancing stack
+     int linelen=0;
+
+     *length=0;
+
+     while (nextline(&linelen))
+     {
+         int i;
+         for (i=0;i<linelen;i++,(*length)++)
+         {
+             switch(expr[*length])
+             {
+                 case '\\': i++; (*length)++; break; // don't interpret next char
+                 case '(': delimiter[++depth]=')'; break;
+                 case '[': delimiter[++depth]=']'; break;
+                 case '{': delimiter[++depth]='}'; break;
+                 case '<': delimiter[++depth]='>'; break;
+                 case ')': case ']': case '}': case '>':
+                     if (depth)
+                     {
+                         if (expr[*length]==delimiter[depth]) depth--;
+                         else
+                         {
+                             printf("ERROR: Sequence unbalanced at \"%c\", offset %d\n",expr[*length],*length);
+                             free(expr); expr=NULL;
+                             *length=depth=0;
+                             goto done;
+                         }
+                     }
+                     break;
+                 default: break;
+             }
+         }
+         if (!depth)
+             break;
+     }
+
+     done:
+     return (*length && !depth)?expr:(free(expr),NULL);
+ }
+
+

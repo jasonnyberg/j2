@@ -35,13 +35,13 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBN struct rb_node
 
 typedef enum {
-    LT_DUP=1<<0, // bufdup data for new LTV
-        LT_ESC=1<<1, // strip escapes (changes buf and len!)
-        LT_DEL=1<<2,  // free not-referenced LTV data upon release
-        LT_RO=1<<3,   // never release LTV/children
-        LT_CVAR=1<<4, // LTV data is a C variable
-        LT_AVIS=1<<5, // absolute traversal visitation flag
-        LT_RVIS=1<<6, // recursive traversal visitation flag
+    LT_NIL= 1<<0, // false
+    LT_DUP= 1<<1, // bufdup data for new LTV
+    LT_ESC= 1<<2, // strip escapes (changes buf and len!)
+    LT_RO=  1<<3, // never release LTV/children
+    LT_CVAR=1<<4, // LTV data is a C variable
+    LT_AVIS=1<<5, // absolute traversal visitation flag
+    LT_RVIS=1<<6, // recursive traversal visitation flag
 } LTV_FLAGS;
 
 typedef struct
@@ -69,15 +69,17 @@ typedef struct
     CLL cll;
 } LTI; // LisTreeItem
 
-typedef void *(*RB_OP)(RBN *rbn,void *data);
+typedef void *(*RB_OP)(RBN *rbn);
 
 extern RBR *RBR_init(RBR *rbr);
 extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data);
+extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
+extern void LTV_commit(LTV *ltv);
+extern void *LTV_map(LTV *ltv,int reverse,RB_OP op);
 
 extern LTVR *LTVR_new(LTV *ltv);
 extern void LTVR_free(LTVR *ltvr);
@@ -85,24 +87,12 @@ extern void LTVR_free(LTVR *ltvr);
 extern LTI *LTI_new(char *name,int len);
 extern void LTI_free(LTI *lti);
 
-extern LTI *LT_find(RBR *rbr,char *name,int len,int insert);
-
-//////////////////////////////////////////////////
-// Tag Team of traverse methods for LT elements
-//////////////////////////////////////////////////
-
-void *LTV_traverse(LTV *ltv,void *data);
-void *LTVR_traverse(CLL *cll,void *data);
-void *LTI_traverse(RBN *rbn,void *data);
-
 //////////////////////////////////////////////////
 // Combined pre-, in-, and post-fix LT traversal
 //////////////////////////////////////////////////
 
-typedef void *(*LTOBJ_OP)(LTI *lti,LTVR *ltvr,LTV *ltv,void *data);
-struct LTOBJ_DATA { LTOBJ_OP preop; LTOBJ_OP postop; void *data; unsigned depth; int halt; };
-
-void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data);
+typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt);
+void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 
 //////////////////////////////////////////////////
 // Tag Team of release methods for LT elements
@@ -120,6 +110,9 @@ extern LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR 
 
 extern LTV *LTV_push(CLL *ltvr_cll,LTV *ltv);
 extern LTV *LTV_pop(CLL *ltvr_cll);
+
+extern void print_ltv(LTV *ltv,int maxdepth);
+extern void print_ltvs(CLL *cll,int maxdepth);
 
 extern void LT_init();
 

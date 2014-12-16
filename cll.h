@@ -40,7 +40,7 @@ extern CLL *CLL_get(CLL *lst,int pop,int end);  // get/pop lst's head or tail, r
 extern CLL *CLL_put(CLL *lst,CLL *lnk,int end); // add lnk to lst's head or tail, return it
 
 // calls op(lnk,data) for each lnk in lst until op returns non-zero; returns what last op returns
-extern void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk,void *data),void *data);
+extern void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk));
 
 #define CLL_SIB(x,end) ((x)->lnk[end])
 #define CLL_EMPTY(sentinel) (!CLL_get((sentinel),FWD,KEEP))

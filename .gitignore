@@ -6,3 +6,5 @@ test
 .project
 a.out
 j2.iml
+.kdev4
+j2.kdev4

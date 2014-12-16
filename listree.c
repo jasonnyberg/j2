@@ -53,24 +53,41 @@ void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
         RBN_release(rbr,rbn,rbn_release);
 }
 
+// return node that owns "name", inserting if desired AND required
+LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
+{
+    LTI *lti=NULL;
+    if (rbr && name)
+    {
+        RBN *parent=NULL,**rbn = &rbr->rb_node;
+        while (*rbn) {
+            int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
+            if (!result) return (LTI *) *rbn; // found it!
+            else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
+        }
+        if (insert && (lti=LTI_new(name,len))) {
+            rb_link_node(&lti->rbn,parent,rbn); // add
+            rb_insert_color(&lti->rbn,rbr); // rebalance
+        }
+    }
+    return lti;
+}
+
 
 // get a new LTV and prepare for insertion
 LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 {
     LTV *ltv=NULL;
-    if (!data)
-    {
+    if (!data) {
         data="";
-        flags|=LT_DUP;
         len=0;
     }
-    if ((ltv=(LTV *) CLL_get(&ltv_repo,POP,TAIL)) || (ltv=NEW(LTV)))
-    {
+    if ((ltv=(LTV *) CLL_get(&ltv_repo,POP,TAIL)) || (ltv=NEW(LTV))) {
         ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
         ltv->flags=flags;
         ltv->data=data;
-        if (flags&LT_DUP) (ltv->flags|=LT_DEL),(ltv->data=bufdup(ltv->data,ltv->len));
+        if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
         if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
     }
     return ltv;
@@ -83,14 +100,37 @@ void LTV_free(LTV *ltv)
     ltv_count--;
 }
 
+void LTV_commit(LTV *ltv)
+{
+    if (!ltv->refs)
+        LTV_release(ltv);
+    else if (!(ltv->flags&LT_DUP)) {
+        ltv->flags|=LT_DUP;
+        ltv->data=bufdup(ltv->data,ltv->len);
+    }
+}
+
+void *LTV_map(LTV *ltv,int reverse,RB_OP op)
+{
+    RBN *rbn=NULL,*next,*result=NULL;
+    if (ltv) {
+        RBR *rbr=&ltv->rbr;
+        if (reverse)
+            for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=op(rbn)));rbn=next);
+        else
+            for (rbn=rb_first(rbr);rbn && (next=rb_next(rbn),!(result=op(rbn)));rbn=next);
+    }
+    return result;
+}
+
 
 // get a new LTVR
 LTVR *LTVR_new(LTV *ltv)
 {
     LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,POP,TAIL);
-    if (ltvr || (ltvr=NEW(LTVR)))
-    {
+    if (ltvr || (ltvr=NEW(LTVR))) {
         ltvr->ltv=ltv;
+        ltv->refs++;
         ltvr_count++;
     }
     return ltvr;
@@ -108,8 +148,7 @@ void LTVR_free(LTVR *ltvr)
 LTI *LTI_new(char *name,int len)
 {
     LTI *lti;
-    if (name && ((lti=(LTI *) CLL_get(&lti_repo,POP,TAIL)) || (lti=NEW(LTI))))
-    {
+    if (name && ((lti=(LTI *) CLL_get(&lti_repo,POP,TAIL)) || (lti=NEW(LTI)))) {
         lti_count++;
         lti->name=bufdup(name,len);
         CLL_init(&lti->cll);
@@ -124,117 +163,75 @@ void LTI_free(LTI *lti)
     lti_count--;
 }
 
-
-// return node that owns "name", inserting if desired AND required.
-LTI *LT_find(RBR *rbr,char *name,int len,int insert)
-{
-    LTI *lti=NULL;
-    
-    if (rbr && name)
-    {
-        RBN *parent=NULL,**rbn = &(rbr->rb_node);
-        while (*rbn)
-        {
-            int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
-            if (!result) return (LTI *) *rbn; // found it!
-            else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
-        }
-        if (insert && (lti=LTI_new(name,len)))
-        {
-            rb_link_node(&lti->rbn,parent,rbn); // add
-            rb_insert_color(&lti->rbn,rbr); // rebalance
-        }
-    }
-    return lti;
-}
-
-void *RBR_traverse(RBR *rbr,int reverse,RB_OP op,void *data)
-{
-    RBN *rbn=NULL,*next,*result=NULL;
-    if (reverse)
-        for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=op(rbn,data)));rbn=next);
-    else
-        for (rbn=rb_first(rbr);rbn && (next=rb_next(rbn),!(result=op(rbn,data)));rbn=next);
-    return result;
-}
-
 //////////////////////////////////////////////////
 // Tag Team of traverse methods for LT elements
 //////////////////////////////////////////////////
 
-void *LTV_traverse(LTV *ltv,void *data)
+void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 {
+    int depth=0,halt=0,cleanup=0;
     void *rval=NULL;
-    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltv) goto done;
-    
-    if (!ltobj_data) // remove absoloute visited flag
-        return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && ltv->rbr.rb_node)?
-            RBR_traverse(&ltv->rbr,0,LTI_traverse,NULL):NULL;
-    else if (!(ltv->flags&LT_RVIS))
-    {
-        if (ltobj_data->preop && (rval=ltobj_data->preop(NULL,NULL,ltv,data))) goto done;
-        
-        ltv->flags|=LT_RVIS;
-        ltobj_data->depth++;
-        if (!ltobj_data->halt && ltv->rbr.rb_node) rval=RBR_traverse(&ltv->rbr,0,LTI_traverse,data);
-        ltobj_data->depth--;
-        ltv->flags&=~LT_RVIS;
-        if (rval) goto done;
-        
-        if (ltobj_data->postop && (rval=ltobj_data->postop(NULL,NULL,ltv,data))) goto done;
+
+    void *LTV_traverse(LTV *ltv) {
+        void *LTI_traverse(RBN *rbn) {
+            void *LTVR_traverse(CLL *cll) {
+                LTI *lti=NULL; LTVR *ltvr=(LTVR *) cll; LTV *ltv=NULL;
+                if (!ltvr) goto done;
+
+                if (cleanup && ltvr->ltv) LTV_traverse(ltvr->ltv);
+                else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
+                         (halt || (rval=LTV_traverse(ltv?ltv:ltvr->ltv))) ||
+                         postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
+                    goto done;
+
+                done:
+                halt=0;
+                return rval;
+            }
+
+            LTI *lti=(LTI *) rbn; LTVR *ltvr=NULL; LTV *ltv=NULL;
+            if (!lti) goto done;
+
+            if (cleanup) CLL_map(&lti->cll,FWD,LTVR_traverse);
+            else if  (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
+                      (halt || (rval=ltvr?LTVR_traverse(&ltvr->cll):CLL_map(&lti->cll,FWD,LTVR_traverse))) ||
+                      postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
+                goto done;
+
+            done:
+            halt=0;
+            return rval;
+        }
+
+        LTI *lti=NULL; LTVR *ltvr=NULL; // LTV *ltv defined in args
+        if (!ltv) goto done;
+
+        if (cleanup) // remove absolute visited flag
+            return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS))? LTV_map(ltv,FWD,LTI_traverse):NULL;
+        else if (!(ltv->flags&LT_RVIS)) {
+            if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt))) goto done;
+
+            if (halt) goto done;
+            ltv->flags|=LT_RVIS;
+            depth++;
+            rval=lti?LTI_traverse(&lti->rbn):LTV_map(ltv,FWD,LTI_traverse);
+            depth--;
+            ltv->flags&=~LT_RVIS;
+            if (rval) goto done;
+
+            if (postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt))) goto done;
+        }
+
+        done:
+        if (ltv) ltv->flags|=LT_AVIS;
+        halt=0;
+        return rval;
     }
-    
- done:
-    if (ltv) ltv->flags|=LT_AVIS;
-    if (ltobj_data) ltobj_data->halt=0;
-    return rval;
-}
 
-void *LTVR_traverse(CLL *cll,void *data)
-{
-    void *rval=NULL;
-    LTVR *ltvr = (LTVR *) cll;
-    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!ltvr) goto done;
-    
-    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(NULL,ltvr,NULL,data))) goto done;
-    if ((!ltobj_data || !ltobj_data->halt) && ltvr->ltv && (rval=LTV_traverse(ltvr->ltv,data))) goto done;
-    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(NULL,ltvr,NULL,data))) goto done;
-    
- done:
-    if (ltobj_data) ltobj_data->halt=0;
-    return rval;
-}
-
-void *LTI_traverse(RBN *rbn,void *data)
-{
-    void *rval=NULL;
-    LTI *lti=(LTI *) rbn;
-    struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-    if (!lti) goto done;
-    
-    if (ltobj_data && ltobj_data->preop && (rval=ltobj_data->preop(lti,NULL,NULL,data))) goto done;
-    if ((!ltobj_data || !ltobj_data->halt) && (rval=CLL_map(&lti->cll,FWD,LTVR_traverse,data))) goto done;
-    if (ltobj_data && ltobj_data->postop && (rval=ltobj_data->postop(lti,NULL,NULL,data))) goto done;
-    
- done:
-    if (ltobj_data) ltobj_data->halt=0;
-    return rval;
-}
-
-
-//////////////////////////////////////////////////
-// Tag Team of traverse methods for LT elements
-//////////////////////////////////////////////////
-
-void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data)
-{
-    void *rval=NULL;
-    struct LTOBJ_DATA ltobj_data = { preop,postop,data,0,0 };
-    void *ltvr_op(CLL *cll,void *data) { return LTVR_traverse(cll,data); }
-    rval=CLL_map(ltvr_cll,FWD,ltvr_op,&ltobj_data);
-    CLL_map(ltvr_cll,FWD,ltvr_op,NULL); // cleanup "visited" flags
+    rval=LTV_traverse(ltv);
+    cleanup=1;
+    preop=postop=NULL;
+    LTV_traverse(ltv); // clean up "visited" flags
     return rval;
 }
 
@@ -244,10 +241,9 @@ void *listree_traverse(CLL *ltvr_cll,LTOBJ_OP preop,LTOBJ_OP postop,void *data)
 
 void LTV_release(LTV *ltv)
 {
-    if (ltv && !ltv->refs && !(ltv->flags&LT_RO))
-    {
+    if (ltv && !ltv->refs && !(ltv->flags&LT_RO)) {
         RBR_release(&ltv->rbr,LTI_release);
-        if (ltv->flags&LT_DEL) DELETE(ltv->data);
+        if (ltv->flags&LT_DUP) DELETE(ltv->data);
         LTV_free(ltv);
     }
 }
@@ -255,8 +251,7 @@ void LTV_release(LTV *ltv)
 void LTVR_release(CLL *cll)
 {
     LTVR *ltvr=(LTVR *) cll;
-    if (ltvr)
-    {
+    if (ltvr) {
         ltvr->ltv->refs--;
         LTV_release(ltvr->ltv);
         LTVR_free(ltvr);
@@ -266,8 +261,7 @@ void LTVR_release(CLL *cll)
 void LTI_release(RBN *rbn)
 {
     LTI *lti=(LTI *) rbn;
-    if (lti)
-    {
+    if (lti) {
         CLL_release(&lti->cll,LTVR_release);
         DELETE(lti->name);
         LTI_free(lti);
@@ -279,15 +273,13 @@ void LTI_release(RBN *rbn)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
+
 LTV *LTV_put(CLL *ltvr_cll,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    if (ltvr_cll && ltv && (ltvr=LTVR_new(ltv)))
-    {
-        if (CLL_put(ltvr_cll,&ltvr->cll,end))
-        {
-            ltv->refs++;
+    if (ltvr_cll && ltv && (ltvr=LTVR_new(ltv))) {
+        if (CLL_put(ltvr_cll,&ltvr->cll,end)) {
             if (ltvr_ret) *ltvr_ret=ltvr;
             return ltv; //!!
         }
@@ -298,8 +290,7 @@ LTV *LTV_put(CLL *ltvr_cll,LTV *ltv,int end,LTVR **ltvr_ret)
 
 LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
 {
-    void *ltv_match(CLL *lnk,void *data)
-    {
+    void *ltv_match(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
         if (!ltvr || !ltvr->ltv || ltvr->ltv->len!=matchlen || memcmp(ltvr->ltv->data,match,matchlen)) return NULL;
         else return pop?lnk:CLL_cut(lnk);
@@ -308,12 +299,11 @@ LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_map(ltvr_cll,end,ltv_match,NULL):CLL_get(ltvr_cll,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_map(ltvr_cll,end,ltv_match):CLL_get(ltvr_cll,pop,end)))
         return NULL;
     ltv=ltvr->ltv;
-    ltv->refs-=pop;
-    if (pop)
-    {
+    if (pop) {
+        ltv->refs--;
         LTVR_free(ltvr);
         ltvr=NULL;
     }
@@ -324,9 +314,72 @@ LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_
 LTV *LTV_push(CLL *cll,LTV *ltv) { return LTV_put(cll,ltv,HEAD,NULL); }
 LTV *LTV_pop(CLL *cll)           { return LTV_get(cll,1,HEAD,NULL,0,NULL); }
 
+
+void print_ltv(LTV *ltv,int maxdepth)
+{
+    char *indent="                                                                                                                ";
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt)
+    {
+        if (*lti) {
+            if (maxdepth && depth>=maxdepth) *halt=1;
+            fstrnprint(stdout,indent,depth*4);
+            fprintf(stdout,"\"%s\"\n",(*lti)->name);
+        }
+
+        if (*ltv) {
+            fstrnprint(stdout,indent,depth*4+2);
+            fprintf(stdout,"[");
+            fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
+            fprintf(stdout,"]\n");
+        }
+        return NULL;
+    }
+
+    listree_traverse(ltv,preop,NULL);
+}
+
+void print_ltvs(CLL *cll,int maxdepth)
+{
+    void *op(CLL *lnk) { print_ltv((LTV *) lnk,maxdepth); return NULL; }
+    CLL_map(cll,FWD,op);
+}
+
+
+// return node that owns "name", inserting if desired AND required (now recursive).
+LTI *LT_op(LTV *ltv,char *name,int len,int insert)
+{
+    char *lit;
+    int litlen;
+
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt)
+    {
+        int tlen=series(name,len,NULL,".[","[]");
+        switch (name[0]) {
+            case '.': break;
+            case '[': break;
+            default: break;
+        }
+
+        if (*lti) { // list lookup/insert, get ltvr
+        }
+        if (*ltvr) {
+        }
+        if (*ltv) { // tree lookup/insert, get lti
+            *lti=RBR_find(&(*ltv)->rbr,name,tlen,insert);
+            *halt=1;
+            if (!(len-=tlen)) return lti;
+        }
+
+        return NULL;
+    }
+
+    listree_traverse(ltv,preop,NULL);
+}
+
 void LT_init()
 {
     CLL_init(&ltv_repo);
     CLL_init(&ltvr_repo);
     CLL_init(&lti_repo);
 }
+

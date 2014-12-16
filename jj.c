@@ -27,55 +27,54 @@
 FILE *dumpfile;
 
 
-char *indent="                                                                                                                ";
 extern int Gmymalloc;
+
+extern void show_contexts(char *pre,CLL *cll,char *post,FILE *file);
 
 int edict_dump(EDICT *edict)
 {
     int status=0;
-    
-    void *graph_pre(LTI *lti,LTVR *ltvr,LTV *ltv,void *data)
-    {
-        struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-        if (!ltobj_data) goto done;
-        
-        if (lti)
+
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt) {
+        if (*lti)
         {
-            fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
-            if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
-            fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&lti->cll);
-            fprintf(dumpfile,"%d -> %d [weight=2]\n",&lti->rbn,&lti->cll);
-            fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->cll,lti->cll.lnk[0]);
+            fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",(*lti),(*lti)->name);
+            if (rb_parent(&(*lti)->rbn)) fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&(*lti)->rbn),&(*lti)->rbn);
+            fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&(*lti)->cll);
+            fprintf(dumpfile,"%d -> %d [weight=2]\n",&(*lti)->rbn,&(*lti)->cll);
+            fprintf(dumpfile,"%d -> %d [color=red]\n",&(*lti)->cll,(*lti)->cll.lnk[0]);
         }
-        
-        if (ltvr)
+
+        if (*ltvr)
         {
-            if (ltvr->ltv) fprintf(dumpfile,"%d -> %d [weight=2]\n",ltvr,ltvr->ltv);
-            fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&ltvr->cll);
-            fprintf(dumpfile,"%d -> %d [color=brown]\n",&ltvr->cll,ltvr->cll.lnk[0]);
+            if ((*ltvr)->ltv) fprintf(dumpfile,"%d -> %d [weight=2]\n",(*ltvr),(*ltvr)->ltv);
+            fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&(*ltvr)->cll);
+            fprintf(dumpfile,"%d -> %d [color=brown]\n",&(*ltvr)->cll,(*ltvr)->cll.lnk[0]);
         }
-        
-        if (ltv)
+
+        if (*ltv)
         {
-            if (ltv->flags&LT_AVIS && (ltobj_data->halt=1)) goto done;
-            
-            if (ltv->len)
+            if ((*ltv)->flags&LT_AVIS && (*halt=1)) goto done;
+
+            if ((*ltv)->len)
             {
-                fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
-                fstrnprint(dumpfile,ltv->data,ltv->len);
+                fprintf(dumpfile,"%d [style=filled shape=box label=\"",(*ltv));
+                fstrnprint(dumpfile,(*ltv)->data,(*ltv)->len);
                 fprintf(dumpfile,"\"]\n");
             }
             else
-                fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
-            
-            if (ltv->rbr.rb_node)
-                fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",ltv,ltv->rbr.rb_node);
+                fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.3]\n",(*ltv));
+
+            if ((*ltv)->rbr.rb_node)
+                fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",(*ltv),(*ltv)->rbr.rb_node);
         }
-        
-     done:
+
+        done:
         return NULL;
     }
-    
+
+    if (!edict) goto done;
+
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
 
@@ -85,50 +84,16 @@ int edict_dump(EDICT *edict)
     fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
     fprintf(dumpfile,"%1$d [label=\"dict\" color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
 
-    listree_traverse(&edict->dict,graph_pre,NULL,NULL);
-    CLL_map(&edict->contexts,FWD,CONTEXT_show,dumpfile);
+    listree_traverse((LTV *) CLL_get(&edict->dict,KEEP,HEAD),preop,NULL);
+
+    show_contexts("contexts: ",&edict->contexts,"\n",dumpfile);
 
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
 
+    done:
     return status;
 }
-
-int edict_print(EDICT *edict,LTI *target_lti,unsigned depth)
-{
-    void *print_pre(LTI *lti,LTVR *ltvr,LTV *ltv,void *data)
-    {
-        struct LTOBJ_DATA *ltobj_data = (struct LTOBJ_DATA *) data;
-        if (!ltobj_data) goto done;
-    
-        if (lti)
-        {
-            if (ltobj_data->depth>depth) ltobj_data->halt=1;
-            fstrnprint(stdout,indent,ltobj_data->depth*4);
-            fprintf(stdout,"\"%s\"\n",lti->name);
-        }
-        
-        if (ltv)
-        {
-            fstrnprint(stdout,indent,ltobj_data->depth*4+2);
-            fprintf(stdout,"[");
-            fstrnprint(stdout,ltv->data,ltv->len);
-            fprintf(stdout,"]\n");
-        }
-     done:
-        return NULL;
-    }
-
-    int status=0;
-    void *md;
-    
-    if (target_lti)
-        listree_traverse(&target_lti->cll,print_pre,NULL,NULL);
-    else
-        listree_traverse(&edict->dict,print_pre,NULL,NULL);
-    return status;
-}
-
 
 int main()
 {

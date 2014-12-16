@@ -138,7 +138,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
     }
 
 
-#define STRY(_cond_,_args_...) TRY((status=_cond_),status,done,_args_)
+#define STRY(_cond_,_args_...) TRY((status=(_cond_)),status,done,_args_)
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 
@@ -219,6 +219,8 @@ extern int fnmatch_len(char *pat,int plen,char *str,int slen);
 extern int shexdump(char *buf,int size,int width,int opts);
 extern int hexdump(char *buf,int size);
 
+extern int series(char *buf,int len,char *include,char *exclude,char *balance);
+extern char *balanced_readline(FILE *ifile,int *length);
 
 #endif
 

@@ -37,10 +37,10 @@ CLL *CLL_cut(CLL *lnk) { return lnk?CLL_splice(lnk,lnk,FWD):NULL; }
 CLL *CLL_get(CLL *sentinel,int pop,int end) { CLL *cll; return sentinel && (cll=CLL_SIB(sentinel,end))!=sentinel? (pop?CLL_cut(cll):cll):NULL; }
 CLL *CLL_put(CLL *sentinel,CLL *lnk,int end) { return CLL_splice(sentinel,CLL_init(lnk),end); }
 
-void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk,void *data),void *data) {
+void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk)) {
     CLL *rval,*sib,*next;
     for(rval=NULL,sib=CLL_SIB(sentinel,dir);
-        sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib,data));
+        sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib));
         sib=next);
     return rval;
 }

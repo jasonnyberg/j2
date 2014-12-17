@@ -40,16 +40,16 @@ int edict_dump(EDICT *edict)
         {
             fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",(*lti),(*lti)->name);
             if (rb_parent(&(*lti)->rbn)) fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&(*lti)->rbn),&(*lti)->rbn);
-            fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&(*lti)->cll);
-            fprintf(dumpfile,"%d -> %d [weight=2]\n",&(*lti)->rbn,&(*lti)->cll);
-            fprintf(dumpfile,"%d -> %d [color=red]\n",&(*lti)->cll,(*lti)->cll.lnk[0]);
+            fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&(*lti)->ltvrs);
+            fprintf(dumpfile,"%d -> %d [weight=2]\n",&(*lti)->rbn,&(*lti)->ltvrs);
+            fprintf(dumpfile,"%d -> %d [color=red]\n",&(*lti)->ltvrs,(*lti)->ltvrs.lnk[0]);
         }
 
         if (*ltvr)
         {
             if ((*ltvr)->ltv) fprintf(dumpfile,"%d -> %d [weight=2]\n",(*ltvr),(*ltvr)->ltv);
-            fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&(*ltvr)->cll);
-            fprintf(dumpfile,"%d -> %d [color=brown]\n",&(*ltvr)->cll,(*ltvr)->cll.lnk[0]);
+            fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&(*ltvr)->lnk);
+            fprintf(dumpfile,"%d -> %d [color=brown]\n",&(*ltvr)->lnk,(*ltvr)->lnk.lnk[0]);
         }
 
         if (*ltv)
@@ -65,8 +65,8 @@ int edict_dump(EDICT *edict)
             else
                 fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.3]\n",(*ltv));
 
-            if ((*ltv)->rbr.rb_node)
-                fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",(*ltv),(*ltv)->rbr.rb_node);
+            if ((*ltv)->sub.ltis.rb_node)
+                fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",(*ltv),(*ltv)->sub.ltis.rb_node);
         }
 
         done:

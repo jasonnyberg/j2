@@ -78,47 +78,39 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
 LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 {
     LTV *ltv=NULL;
-    if (!data) {
-        data="";
-        len=0;
-    }
+    if (!data) { len=0; flags=LT_NIL; }
     if ((ltv=(LTV *) CLL_get(&ltv_repo,POP,TAIL)) || (ltv=NEW(LTV))) {
         ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
-        ltv->flags=flags;
         ltv->data=data;
         if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
         if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
+        ltv->flags=flags;
     }
     return ltv;
 }
 
 void LTV_free(LTV *ltv)
 {
+    if (ltv->flags|LT_FREE)
+        DELETE(ltv->data);
     ZERO(*ltv);
     CLL_put(&ltv_repo,ltv->repo,HEAD);
     ltv_count--;
 }
 
-void LTV_commit(LTV *ltv)
+void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
 {
-    if (!ltv->refs)
-        LTV_release(ltv);
-    else if (!(ltv->flags&LT_DUP)) {
-        ltv->flags|=LT_DUP;
-        ltv->data=bufdup(ltv->data,ltv->len);
-    }
-}
-
-void *LTV_map(LTV *ltv,int reverse,RB_OP op)
-{
-    RBN *rbn=NULL,*next,*result=NULL;
+    RBN *rbn=NULL,*next;
+    void *result=NULL;
     if (ltv) {
-        RBR *rbr=&ltv->rbr;
-        if (reverse)
-            for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=op(rbn)));rbn=next);
-        else
-            for (rbn=rb_first(rbr);rbn && (next=rb_next(rbn),!(result=op(rbn)));rbn=next);
+        if (ltv->flags|LT_LIST)
+            result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
+        else {
+            RBR *rbr=&ltv->sub.ltis;
+            if (reverse) for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=rb_op(rbn)));rbn=next);
+            else         for (rbn=rb_first(rbr);rbn && (next=rb_next(rbn),!(result=rb_op(rbn)));rbn=next);
+        }
     }
     return result;
 }
@@ -136,11 +128,18 @@ LTVR *LTVR_new(LTV *ltv)
     return ltvr;
 }
 
-void LTVR_free(LTVR *ltvr)
+LTV *LTVR_free(LTVR *ltvr)
 {
-    ZERO(*ltvr);
-    CLL_put(&ltvr_repo,ltvr->repo,HEAD);
-    ltvr_count--;
+    LTV *ltv=NULL;
+    if (ltvr)
+    {
+        if ((ltv=ltvr->ltv))
+            ltv->refs--;
+        ZERO(*ltvr);
+        CLL_put(&ltvr_repo,ltvr->repo,HEAD);
+        ltvr_count--;
+    }
+    return ltv;
 }
 
 
@@ -151,16 +150,20 @@ LTI *LTI_new(char *name,int len)
     if (name && ((lti=(LTI *) CLL_get(&lti_repo,POP,TAIL)) || (lti=NEW(LTI)))) {
         lti_count++;
         lti->name=bufdup(name,len);
-        CLL_init(&lti->cll);
+        CLL_init(&lti->ltvrs);
     }
     return lti;
 }
 
 void LTI_free(LTI *lti)
 {
-    ZERO(*lti);
-    CLL_put(&lti_repo,lti->repo,HEAD);
-    lti_count--;
+    if (lti)
+    {
+        DELETE(lti->name);
+        ZERO(*lti);
+        CLL_put(&lti_repo,lti->repo,HEAD);
+        lti_count--;
+    }
 }
 
 //////////////////////////////////////////////////
@@ -173,28 +176,28 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
     void *rval=NULL;
 
     void *LTV_traverse(LTV *ltv) {
+        void *LTVR_traverse(CLL *lnk) {
+            LTI *lti=NULL; LTVR *ltvr=(LTVR *) lnk; LTV *ltv=NULL;
+            if (!ltvr) goto done;
+
+            if (cleanup && ltvr->ltv) LTV_traverse(ltvr->ltv);
+            else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
+                     (halt || (rval=LTV_traverse(ltv?ltv:ltvr->ltv))) ||
+                     postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
+                goto done;
+
+            done:
+            halt=0;
+            return rval;
+        }
+
         void *LTI_traverse(RBN *rbn) {
-            void *LTVR_traverse(CLL *cll) {
-                LTI *lti=NULL; LTVR *ltvr=(LTVR *) cll; LTV *ltv=NULL;
-                if (!ltvr) goto done;
-
-                if (cleanup && ltvr->ltv) LTV_traverse(ltvr->ltv);
-                else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
-                         (halt || (rval=LTV_traverse(ltv?ltv:ltvr->ltv))) ||
-                         postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
-                    goto done;
-
-                done:
-                halt=0;
-                return rval;
-            }
-
             LTI *lti=(LTI *) rbn; LTVR *ltvr=NULL; LTV *ltv=NULL;
             if (!lti) goto done;
 
-            if (cleanup) CLL_map(&lti->cll,FWD,LTVR_traverse);
+            if (cleanup) CLL_map(&lti->ltvrs,FWD,LTVR_traverse);
             else if  (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
-                      (halt || (rval=ltvr?LTVR_traverse(&ltvr->cll):CLL_map(&lti->cll,FWD,LTVR_traverse))) ||
+                      (halt || (rval=ltvr?LTVR_traverse(&ltvr->lnk):CLL_map(&lti->ltvrs,FWD,LTVR_traverse))) ||
                       postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
                 goto done;
 
@@ -207,14 +210,14 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
         if (!ltv) goto done;
 
         if (cleanup) // remove absolute visited flag
-            return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS))? LTV_map(ltv,FWD,LTI_traverse):NULL;
+            return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS))? LTV_map(ltv,FWD,LTI_traverse,LTVR_traverse):NULL;
         else if (!(ltv->flags&LT_RVIS)) {
             if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt))) goto done;
 
             if (halt) goto done;
             ltv->flags|=LT_RVIS;
             depth++;
-            rval=lti?LTI_traverse(&lti->rbn):LTV_map(ltv,FWD,LTI_traverse);
+            rval=lti?LTI_traverse(&lti->rbn):LTV_map(ltv,FWD,LTI_traverse,LTVR_traverse);
             depth--;
             ltv->flags&=~LT_RVIS;
             if (rval) goto done;
@@ -241,29 +244,20 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 
 void LTV_release(LTV *ltv)
 {
-    if (ltv && !ltv->refs && !(ltv->flags&LT_RO)) {
-        RBR_release(&ltv->rbr,LTI_release);
-        if (ltv->flags&LT_DUP) DELETE(ltv->data);
+    if (ltv && !ltv->refs) {
+        if (ltv->flags|LT_LIST) CLL_release(&ltv->sub.ltvrs,LTVR_release);
+        else                    RBR_release(&ltv->sub.ltis,LTI_release);
         LTV_free(ltv);
     }
 }
 
-void LTVR_release(CLL *cll)
-{
-    LTVR *ltvr=(LTVR *) cll;
-    if (ltvr) {
-        ltvr->ltv->refs--;
-        LTV_release(ltvr->ltv);
-        LTVR_free(ltvr);
-    }
-}
+void LTVR_release(CLL *lnk) { LTV_release(LTVR_free((LTVR *) lnk)); }
 
 void LTI_release(RBN *rbn)
 {
     LTI *lti=(LTI *) rbn;
     if (lti) {
-        CLL_release(&lti->cll,LTVR_release);
-        DELETE(lti->name);
+        CLL_release(&lti->ltvrs,LTVR_release);
         LTI_free(lti);
     }
 }
@@ -274,12 +268,12 @@ void LTI_release(RBN *rbn)
 //////////////////////////////////////////////////
 
 
-LTV *LTV_put(CLL *ltvr_cll,LTV *ltv,int end,LTVR **ltvr_ret)
+LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    if (ltvr_cll && ltv && (ltvr=LTVR_new(ltv))) {
-        if (CLL_put(ltvr_cll,&ltvr->cll,end)) {
+    if (ltvrs && ltv && (ltvr=LTVR_new(ltv))) {
+        if (CLL_put(ltvrs,&ltvr->lnk,end)) {
             if (ltvr_ret) *ltvr_ret=ltvr;
             return ltv; //!!
         }
@@ -288,7 +282,7 @@ LTV *LTV_put(CLL *ltvr_cll,LTV *ltv,int end,LTVR **ltvr_ret)
     return NULL;
 }
 
-LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
+LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
 {
     void *ltv_match(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
@@ -299,11 +293,10 @@ LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_map(ltvr_cll,end,ltv_match):CLL_get(ltvr_cll,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_map(ltvrs,end,ltv_match):CLL_get(ltvrs,pop,end)))
         return NULL;
     ltv=ltvr->ltv;
     if (pop) {
-        ltv->refs--;
         LTVR_free(ltvr);
         ltvr=NULL;
     }
@@ -311,8 +304,8 @@ LTV *LTV_get(CLL *ltvr_cll,int pop,int end,void *match,int matchlen,LTVR **ltvr_
     return ltv;
 }
 
-LTV *LTV_push(CLL *cll,LTV *ltv) { return LTV_put(cll,ltv,HEAD,NULL); }
-LTV *LTV_pop(CLL *cll)           { return LTV_get(cll,1,HEAD,NULL,0,NULL); }
+LTV *LTV_push(CLL *ltvrs,LTV *ltv) { return LTV_put(ltvrs,ltv,HEAD,NULL); }
+LTV *LTV_pop(CLL *ltvrs)           { return LTV_get(ltvrs,1,HEAD,NULL,0,NULL); }
 
 
 void print_ltv(LTV *ltv,int maxdepth)
@@ -329,7 +322,8 @@ void print_ltv(LTV *ltv,int maxdepth)
         if (*ltv) {
             fstrnprint(stdout,indent,depth*4+2);
             fprintf(stdout,"[");
-            fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
+            if ((*ltv)->flags|LT_BIN) hexdump((*ltv)->data,(*ltv)->len);
+            else                   fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
             fprintf(stdout,"]\n");
         }
         return NULL;
@@ -338,42 +332,10 @@ void print_ltv(LTV *ltv,int maxdepth)
     listree_traverse(ltv,preop,NULL);
 }
 
-void print_ltvs(CLL *cll,int maxdepth)
+void print_ltvs(CLL *ltvs,int maxdepth)
 {
     void *op(CLL *lnk) { print_ltv((LTV *) lnk,maxdepth); return NULL; }
-    CLL_map(cll,FWD,op);
-}
-
-
-// return node that owns "name", inserting if desired AND required (now recursive).
-LTI *LT_op(LTV *ltv,char *name,int len,int insert)
-{
-    char *lit;
-    int litlen;
-
-    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt)
-    {
-        int tlen=series(name,len,NULL,".[","[]");
-        switch (name[0]) {
-            case '.': break;
-            case '[': break;
-            default: break;
-        }
-
-        if (*lti) { // list lookup/insert, get ltvr
-        }
-        if (*ltvr) {
-        }
-        if (*ltv) { // tree lookup/insert, get lti
-            *lti=RBR_find(&(*ltv)->rbr,name,tlen,insert);
-            *halt=1;
-            if (!(len-=tlen)) return lti;
-        }
-
-        return NULL;
-    }
-
-    listree_traverse(ltv,preop,NULL);
+    CLL_map(ltvs,FWD,op);
 }
 
 void LT_init()

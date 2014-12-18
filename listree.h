@@ -42,11 +42,13 @@ typedef enum {
     LT_ESC= 1<<0x04, // strip escapes (changes buf and len!)
     LT_RO=  1<<0x05, // never release LTV/children
     LT_BIN= 1<<0x06, // data is binary/unprintable
-    LT_CVAR=1<<0x07, // LTV data is a C variable
-    LT_AVIS=1<<0x08, // absolute traversal visitation flag
-    LT_RVIS=1<<0x09, // recursive traversal visitation flag
-    LT_LIST=1<<0x0a, // bypass rbtree,
+    LT_IMM= 1<<0x07, // immediate value, not a pointer
+    LT_CVAR=1<<0x08, // LTV data is a C variable
+    LT_AVIS=1<<0x09, // absolute traversal visitation flag
+    LT_RVIS=1<<0x0a, // recursive traversal visitation flag
+    LT_LIST=1<<0x0b, // bypass rbtree,
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
+    LT_NPRT=LT_BIN|LT_IMM, // non-printable
 } LTV_FLAGS;
 
 typedef struct

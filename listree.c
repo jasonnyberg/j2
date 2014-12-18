@@ -57,8 +57,7 @@ void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
 LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
 {
     LTI *lti=NULL;
-    if (rbr && name)
-    {
+    if (rbr && name) {
         RBN *parent=NULL,**rbn = &rbr->rb_node;
         while (*rbn) {
             int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
@@ -80,6 +79,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
     LTV *ltv=NULL;
     if (!data) { len=0; flags=LT_NIL; }
     if ((ltv=(LTV *) CLL_get(&ltv_repo,POP,TAIL)) || (ltv=NEW(LTV))) {
+        ZERO(*ltv);
         ltv_count++;
         ltv->len=len<0?strlen((char *) data):len;
         ltv->data=data;
@@ -92,11 +92,13 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 
 void LTV_free(LTV *ltv)
 {
-    if (ltv->flags|LT_FREE)
-        DELETE(ltv->data);
-    ZERO(*ltv);
-    CLL_put(&ltv_repo,ltv->repo,HEAD);
-    ltv_count--;
+    if (ltv) {
+        if (ltv->flags&LT_FREE)
+            DELETE(ltv->data);
+        ZERO(*ltv);
+        CLL_put(&ltv_repo,ltv->repo,HEAD);
+        ltv_count--;
+    }
 }
 
 void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
@@ -104,8 +106,7 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
     RBN *rbn=NULL,*next;
     void *result=NULL;
     if (ltv) {
-        if (ltv->flags|LT_LIST)
-            result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
+        if (ltv->flags&LT_LIST) result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
         else {
             RBR *rbr=&ltv->sub.ltis;
             if (reverse) for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=rb_op(rbn)));rbn=next);
@@ -121,6 +122,7 @@ LTVR *LTVR_new(LTV *ltv)
 {
     LTVR *ltvr=(LTVR *) CLL_get(&ltvr_repo,POP,TAIL);
     if (ltvr || (ltvr=NEW(LTVR))) {
+        ZERO(*ltvr);
         ltvr->ltv=ltv;
         ltv->refs++;
         ltvr_count++;
@@ -131,11 +133,9 @@ LTVR *LTVR_new(LTV *ltv)
 LTV *LTVR_free(LTVR *ltvr)
 {
     LTV *ltv=NULL;
-    if (ltvr)
-    {
+    if (ltvr) {
         if ((ltv=ltvr->ltv))
             ltv->refs--;
-        ZERO(*ltvr);
         CLL_put(&ltvr_repo,ltvr->repo,HEAD);
         ltvr_count--;
     }
@@ -148,6 +148,7 @@ LTI *LTI_new(char *name,int len)
 {
     LTI *lti;
     if (name && ((lti=(LTI *) CLL_get(&lti_repo,POP,TAIL)) || (lti=NEW(LTI)))) {
+        ZERO(*lti);
         lti_count++;
         lti->name=bufdup(name,len);
         CLL_init(&lti->ltvrs);
@@ -157,8 +158,7 @@ LTI *LTI_new(char *name,int len)
 
 void LTI_free(LTI *lti)
 {
-    if (lti)
-    {
+    if (lti) {
         DELETE(lti->name);
         ZERO(*lti);
         CLL_put(&lti_repo,lti->repo,HEAD);
@@ -245,7 +245,7 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 void LTV_release(LTV *ltv)
 {
     if (ltv && !ltv->refs) {
-        if (ltv->flags|LT_LIST) CLL_release(&ltv->sub.ltvrs,LTVR_release);
+        if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvrs,LTVR_release);
         else                    RBR_release(&ltv->sub.ltis,LTI_release);
         LTV_free(ltv);
     }
@@ -311,8 +311,7 @@ LTV *LTV_pop(CLL *ltvrs)           { return LTV_get(ltvrs,1,HEAD,NULL,0,NULL); }
 void print_ltv(LTV *ltv,int maxdepth)
 {
     char *indent="                                                                                                                ";
-    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt)
-    {
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt) {
         if (*lti) {
             if (maxdepth && depth>=maxdepth) *halt=1;
             fstrnprint(stdout,indent,depth*4);
@@ -322,8 +321,9 @@ void print_ltv(LTV *ltv,int maxdepth)
         if (*ltv) {
             fstrnprint(stdout,indent,depth*4+2);
             fprintf(stdout,"[");
-            if ((*ltv)->flags|LT_BIN) hexdump((*ltv)->data,(*ltv)->len);
-            else                   fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
+            if ((*ltv)->flags&LT_IMM)      printf("0x%p",&(*ltv)->data);
+            else if ((*ltv)->flags&LT_BIN) hexdump((*ltv)->data,(*ltv)->len);
+            else                           fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
             fprintf(stdout,"]\n");
         }
         return NULL;
@@ -332,10 +332,10 @@ void print_ltv(LTV *ltv,int maxdepth)
     listree_traverse(ltv,preop,NULL);
 }
 
-void print_ltvs(CLL *ltvs,int maxdepth)
+void print_ltvs(CLL *ltvrs,int maxdepth)
 {
-    void *op(CLL *lnk) { print_ltv((LTV *) lnk,maxdepth); return NULL; }
-    CLL_map(ltvs,FWD,op);
+    void *op(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; if (ltvr) print_ltv((LTV *) ltvr->ltv,maxdepth); return NULL; }
+    CLL_map(ltvrs,FWD,op);
 }
 
 void LT_init()

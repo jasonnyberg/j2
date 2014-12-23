@@ -234,10 +234,12 @@ int edict_eval(EDICT *edict)
                     advance(oplen);
 
                     LTI *resolve(int insert) {
+                        LTV *ltv=NULL;
                         void *op(CLL *lnk) {
                             if (lti) return lti;
                             ltv=((LTVR *) lnk)->ltv;
-                            while (advance(reverse=(data[0]=='-')), (tlen=series(data,len,NULL,".[",NULL))) {
+                            while ((tlen=series(data,len,NULL,".[",NULL))) {
+                                tlen-=advance(reverse=(data[0]=='-'));
                                 ltvr=NULL;
                                 if (!(lti=RBR_find(&ltv->sub.ltis,data,tlen,insert)))
                                     return NULL;

@@ -35,20 +35,24 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBN struct rb_node
 
 typedef enum {
-    LT_NIL= 1<<0x00, // false
-    LT_DUP= 1<<0x01, // bufdup data for new LTV, free upon release
-    LT_OWN= 1<<0x02, // responsible for freeing data
-    LT_DEP= 1<<0x03, // dependent upon context's expr cache
-    LT_ESC= 1<<0x04, // strip escapes (changes buf and len!)
-    LT_RO=  1<<0x05, // never release LTV/children
-    LT_BIN= 1<<0x06, // data is binary/unprintable
-    LT_IMM= 1<<0x07, // immediate value, not a pointer
-    LT_CVAR=1<<0x08, // LTV data is a C variable
-    LT_AVIS=1<<0x09, // absolute traversal visitation flag
-    LT_RVIS=1<<0x0a, // recursive traversal visitation flag
-    LT_LIST=1<<0x0b, // bypass rbtree,
-    LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
-    LT_NPRT=LT_BIN|LT_IMM, // non-printable
+    LT_DUP= 1<<0x00, // bufdup data for new LTV, free upon release
+    LT_OWN= 1<<0x01, // responsible for freeing data
+    LT_DEP= 1<<0x02, // dependent upon another ltv's data
+    LT_ESC= 1<<0x03, // strip escapes (changes buf and len!)
+    LT_RO=  1<<0x04, // disallow release
+    LT_BIN= 1<<0x05, // data is binary/unprintable
+    LT_IMM= 1<<0x06, // immediate value, not a pointer
+    LT_CVAR=1<<0x07, // LTV data is a C variable
+    LT_AVIS=1<<0x08, // absolute traversal visitation flag
+    LT_RVIS=1<<0x09, // recursive traversal visitation flag
+    LT_LIST=1<<0x0a, // hold children in unlabeled list, rather than default rbtree
+    LT_ROOT=1<<0x0b, // root of a dict rather than a namespace
+    LT_GC  =1<<0x0c, // garbage collect this node before deleting
+    LT_NIL= 1<<0x0d|LT_IMM, // false
+    LT_LTI =1<<0x0e|LT_BIN, // ltv points at an lti
+    LT_LTVR=1<<0x0f|LT_BIN, // ltv points at an ltvr
+    LT_FREE=LT_DUP|LT_OWN,  // need to free data upon release
+    LT_NSTR=LT_IMM|LT_BIN, // not a string
 } LTV_FLAGS;
 
 typedef struct
@@ -78,6 +82,8 @@ typedef struct
     CLL ltvrs;
     char *name;
 } LTI; // LisTree Item
+
+extern LTV *ltv_nil;
 
 typedef void *(*RB_OP)(RBN *rbn);
 

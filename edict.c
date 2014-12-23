@@ -154,47 +154,6 @@ void show_context(CONTEXT *context,FILE *file) {
 }
 
 
-
-LTI *listree_op(LTV *ltv,char *name,int len,int insert)
-{
-    char *lit;
-    int litlen;
-    int reverse;
-
-    int advance(x) { x=MIN(x,len); name+=x; len-=x; return x; }
-
-    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt)
-    {
-        int tlen=series(name,len,NULL,".[",NULL);
-        switch (name[0]) {
-            case '-': reverse=1; advance(1); break;
-            case '.': advance(1); break;
-            case '[': litlen=series(name,len,NULL,NULL,"[]"); lit=name+1; litlen=advance(litlen)-2; break;
-            default: break;
-        }
-
-        if (*lti) { // list lookup/insert, get ltvr
-            if (!LTV_get(&(*lti)->ltvrs,0,reverse,lit,litlen,ltvr) && insert)
-                LTV_put(&(*lti)->ltvrs,LTV_new(lit,litlen,LT_DUP),reverse,ltvr);
-
-        }
-        if (*ltvr) {
-        }
-        if (*ltv) { // tree lookup/insert, get lti
-            *lti=RBR_find(&(*ltv)->sub.ltis,name,tlen,insert);
-            *halt=1;
-            if (!(len-=tlen)) return lti;
-            else if (insert)
-            {}
-        }
-
-        return NULL;
-    }
-
-    listree_traverse(ltv,preop,NULL);
-}
-
-
 #define OPS "!@/$&|?"
 #define ATOM_END (OPS WHITESPACE "<({")
 
@@ -213,7 +172,7 @@ int parse(TOK *expr)
         return !(tok=TOK_new(type,LTV_new(data,len,LT_DUP))) || !CLL_splice(&expr->subtoks,&tok->lnk,TAIL);
     }
 
-    if (expr && (val=LTV_pop(&expr->ltvrs)) && !(val->flags&LT_NPRT) && val->data) {
+    if (expr && (val=LTV_pop(&expr->ltvrs)) && !(val->flags&LT_NSTR) && val->data) {
         edata=val->data;
         elen=val->len;
 
@@ -237,10 +196,6 @@ int parse(TOK *expr)
     return status;
 }
 
-
-
-#define LTV_NIL (LTV_new(NULL,0,LT_NIL))
-
 // FIXME: name idea: "Wrangle"
 
 int edict_eval(EDICT *edict)
@@ -263,43 +218,81 @@ int edict_eval(EDICT *edict)
 
             int eval_atom(TOK *tok) {
                 int status=0;
-                int tlen=0;
-
                 printf("eval_atom: "); show_tok(tok);
+                LTV *tok_ltv=NULL;
 
-                /*
-                if (tok->flags&TOK_OP)
-                {
+                if ((tok_ltv=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL))) {
+                    int insert=0,reverse=0;
+                    char *data=tok_ltv->data;
+                    int len=tok_ltv->len,tlen;
+                    LTI *lti=NULL;
+                    LTVR *ltvr=NULL;
                     LTV *ltv=NULL;
-                    int i;
-                    for (i=0;i<tok->len;i++) switch (tok->data[i])
-                    {
-                        case '?': print_ltvs(&edict->dict,0); break;
-                        case '@': if (result && result->lti) LTV_put(&result->lti->cll,(ltv=LTV_pop(&context->anons))?ltv:LTV_NIL,tail,&result->ltvr); break;
-                        case '/':
-                            if (result && result->lti) LTV_release(LTV_get(&result->lti->cll,POP,tail,NULL,0,NULL));
-                            else LTV_release(LTV_pop(&context->anons));
-                            break;
-                        case '!':
-                            if (resolve_ltvr())
-                            {
-                                // use as arg for function call
+                    int advance(x) { x=MIN(x,len); data+=x; len-=x; return x; }
+
+                    int oplen=series(data,len,OPS,NULL,NULL);
+                    advance(oplen);
+
+                    LTI *resolve(int insert) {
+                        void *op(CLL *lnk) {
+                            if (lti) return lti;
+                            ltv=((LTVR *) lnk)->ltv;
+                            while (advance(reverse=(data[0]=='-')), (tlen=series(data,len,NULL,".[",NULL))) {
+                                ltvr=NULL;
+                                if (!(lti=RBR_find(&ltv->sub.ltis,data,tlen,insert)))
+                                    return NULL;
+                                advance(tlen);
+                                while (tlen=series(data,len,NULL,NULL,"[]")) {
+                                    if (!(ltv=LTV_get(&lti->ltvrs,KEEP,reverse,data+1,tlen-2,&ltvr)) &&
+                                            insert &&
+                                            !(ltv=LTV_put(&lti->ltvrs,LTV_new(data+1,tlen-2,LT_DUP),reverse,&ltvr)))
+                                        return NULL;
+                                    advance(tlen);
+                                }
+                                if (len) {
+                                    if (*data!='.')
+                                        return NULL;
+                                    advance(1);
+                                }
                             }
-                            else
-                            {
-                                LTV *lambda=LTV_pop(&context->anons);
-                                                                TOK *lambda_tok=TOK_new(TOK_EXPR,LTV_new(data,len,LT_DUP));
-                                LTV_release(lambda);
-                                CLL_put(&cur_expr->subtoks,&lambda_tok->cll,HEAD);
-                            }
-                            break;
-                        default:
-                            printf("processing unimplemented OP %c",tok->data[i]);
+                            return lti;
+                        }
+                        return CLL_map(&context->dict,FWD,op);
                     }
+
+                    if (oplen) {
+                        int i;
+                        char *ops=(char *) tok_ltv->data;
+                        for (i=0; i<oplen; i++) {
+                            switch (ops[i]) {
+                                case '@': if (oplen!=tok_ltv->len && resolve(1)) LTV_put(&lti->ltvrs,(ltv=LTV_pop(&context->anons))?ltv:ltv_nil,reverse,&ltvr); break;
+                                case '/':
+                                    if (oplen==tok_ltv->len) LTV_release(LTV_pop(&context->anons));
+                                    else if (resolve(0)) {
+                                        if (ltvr) { ltv=ltvr->ltv; LTVR_release(&ltvr->lnk); ltvr=NULL; }
+                                        LTV_release(ltv?ltv:LTV_get(&lti->ltvrs,POP,reverse,NULL,0,NULL));
+                                    }
+                                    break;
+                                case '?': print_ltvs(resolve(0)? &lti->ltvrs:&context->dict,0);
+                                case '!':
+                                    if (resolve(0))
+                                    {
+                                        // use as arg for function call
+                                    }
+                                    else
+                                    {
+                                        LTV *lambda=LTV_pop(&context->anons);
+                                        TOK *expr=TOK_new(TOK_EXPR,lambda);
+                                        CLL_put(&tok->lnk,&expr->lnk,TAIL); // insert ahead of this token
+                                    }
+                                    break;
+                                default:
+                                    printf("processing unimplemented OP %c",ops[i]);
+                            }
+                        }
+                    }
+                    else if (resolve(0) && ltvr || LTV_get(&lti->ltvrs,KEEP,reverse,NULL,0,&ltvr)) LTV_push(&context->anons,ltvr->ltv);
                 }
-                else if (resolve_ltvr())
-                    LTV_push(&context->anons,result->ltvr->ltv);
-                */
 
                 if (!status)
                     TOK_free((TOK *) CLL_cut(&tok->lnk));
@@ -307,7 +300,6 @@ int edict_eval(EDICT *edict)
                 done:
                 return status;
             }
-
 
 
             int eval_expr(TOK *tok) {

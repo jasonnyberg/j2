@@ -107,7 +107,8 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
     RBN *rbn=NULL,*next;
     void *result=NULL;
     if (ltv) {
-        if (ltv->flags&LT_LIST) result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
+        if (ltv->flags&LT_NIL) result=NULL;
+        else if (ltv->flags&LT_LIST) result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
         else {
             RBR *rbr=&ltv->sub.ltis;
             if (reverse) for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=rb_op(rbn)));rbn=next);

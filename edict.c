@@ -139,20 +139,88 @@ void show_tok(TOK *tok) {
     else show_toks("(",&tok->subtoks,")\n");
 }
 
-void show_context(CONTEXT *context,FILE *file);
-void show_contexts(char *pre,CLL *contexts,char *post,FILE *file)
-{
-    void *op(CLL *lnk) { show_context((CONTEXT *) lnk,file); return NULL; }
-    if (pre) printf("%s",pre);
-    CLL_map(contexts,FWD,op);
-    if (post) printf("%s",post);
-}
-void show_context(CONTEXT *context,FILE *file) {
-    fprintf(file,"Context:\n");
-    fprintf(file,"%1$d [label=\"anon\" color=blue] %1$d -> %2$d\n",&context->anons,context->anons.lnk[0]);
-    fprintf(file,"%1$d [label=\"toks\" color=blue] %1$d -> %2$d\n",&context->toks,context->toks.lnk[0]);
-}
+int edict_graph(EDICT *edict) {
+    int status=0;
+    FILE *dumpfile;
 
+    void graph_lti(LTI *lti,int depth,int *halt) {
+        fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
+        if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
+        fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&lti->ltvrs);
+        fprintf(dumpfile,"%d -> %d [weight=2]\n",&lti->rbn,&lti->ltvrs);
+        fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->ltvrs,lti->ltvrs.lnk[0]);
+    }
+
+    void graph_ltvr(LTVR *ltvr,int depth,int *halt) {
+        if (ltvr->ltv) fprintf(dumpfile,"%d -> %d [weight=2]\n",ltvr,ltvr->ltv);
+        fprintf(dumpfile,"%d [label=\"\" shape=point color=brown]\n",&ltvr->lnk);
+        fprintf(dumpfile,"%d -> %d [color=brown]\n",&ltvr->lnk,ltvr->lnk.lnk[0]);
+    }
+
+    void graph_ltv(LTV *ltv,int depth,int *halt) {
+        if (ltv->flags&LT_AVIS && (*halt=1)) return;
+
+        if (ltv->len && !(ltv->flags&LT_NSTR)) {
+            fprintf(dumpfile,"%d [style=filled shape=box label=\"",ltv);
+            fstrnprint(dumpfile,ltv->data,ltv->len);
+            fprintf(dumpfile,"\"]\n");
+        }
+        else
+            fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
+
+        if (ltv->sub.ltis.rb_node)
+            fprintf(dumpfile,"%1$d -> %2$d [color=blue lhead=cluster_%2$d]\n\n",ltv,ltv->sub.ltis.rb_node);
+    }
+
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt) {
+        if (*lti)  graph_lti(*lti,depth,halt);
+        if (*ltvr) graph_ltvr(*ltvr,depth,halt);
+        if (*ltv)  graph_ltv(*ltv,depth,halt);
+        return NULL;
+    }
+
+    void descend_ltvr(LTVR *ltvr) { listree_traverse(ltvr->ltv,preop,NULL); }
+    void descend_ltvrs(CLL *dict) {
+        void *op(CLL *lnk) { descend_ltvr((LTVR *) lnk); return NULL; }
+        CLL_map(dict,FWD,op);
+    }
+
+    void show_context(CONTEXT *context) {
+        int halt=0;
+        fprintf(dumpfile,"%1$d [label=\"Context-%1$d\" %1$d -> %2$d\n",context,&context->anons);
+        fprintf(dumpfile,"%1$d [label=\"anons\" color=blue] %1$d -> %2$d\n",&context->anons,context->anons.lnk[0]);
+        graph_ltvr((LTVR *) context->anons.lnk[0],0,&halt);
+        descend_ltvrs(&context->dict);
+    }
+
+    void show_contexts(char *pre,CLL *contexts,char *post)
+    {
+        void *op(CLL *lnk) { show_context((CONTEXT *) lnk); return NULL; }
+        if (pre) fprintf(dumpfile,"%s",pre);
+        CLL_map(contexts,FWD,op);
+        if (post) fprintf(dumpfile,"%s",post);
+    }
+
+    if (!edict) goto done;
+
+    dumpfile=fopen("/tmp/jj.dot","w");
+    fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
+
+    fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
+    fprintf(dumpfile,"ltv_count [label=\"ltv_count %d\"]\n",ltv_count);
+    fprintf(dumpfile,"ltvr_count [label=\"ltvr_count %d\"]\n",ltvr_count);
+    fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
+    fprintf(dumpfile,"%1$d [label=\"dict\" color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
+
+    //descend_ltvrs(&edict->dict);
+    show_contexts("",&edict->contexts,"\n");
+
+    fprintf(dumpfile,"}\n");
+    fclose(dumpfile);
+
+done:
+    return status;
+}
 
 #define OPS "!@/$&|?"
 #define ATOM_END (OPS WHITESPACE "<({")
@@ -209,7 +277,6 @@ int edict_eval(EDICT *edict)
         int eval_tok(TOK *tok) {
             int eval_lit(TOK *tok) {
                 int status=0;
-                printf("eval_lit: "); show_tok(tok);
                 STRY(!LTV_push(&context->anons,LTV_pop(&tok->ltvrs)),"evaluating lit");
                 TOK_free((TOK *) CLL_cut(&tok->lnk));
                 done:
@@ -218,7 +285,6 @@ int edict_eval(EDICT *edict)
 
             int eval_atom(TOK *tok) {
                 int status=0;
-                printf("eval_atom: "); show_tok(tok);
                 LTV *tok_ltv=NULL;
 
                 if ((tok_ltv=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL))) {
@@ -255,6 +321,7 @@ int edict_eval(EDICT *edict)
                                     if (*data!='.')
                                         return NULL;
                                     advance(1);
+                                    if (!ltvr) ltv=LTV_put(&lti->ltvrs,ltv_nil,reverse,&ltvr);
                                 }
                             }
                             return lti;
@@ -306,7 +373,6 @@ int edict_eval(EDICT *edict)
 
             int eval_expr(TOK *tok) {
                 int status=0;
-                printf("eval_expr: "); show_tok(tok);
 
                 if (CLL_EMPTY(&tok->subtoks)) {
                     if (parse(tok)) TOK_free((TOK *) CLL_cut(&tok->lnk)); // empty expr
@@ -342,6 +408,8 @@ int edict_eval(EDICT *edict)
 
                 STRY(!tok,"validating file tok");
                 if (CLL_EMPTY(&tok->subtoks)) {
+                    printf("anons:\n"), print_ltvs(&context->anons,0);
+                    edict_graph(edict);
                     STRY(!(tok_data=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL)),"validating file");
                     TRY((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,-1,close_file,"reading from file");
                     TRY(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),-1,free_line,"allocating expr tok");
@@ -377,9 +445,6 @@ int edict_eval(EDICT *edict)
         }
 
         STRY(!context,"testing for null context");
-
-        show_toks("toks: ",(CLL *) &context->toks,"\n");
-        printf("anons:\n"), print_ltvs(&context->anons,0);
 
         if (eval_tok((TOK *) CLL_get(&context->toks,KEEP,HEAD)))
             CONTEXT_free((CONTEXT *) CLL_cut(&context->lnk));

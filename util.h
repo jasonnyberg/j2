@@ -78,6 +78,8 @@ typedef unsigned long long ull;
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
+extern int Gmymalloc;
+
 static inline int minint(int a,int b) { return MIN(a,b); }
 static inline int maxint(int a,int b) { return MAX(a,b); }
 

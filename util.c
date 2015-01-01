@@ -78,7 +78,7 @@ void try_loginfo(const char *func,const char *cond)
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 
-    printf(CODE_GREEN "%s" CODE_RESET NEWLINE,logstr); // prints to stdout!
+    fprintf(stderr,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr); // prints to stdout!
     fflush(stdout);
 }
 
@@ -93,7 +93,7 @@ void try_logerror(const char *func,const char *cond,int status)
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 
-    printf(CODE_RED "%s" CODE_RESET NEWLINE,errstr); // prints to stdout!
+    fprintf(stderr,CODE_RED "%s" CODE_RESET NEWLINE,errstr); // prints to stdout!
     fflush(stdout);
 }
 
@@ -260,11 +260,11 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int ballen=balance?strlen(balance)/2:0;
     int i=0,depth=0;
     int checkbal() {
-        int ddepth=0,minlen=MIN(len-i,ballen);
-        if      (!strncmp(buf+i,balance,minlen))        ddepth++;
-        else if (!strncmp(buf+i,balance+ballen,minlen)) ddepth--;
-        i+=ddepth?ballen:1;
-        return depth+=ddepth;
+        int minlen=MIN(len-i,ballen);
+        if      (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
+        else if (!strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen;
+        else i+=depth?1:0;
+        return depth;
     }
     if (include) for (;i<len;i++) if (buf[i]=='\\') i++; else if (!memchr(include,buf[i],inclen)) break;
     if (exclude) for (;i<len;i++) if (buf[i]=='\\') i++; else if (memchr(exclude,buf[i],exclen)) break;

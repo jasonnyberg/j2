@@ -299,18 +299,19 @@ int edict_eval(EDICT *edict)
 
                     int advance(x) { x=MIN(x,len); data+=x; len-=x; return x; }
 
+                    // FIXME: Need to lookup first, insert into lead context dict second.
 
                     LTI *resolve(int insert,int delete) {
-                        LTVR *resolve_ltvr(char *match,int matchlen) {
-                            if (LTV_get(&lti->ltvrs,KEEP,reverse,match,matchlen,&ltvr) ||
-                                (insert && (matchlen || len) && // inserting, and either matching or ref is incomplete
-                                 LTV_put(&lti->ltvrs,LTV_new(match,matchlen,matchlen?LT_DUP:LT_NIL),reverse,&ltvr)))
-                                return ltvr;
-                            else
-                                return NULL;
-                        }
-
                         void *descend(CLL *lnk) {
+                            LTVR *resolve_ltvr(char *match,int matchlen) {
+                                if (LTV_get(&lti->ltvrs,KEEP,reverse,match,matchlen,&ltvr) ||
+                                        (insert && (matchlen || len) && // inserting, and either matching or ref is incomplete
+                                         LTV_put(&lti->ltvrs,LTV_new(match,matchlen,matchlen?LT_DUP:LT_NIL),reverse,&ltvr)))
+                                    return ltvr;
+                                else
+                                    return NULL;
+                            }
+
                             ltv=((LTVR *) lnk)->ltv;
                             if (len && (tlen=series(data,len,NULL,".[",NULL))) {
                                 tlen-=advance(reverse=(data[0]=='-'));
@@ -326,11 +327,11 @@ int edict_eval(EDICT *edict)
                                         return lti; // done, ltv not set!
                                 }
                                 else do {
-                                    if (!resolve_ltvr(data+1,tlen-2))
-                                        return NULL; // retrieving/adding a specific LTV
-                                    advance(tlen);
-                                    ltv=ltvr->ltv; // done, ltv set!
-                                } while ((tlen=series(data,len,NULL,NULL,"[]")));
+                                        if (!resolve_ltvr(data+1,tlen-2))
+                                            return NULL; // retrieving/adding a specific LTV
+                                        advance(tlen);
+                                        ltv=ltvr->ltv; // done, ltv set!
+                                    } while ((tlen=series(data,len,NULL,NULL,"[]")));
                                 if (len) {
                                     if (*data!='.')
                                         return NULL; // badly formatted ref

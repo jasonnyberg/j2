@@ -83,8 +83,6 @@ typedef struct
     char *name;
 } LTI; // LisTree Item
 
-extern LTV *ltv_nil;
-
 typedef void *(*RB_OP)(RBN *rbn);
 
 extern RBR *RBR_init(RBR *rbr);

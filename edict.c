@@ -264,6 +264,7 @@ int parse(TOK *expr)
     return status;
 }
 
+#define LTV_NIL LTV_new(NULL,0,LT_NIL)
 // FIXME: name idea: "Wrangle"
 
 int edict_eval(EDICT *edict)
@@ -288,63 +289,81 @@ int edict_eval(EDICT *edict)
                 LTV *tok_ltv=NULL;
 
                 if ((tok_ltv=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL))) {
-                    int insert=0,reverse=0;
+                    int reverse=0;
                     char *data=tok_ltv->data;
                     int len=tok_ltv->len,tlen;
                     LTI *lti=NULL;
                     LTVR *ltvr=NULL;
-                    LTV *ltv=NULL;
+                    LTV *ltv=NULL,*lti_parent=NULL;
+                    int oplen=series(data,len,OPS,NULL,NULL);
+
                     int advance(x) { x=MIN(x,len); data+=x; len-=x; return x; }
 
-                    int oplen=series(data,len,OPS,NULL,NULL);
-                    advance(oplen);
 
-                    LTI *resolve(int insert) {
-                        LTV *ltv=NULL;
-                        void *op(CLL *lnk) {
-                            if (lti) return lti;
+                    LTI *resolve(int insert,int delete) {
+                        LTVR *resolve_ltvr(char *match,int matchlen) {
+                            if (LTV_get(&lti->ltvrs,KEEP,reverse,match,matchlen,&ltvr) ||
+                                (insert && (matchlen || len) && // inserting, and either matching or ref is incomplete
+                                 LTV_put(&lti->ltvrs,LTV_new(match,matchlen,matchlen?LT_DUP:LT_NIL),reverse,&ltvr)))
+                                return ltvr;
+                            else
+                                return NULL;
+                        }
+
+                        void *descend(CLL *lnk) {
                             ltv=((LTVR *) lnk)->ltv;
-                            while ((tlen=series(data,len,NULL,".[",NULL))) {
+                            if (len && (tlen=series(data,len,NULL,".[",NULL))) {
                                 tlen-=advance(reverse=(data[0]=='-'));
-                                ltvr=NULL;
                                 if (!(lti=RBR_find(&ltv->sub.ltis,data,tlen,insert)))
                                     return NULL;
+                                else
+                                    lti_parent=ltv;
                                 advance(tlen);
-                                while (tlen=series(data,len,NULL,NULL,"[]")) {
-                                    if (!(ltv=LTV_get(&lti->ltvrs,KEEP,reverse,data+1,tlen-2,&ltvr)) &&
-                                            insert &&
-                                            !(ltv=LTV_put(&lti->ltvrs,LTV_new(data+1,tlen-2,LT_DUP),reverse,&ltvr)))
-                                        return NULL;
-                                    advance(tlen);
+                                ltvr=NULL;
+                                ltv=NULL;
+                                if (!(tlen=series(data,len,NULL,NULL,"[]"))) {
+                                    if (!resolve_ltvr(NULL,0))
+                                        return lti; // done, ltv not set!
                                 }
+                                else do {
+                                    if (!resolve_ltvr(data+1,tlen-2))
+                                        return NULL; // retrieving/adding a specific LTV
+                                    advance(tlen);
+                                    ltv=ltvr->ltv; // done, ltv set!
+                                } while ((tlen=series(data,len,NULL,NULL,"[]")));
                                 if (len) {
                                     if (*data!='.')
-                                        return NULL;
+                                        return NULL; // badly formatted ref
                                     advance(1);
-                                    if (!ltvr) ltv=LTV_put(&lti->ltvrs,ltv_nil,reverse,&ltvr);
+                                    return descend(&ltvr->lnk);
                                 }
+                                else return lti;
                             }
-                            return lti;
+                            else return NULL;
                         }
-                        return CLL_map(&context->dict,FWD,op);
+                        return CLL_map(&context->dict,FWD,descend);
                     }
 
                     if (oplen) {
                         int i;
                         char *ops=(char *) tok_ltv->data;
+                        advance(oplen);
                         for (i=0; i<oplen; i++) {
                             switch (ops[i]) {
-                                case '@': if (oplen!=tok_ltv->len && resolve(1)) LTV_put(&lti->ltvrs,(ltv=LTV_pop(&context->anons))?ltv:ltv_nil,reverse,&ltvr); break;
+                                case '@': if (oplen!=tok_ltv->len && resolve(1,0))
+                                    LTV_put(&lti->ltvrs,(ltv=LTV_pop(&context->anons))?ltv:LTV_NIL,reverse,&ltvr); break;
                                 case '/':
                                     if (oplen==tok_ltv->len) LTV_release(LTV_pop(&context->anons));
-                                    else if (resolve(0)) {
-                                        if (ltvr) { ltv=ltvr->ltv; LTVR_release(&ltvr->lnk); ltvr=NULL; }
-                                        LTV_release(ltv?ltv:LTV_get(&lti->ltvrs,POP,reverse,NULL,0,NULL));
+                                    else if (resolve(0,1)) {
+                                        if (ltvr && ltv) LTVR_release(&ltvr->lnk); // specific ltv
+                                        else if (lti) {
+                                            RBN_release(&lti_parent->sub.ltis,&lti->rbn,LTI_release); // whole lti
+                                        }
                                     }
                                     break;
-                                case '?': print_ltvs(resolve(0)? &lti->ltvrs:&context->dict,0);
+                                case '?': print_ltvs(resolve(0,0)? &lti->ltvrs:&context->dict,0);
                                 case '!':
-                                    if (resolve(0))
+                                    if (resolve(0,0))
                                     {
                                         // use as arg for function call
                                     }
@@ -360,7 +379,9 @@ int edict_eval(EDICT *edict)
                             }
                         }
                     }
-                    else if (resolve(0) && ltvr || LTV_get(&lti->ltvrs,KEEP,reverse,NULL,0,&ltvr)) LTV_push(&context->anons,ltvr->ltv);
+                    else if (resolve(0,0))
+                        LTV_push(&context->anons,ltvr->ltv);
+                    else LTV_push(&context->anons,LTV_NIL);
                 }
 
                 if (!status)

@@ -28,7 +28,6 @@
 
 CLL ltv_repo,ltvr_repo,lti_repo,ro_list;
 int ltv_count=0,ltvr_count=0,lti_count=0;
-LTV *ltv_nil=NULL;
 
 //////////////////////////////////////////////////
 // LisTree
@@ -78,8 +77,6 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
 LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 {
     LTV *ltv=NULL;
-    if (!data && ltv_nil)
-        return ltv_nil;
     if ((ltv=(LTV *) CLL_get(&ltv_repo,POP,TAIL)) || (ltv=NEW(LTV))) {
         ZERO(*ltv);
         ltv_count++;
@@ -107,8 +104,7 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
     RBN *rbn=NULL,*next;
     void *result=NULL;
     if (ltv) {
-        if (ltv->flags&LT_NIL) result=NULL;
-        else if (ltv->flags&LT_LIST) result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
+        if (ltv->flags&LT_LIST) result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
         else {
             RBR *rbr=&ltv->sub.ltis;
             if (reverse) for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=rb_op(rbn)));rbn=next);
@@ -289,7 +285,7 @@ LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret
     void *ltv_match(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
         if (!ltvr || !ltvr->ltv || ltvr->ltv->flags&LT_IMM || ltvr->ltv->len!=matchlen || memcmp(ltvr->ltv->data,match,matchlen)) return NULL;
-        else return pop?lnk:CLL_cut(lnk);
+        else return pop?CLL_cut(lnk):lnk;
     }
 
     LTVR *ltvr=NULL;
@@ -324,7 +320,7 @@ void print_ltv(LTV *ltv,int maxdepth)
             fstrnprint(stdout,indent,depth*4+2);
             fprintf(stdout,"[");
             if ((*ltv)->flags&LT_NIL)      printf("nil");
-            if ((*ltv)->flags&LT_IMM)      printf("0x%p",&(*ltv)->data);
+            else if ((*ltv)->flags&LT_IMM)      printf("0x%p",&(*ltv)->data);
             else if ((*ltv)->flags&LT_BIN) hexdump((*ltv)->data,(*ltv)->len);
             else                           fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
             fprintf(stdout,"]\n");
@@ -346,7 +342,6 @@ void LT_init()
     CLL_init(&ltv_repo);
     CLL_init(&ltvr_repo);
     CLL_init(&lti_repo);
-    ltv_nil=LTV_new(NULL,0,LT_NIL);
 }
 
 

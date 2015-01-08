@@ -302,9 +302,8 @@ LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret
     return ltv;
 }
 
-LTV *LTV_push(CLL *ltvrs,LTV *ltv) { return LTV_put(ltvrs,ltv,HEAD,NULL); }
-LTV *LTV_pop(CLL *ltvrs)           { return LTV_get(ltvrs,1,HEAD,NULL,0,NULL); }
-
+LTV *LTV_enq(CLL *ltvrs,LTV *ltv,int end) { return LTV_put(ltvrs,ltv,end,NULL); }
+LTV *LTV_deq(CLL *ltvrs,int end)          { return LTV_get(ltvrs,POP,end,NULL,0,NULL); }
 
 void print_ltv(LTV *ltv,int maxdepth)
 {
@@ -319,8 +318,9 @@ void print_ltv(LTV *ltv,int maxdepth)
         if (*ltv) {
             fstrnprint(stdout,indent,depth*4+2);
             fprintf(stdout,"[");
-            if ((*ltv)->flags&LT_NIL)      printf("nil");
-            else if ((*ltv)->flags&LT_IMM)      printf("0x%p",&(*ltv)->data);
+            if ((*ltv)->flags&LT_NULL)     ; // nothing
+            else if ((*ltv)->flags&LT_NIL) printf("nil");
+            else if ((*ltv)->flags&LT_IMM) printf("0x%p (immediate)",&(*ltv)->data);
             else if ((*ltv)->flags&LT_BIN) hexdump((*ltv)->data,(*ltv)->len);
             else                           fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
             fprintf(stdout,"]\n");

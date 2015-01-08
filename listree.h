@@ -35,22 +35,21 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBN struct rb_node
 
 typedef enum {
-    LT_DUP= 1<<0x00, // bufdup data for new LTV, free upon release
-    LT_OWN= 1<<0x01, // responsible for freeing data
-    LT_DEP= 1<<0x02, // dependent upon another ltv's data
-    LT_ESC= 1<<0x03, // strip escapes (changes buf and len!)
-    LT_RO=  1<<0x04, // disallow release
-    LT_BIN= 1<<0x05, // data is binary/unprintable
-    LT_IMM= 1<<0x06, // immediate value, not a pointer
-    LT_CVAR=1<<0x07, // LTV data is a C variable
-    LT_AVIS=1<<0x08, // absolute traversal visitation flag
-    LT_RVIS=1<<0x09, // recursive traversal visitation flag
-    LT_LIST=1<<0x0a, // hold children in unlabeled list, rather than default rbtree
-    LT_ROOT=1<<0x0b, // root of a dict rather than a namespace
-    LT_GC  =1<<0x0c, // garbage collect this node before deleting
-    LT_NIL= 1<<0x0d|LT_IMM, // false
-    LT_LTI =1<<0x0e|LT_BIN, // ltv points at an lti
-    LT_LTVR=1<<0x0f|LT_BIN, // ltv points at an ltvr
+    LT_DUP =1<<0x00, // bufdup data for new LTV, free upon release
+    LT_OWN =1<<0x01, // responsible for freeing data
+    LT_DEP =1<<0x02, // dependent upon another ltv's data
+    LT_ESC =1<<0x03, // strip escapes (changes buf and len!)
+    LT_RO  =1<<0x04, // disallow release
+    LT_BIN =1<<0x05, // data is binary/unprintable
+    LT_CVAR=1<<0x06, // LTV data is a C variable
+    LT_AVIS=1<<0x07, // absolute traversal visitation flag
+    LT_RVIS=1<<0x08, // recursive traversal visitation flag
+    LT_LIST=1<<0x09, // hold children in unlabeled list, rather than default rbtree
+    LT_ROOT=1<<0x0a, // root of a dict rather than a namespace
+    LT_GC  =1<<0x0b, // garbage collect this node before deleting
+    LT_NIL =1<<0x0c, // false
+    LT_NULL=1<<0x0d, // empty (as opposed to false)
+    LT_IMM =1<<0x0e|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN,  // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
 } LTV_FLAGS;
@@ -122,8 +121,8 @@ extern void LTI_release(RBN *rbn);
 extern LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr);
 extern LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
-extern LTV *LTV_push(CLL *ltvrs,LTV *ltv);
-extern LTV *LTV_pop(CLL *ltvrs);
+extern LTV *LTV_enq(CLL *ltvrs,LTV *ltv,int end);
+extern LTV *LTV_deq(CLL *ltvrs,int end);
 
 extern void print_ltv(LTV *ltv,int maxdepth);
 extern void print_ltvs(CLL *ltvrs,int maxdepth);

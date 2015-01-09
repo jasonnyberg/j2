@@ -53,6 +53,8 @@ typedef enum {
     TOK_EXEC     =1<<0x04,
     TOK_SCOPE    =1<<0x05,
     TOK_CURLY    =1<<0x06,
+    TOK_REDUCE   =1<<0x07,
+    TOK_FLATTEN  =1<<0x08,
     TOK_TYPES    =TOK_FILE | TOK_EXPR | TOK_ATOM | TOK_LIT,
 } TOK_FLAGS;
 
@@ -129,13 +131,16 @@ void show_toks(char *pre,CLL *toks,char *post)
 }
 
 void show_tok(TOK *tok) {
-    if (tok->flags&TOK_EXEC)   printf("EXEC " );
-    if (tok->flags&TOK_SCOPE)  printf("SCOPE ");
-    if (tok->flags&TOK_CURLY)  printf("CURLY ");
-    if (tok->flags&TOK_FILE)   { printf("FILE \n"); print_ltvs(&tok->ltvrs,1); }
-    if (tok->flags&TOK_EXPR)   { printf("EXPR \n"); print_ltvs(&tok->ltvrs,1); }
-    if (tok->flags&TOK_ATOM)   { printf("ATOM \n"); print_ltvs(&tok->ltvrs,1); }
-    if (tok->flags==TOK_NONE)  printf("_ ");
+    if (tok->flags&TOK_EXEC)    printf("EXEC " );
+    if (tok->flags&TOK_SCOPE)   printf("SCOPE ");
+    if (tok->flags&TOK_CURLY)   printf("CURLY ");
+    if (tok->flags&TOK_REDUCE)  printf("REDUCE ");
+    if (tok->flags&TOK_FLATTEN) printf("FLATTEN ");
+    if (tok->flags&TOK_FILE)    { printf("FILE \n"); print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_EXPR)    { printf("EXPR \n"); print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_ATOM)    { printf("ATOM \n"); print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_LIT)     { printf("LIT \n");  print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags==TOK_NONE)   printf("_ ");
     else show_toks("(",&tok->subtoks,")\n");
 }
 
@@ -143,12 +148,16 @@ int edict_graph(EDICT *edict) {
     int status=0;
     FILE *dumpfile;
 
+    void graph_ltvrs(CLL *ltvrs) {
+        fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",ltvrs);
+        fprintf(dumpfile,"%d -> %d [color=red]\n",ltvrs,ltvrs->lnk[0]);
+    }
+
     void graph_lti(LTI *lti,int depth,int *halt) {
         fprintf(dumpfile,"\t%d [label=\"%s\" shape=ellipse]\n",lti,lti->name);
         if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\t%d -> %d [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
-        fprintf(dumpfile,"%d [label=\"\" shape=point color=red]\n",&lti->ltvrs);
         fprintf(dumpfile,"%d -> %d [weight=2]\n",&lti->rbn,&lti->ltvrs);
-        fprintf(dumpfile,"%d -> %d [color=red]\n",&lti->ltvrs,lti->ltvrs.lnk[0]);
+        graph_ltvrs(&lti->ltvrs);
     }
 
     void graph_ltvr(LTVR *ltvr,int depth,int *halt) {
@@ -165,6 +174,8 @@ int edict_graph(EDICT *edict) {
             fstrnprint(dumpfile,ltv->data,ltv->len);
             fprintf(dumpfile,"\"]\n");
         }
+        else if (ltv->flags&LT_NIL)
+            fprintf(dumpfile,"%d [label=\"NIL\" shape=box style=filled]\n",ltv);
         else
             fprintf(dumpfile,"%d [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
 
@@ -180,16 +191,20 @@ int edict_graph(EDICT *edict) {
     }
 
     void descend_ltvr(LTVR *ltvr) { listree_traverse(ltvr->ltv,preop,NULL); }
-    void descend_ltvrs(CLL *dict) {
-        void *op(CLL *lnk) { descend_ltvr((LTVR *) lnk); return NULL; }
-        CLL_map(dict,FWD,op);
+    void descend_ltvrs(CLL *ltvrs) {
+        int halt=0;
+        void *op(CLL *lnk) { graph_ltvr((LTVR *) lnk,0,&halt); descend_ltvr((LTVR *) lnk); return NULL; }
+        CLL_map(ltvrs,FWD,op);
     }
 
     void show_context(CONTEXT *context) {
         int halt=0;
-        fprintf(dumpfile,"%1$d [label=\"Context-%1$d\" %1$d -> %2$d\n",context,&context->anons);
-        fprintf(dumpfile,"%1$d [label=\"anons\" color=blue] %1$d -> %2$d\n",&context->anons,context->anons.lnk[0]);
-        graph_ltvr((LTVR *) context->anons.lnk[0],0,&halt);
+        fprintf(dumpfile,"Context%d\n",context);
+        fprintf(dumpfile,"A%2$d [label=\"Anons\"] Context%1$d -> A%2$d -> %2$d\n",context,&context->anons);
+        graph_ltvrs(&context->anons);
+        descend_ltvrs(&context->anons);
+        fprintf(dumpfile,"D%2$d [label=\"Dict\"] Context%1$d -> D%2$d -> %2$d\n",context,&context->dict);
+        graph_ltvrs(&context->dict);
         descend_ltvrs(&context->dict);
     }
 
@@ -204,15 +219,13 @@ int edict_graph(EDICT *edict) {
     if (!edict) goto done;
 
     dumpfile=fopen("/tmp/jj.dot","w");
-    fprintf(dumpfile,"digraph iftree\n{\n\tnode [shape=record]\n\tedge []\n");
+    fprintf(dumpfile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
 
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
     fprintf(dumpfile,"ltv_count [label=\"ltv_count %d\"]\n",ltv_count);
     fprintf(dumpfile,"ltvr_count [label=\"ltvr_count %d\"]\n",ltvr_count);
     fprintf(dumpfile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
-    fprintf(dumpfile,"%1$d [label=\"dict\" color=blue] %1$d -> %2$d\n",&edict->dict,edict->dict.lnk[0]);
 
-    //descend_ltvrs(&edict->dict);
     show_contexts("",&edict->contexts,"\n");
 
     fprintf(dumpfile,"}\n");
@@ -222,10 +235,10 @@ done:
     return status;
 }
 
-#define OPS "@/?!$&|"
-#define ATOM_END (OPS WHITESPACE "<({")
+#define OPS "@/?!&|"
+#define ATOM_END (OPS WHITESPACE "<({\'\"")
 
-int parse(TOK *expr)
+int parse_expr(TOK *expr)
 {
     int status=0;
     char *edata=NULL;
@@ -250,11 +263,13 @@ int parse(TOK *expr)
                 case ' ':
                 case '\t':
                 case '\n': tlen=series(edata,elen,WHITESPACE,NULL,NULL); advance(tlen); break;
-                case '<':  tlen=series(edata,elen,NULL,NULL,"<>");    STRY(append(TOK_EXPR|TOK_SCOPE,edata+1,tlen-2,tlen),"appending scope"); break;
-                case '(':  tlen=series(edata,elen,NULL,NULL,"()");    STRY(append(TOK_EXPR|TOK_EXEC, edata+1,tlen-2,tlen),"appending exec"); break;
-                case '{':  tlen=series(edata,elen,NULL,NULL,"{}");    STRY(append(TOK_EXPR|TOK_CURLY,edata+1,tlen-2,tlen),"appending curly"); break;
-                case '[':  tlen=series(edata,elen,NULL,NULL,"[]");    STRY(append(TOK_LIT,edata+1,tlen-2,tlen),"appending lit"); break;
-                default:   tlen=series(edata,elen,OPS,ATOM_END,NULL); STRY(append(TOK_ATOM,edata,tlen,tlen),"appending atom"); break;
+                case '<':  tlen=series(edata,elen,NULL,NULL,"<>");    STRY(append(TOK_EXPR|TOK_SCOPE,  edata+1,tlen-2,tlen),"appending scope");   break;
+                case '(':  tlen=series(edata,elen,NULL,NULL,"()");    STRY(append(TOK_EXPR|TOK_EXEC,   edata+1,tlen-2,tlen),"appending exec");    break;
+                case '{':  tlen=series(edata,elen,NULL,NULL,"{}");    STRY(append(TOK_EXPR|TOK_CURLY,  edata+1,tlen-2,tlen),"appending curly");   break;
+                case '\'': tlen=series(edata,elen,NULL,NULL,"\'\'");  STRY(append(TOK_EXPR|TOK_REDUCE, edata+1,tlen-2,tlen),"appending reduce");  break;
+                case '\"': tlen=series(edata,elen,NULL,NULL,"\"\"");  STRY(append(TOK_EXPR|TOK_FLATTEN,edata+1,tlen-2,tlen),"appending flatten"); break;
+                case '[':  tlen=series(edata,elen,NULL,NULL,"[]");    STRY(append(TOK_LIT,             edata+1,tlen-2,tlen),"appending lit");     break;
+                default:   tlen=series(edata,elen,OPS,ATOM_END,NULL); STRY(append(TOK_ATOM,            edata,  tlen,  tlen),"appending atom");    break;
             }
         }
     }
@@ -288,7 +303,7 @@ int edict_eval(EDICT *edict)
 
             // FIXME: convert all these inner functions to use TRY/STRY
             int eval_atom(TOK *tok) {
-                int resolve_descend(LTVR *ltvr,char op,char *data,int len) {
+                int resolve_descend(LTVR *ltvr,char *data,int len,char op) {
                     int test_exit(LTV *ltv) {
                         int nil=(!ltv || ltv->flags&LT_NIL);
                         exit_expr=(op=='&')?nil:!nil;
@@ -299,6 +314,8 @@ int edict_eval(EDICT *edict)
                             int status=0;
                             LTVR *ltvr=NULL;
                             LTVR *resolve_ltvr(char *match,int matchlen,int insert) {
+                                if (!lti)
+                                    return NULL;
                                 if (LTV_get(&lti->ltvrs,KEEP,reverse,match,matchlen,&ltvr))
                                     return ltvr;
                                 if (op=='@' && insert) {
@@ -317,7 +334,7 @@ int edict_eval(EDICT *edict)
                                         case '&':
                                         case '|': return test_exit((ltvr || resolve_ltvr(NULL,0,false))?ltvr->ltv:NULL),1;
                                         case '!': return 1; // exec w/ref unhandled for now
-                                        default:  return LTV_enq(&context->anons,(ltvr || resolve_ltvr(NULL,0,false))?ltvr->ltv:LTV_NIL,HEAD),1;
+                                        default:  return (ltvr || resolve_ltvr(NULL,0,false))?LTV_enq(&context->anons,ltvr->ltv,HEAD),1:0;
                                         break;
                                     }
                                 }
@@ -326,14 +343,28 @@ int edict_eval(EDICT *edict)
                                 else return test_exit(NULL),1;
                             }
 
-                            if (!lti) { if (!op) LTV_enq(&context->anons,LTV_NIL,HEAD); return 1; }
-                            else if (len && data[0]=='[') {
+                            if (lti && len && data[0]=='[') {
                                 int done=0,tlen=series(data,len,NULL,".",NULL);
                                 char *ref=data+tlen;
                                 int reflen=len-tlen;
-                                for (; (tlen=series(data,len,NULL,NULL,"[]")); data+=tlen,len-=tlen)
-                                    if (resolve_ltvr(data+1,tlen-2,true))
+                                for (; (tlen=series(data,len,NULL,NULL,"[]")); data+=tlen,len-=tlen) {
+                                    char *key=data+1;
+                                    int keylen=tlen-2;
+                                    if (series(key,keylen,NULL,"*?",NULL)<keylen) { // wildcards
+                                        int hit=0;
+                                        void *LTVR_op(CLL *lnk) {
+                                            LTVR *ltvr=(LTVR *) lnk;
+                                            if (!fnmatch_len(key,keylen,ltvr->ltv->data,ltvr->ltv->len))
+                                                process_ltvr(ref,reflen);
+                                            hit|=done;
+                                            return NULL;
+                                        }
+                                        CLL_map(&lti->ltvrs,FWD,LTVR_op);
+                                        done=hit;
+                                    }
+                                    else if (resolve_ltvr(key,keylen,true))
                                         done|=process_ltvr(ref,reflen);
+                                }
                             }
                             else process_ltvr(data,len);
                         }
@@ -347,12 +378,27 @@ int edict_eval(EDICT *edict)
                         len-=reverse;
                         int done=0;
 
-                        if ((tlen=series(data,len,NULL,".[",NULL))) {
-                            lti=RBR_find(&ltv->sub.ltis,data,tlen,(op=='@'));
+                        void process_lti(LTI *lti) {
                             done=descend_lti(lti,data+tlen,len-tlen,reverse);
                             if (lti && CLL_EMPTY(&lti->ltvrs))
                                 RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release);
                         }
+
+                        if ((tlen=series(data,len,NULL,".[",NULL)))
+                            if (series(data,tlen,NULL,"*?",NULL)<tlen) { // wildcards
+                                int hit=0;
+                                void *LTI_op(RBN *rbn) {
+                                    LTI *lti=(LTI *) rbn;
+                                    if (!fnmatch_len(data,tlen,lti->name,strlen(lti->name)))
+                                        process_lti(lti);
+                                    hit|=done;
+                                    return NULL;
+                                }
+
+                                LTV_map(ltv,FWD,LTI_op,NULL);
+                                done=hit;
+                            }
+                            else process_lti(RBR_find(&ltv->sub.ltis,data,tlen,(op=='@')));
                         return done;
                     }
 
@@ -387,8 +433,10 @@ int edict_eval(EDICT *edict)
                 }
 
                 int resolve(char op,char *data,int len) {
-                    void *descend(CLL *lnk) { return resolve_descend((LTVR *) lnk,op,data,len)?NULL+1:NULL; }
-                    return CLL_map(&context->dict,FWD,descend)!=NULL;
+                    void *descend(CLL *lnk) { return resolve_descend((LTVR *) lnk,data,len,op)?NULL+1:NULL; }
+                    int done=CLL_map(&context->dict,FWD,descend)!=NULL;
+                    if (!done && !op) return LTV_enq(&context->anons,LTV_NIL,HEAD),1;
+                    return done;
                 }
 
                 int status=0;
@@ -413,7 +461,7 @@ int edict_eval(EDICT *edict)
                 int status=0;
 
                 if (CLL_EMPTY(&tok->subtoks)) {
-                    if (parse(tok)) TOK_free((TOK *) CLL_cut(&tok->lnk)); // empty expr
+                    if (parse_expr(tok)) TOK_free((TOK *) CLL_cut(&tok->lnk)); // empty expr
                     else if (tok->flags&TOK_SCOPE)
                         LTV_enq(&context->dict,LTV_deq(&context->anons,HEAD),HEAD);
                     else if (tok->flags&TOK_EXEC) {

@@ -23,7 +23,7 @@
 int main()
 {
     EDICT edict;
-    edict_init(&edict,LTV_new("ROOT",-1,0));
+    edict_init(&edict);
     edict_eval(&edict);
     edict_destroy(&edict);
 }

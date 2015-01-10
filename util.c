@@ -273,61 +273,55 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
 }
 
 char *balanced_readline(FILE *ifile,int *length) {
-     char *expr=NULL;
+    char *expr=NULL;
+    char *nextline(int *linelen) {
+        static char *line=NULL;
+        static size_t buflen=0;
 
-     char *nextline(int *linelen) {
-         static char *line=NULL;
-         static size_t buflen=0;
+        if ((*linelen=getline(&line,&buflen,ifile))>0) {
+            if ((expr=realloc(expr,(*length)+(*linelen)+1)))
+                memmove(expr+(*length),line,(*linelen)+1);
+            return expr;
+        }
+        return NULL;
+    }
 
-         if ((*linelen=getline(&line,&buflen,ifile))>0)
-         {
-             if ((expr=realloc(expr,(*length)+(*linelen)+1)))
-                 memmove(expr+(*length),line,(*linelen)+1);
-             return expr;
-         }
-         return NULL;
-     }
+    int depth=0;
+    char delimiter[1024]; // balancing stack
+    int linelen=0;
 
-     int depth=0;
-     char delimiter[1024]; // balancing stack
-     int linelen=0;
+    *length=0;
 
-     *length=0;
+    while (nextline(&linelen)) {
+        int i,comment=0;
+        for (i=0; i<linelen; i++,(*length)++) {
+            if (!comment) switch (expr[*length]) {
+                case '\\': i++; (*length)++; break; // don't interpret next char
+                case '#': comment++; break;
+                case '(': delimiter[++depth]=')'; break;
+                case '[': delimiter[++depth]=']'; break;
+                case '{': delimiter[++depth]='}'; break;
+                case '<': delimiter[++depth]='>'; break;
+                case ')': case ']': case '}': case '>':
+                    if (depth) {
+                        if (expr[*length]==delimiter[depth]) depth--;
+                        else {
+                            printf("ERROR: Sequence unbalanced at \"%c\", offset %d\n",expr[*length],*length);
+                            free(expr); expr=NULL;
+                            *length=depth=0;
+                            goto done;
+                        }
+                    }
+                    break;
+                default: break;
+            }
+        }
+        if (!depth)
+            break;
+    }
 
-     while (nextline(&linelen))
-     {
-         int i;
-         for (i=0;i<linelen;i++,(*length)++)
-         {
-             switch(expr[*length])
-             {
-                 case '\\': i++; (*length)++; break; // don't interpret next char
-                 case '(': delimiter[++depth]=')'; break;
-                 case '[': delimiter[++depth]=']'; break;
-                 case '{': delimiter[++depth]='}'; break;
-                 case '<': delimiter[++depth]='>'; break;
-                 case ')': case ']': case '}': case '>':
-                     if (depth)
-                     {
-                         if (expr[*length]==delimiter[depth]) depth--;
-                         else
-                         {
-                             printf("ERROR: Sequence unbalanced at \"%c\", offset %d\n",expr[*length],*length);
-                             free(expr); expr=NULL;
-                             *length=depth=0;
-                             goto done;
-                         }
-                     }
-                     break;
-                 default: break;
-             }
-         }
-         if (!depth)
-             break;
-     }
-
-     done:
-     return (*length && !depth)?expr:(free(expr),NULL);
- }
+done:
+    return (*length && !depth)?expr:(free(expr),NULL);
+}
 
 

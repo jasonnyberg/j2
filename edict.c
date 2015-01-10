@@ -48,14 +48,23 @@ typedef enum {
     TOK_FILE     =1<<0x00,
     TOK_EXPR     =1<<0x01,
     TOK_ATOM     =1<<0x02,
-    TOK_LIT      =1<<0x03,
 
-    TOK_EXEC     =1<<0x04,
-    TOK_SCOPE    =1<<0x05,
-    TOK_CURLY    =1<<0x06,
-    TOK_REDUCE   =1<<0x07,
-    TOK_FLATTEN  =1<<0x08,
-    TOK_TYPES    =TOK_FILE | TOK_EXPR | TOK_ATOM | TOK_LIT,
+    // quarks (make up atoms)
+    TOK_OPS      =1<<0x03,
+    TOK_VAL      =1<<0x04,
+    TOK_REF      =1<<0x05,
+    TOK_ELL      =1<<0x06,
+
+    // expr modifiers
+    TOK_WS       =1<<0x07,
+    TOK_NOTE     =1<<0x08,
+    TOK_EXEC     =1<<0x09,
+    TOK_SCOPE    =1<<0x0a,
+    TOK_CURLY    =1<<0x0b,
+    TOK_REDUCE   =1<<0x0c,
+    TOK_FLATTEN  =1<<0x0d,
+    TOK_REV      =1<<0x0e,
+    TOK_TYPES    =TOK_FILE | TOK_EXPR | TOK_ATOM | TOK_VAL,
 } TOK_FLAGS;
 
 typedef struct TOK {
@@ -131,17 +140,23 @@ void show_toks(char *pre,CLL *toks,char *post)
 }
 
 void show_tok(TOK *tok) {
+    if (tok->flags&TOK_WS)      printf("WS " );
+    if (tok->flags&TOK_NOTE)    printf("NOTE " );
     if (tok->flags&TOK_EXEC)    printf("EXEC " );
     if (tok->flags&TOK_SCOPE)   printf("SCOPE ");
     if (tok->flags&TOK_CURLY)   printf("CURLY ");
     if (tok->flags&TOK_REDUCE)  printf("REDUCE ");
     if (tok->flags&TOK_FLATTEN) printf("FLATTEN ");
+    if (tok->flags&TOK_REV)     printf("REV ");
     if (tok->flags&TOK_FILE)    { printf("FILE \n"); print_ltvs(&tok->ltvrs,1); }
     if (tok->flags&TOK_EXPR)    { printf("EXPR \n"); print_ltvs(&tok->ltvrs,1); }
     if (tok->flags&TOK_ATOM)    { printf("ATOM \n"); print_ltvs(&tok->ltvrs,1); }
-    if (tok->flags&TOK_LIT)     { printf("LIT \n");  print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_OPS)     { printf("OPS \n");  print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_VAL)     { printf("VAL \n");  print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_REF)     { printf("REF \n");  print_ltvs(&tok->ltvrs,1); }
+    if (tok->flags&TOK_ELL)     printf("ELL \n");
     if (tok->flags==TOK_NONE)   printf("_ ");
-    else show_toks("(",&tok->subtoks,")\n");
+    else if (!CLL_EMPTY(&tok->subtoks)) show_toks("(",&tok->subtoks,")\n");
 }
 
 int edict_graph(EDICT *edict) {
@@ -235,49 +250,77 @@ done:
     return status;
 }
 
+
 #define OPS "@/?!&|"
 #define ATOM_END (OPS WHITESPACE "<({\'\"")
 
-int parse_expr(TOK *expr)
+int parse(TOK *tok)
 {
     int status=0;
-    char *edata=NULL;
-    int elen=0,tlen=0;
+    char *data=NULL;
+    int len=0,tlen=0;
     LTV *val=NULL;
 
-    int advance(x) { x=MIN(x,elen); edata+=x; elen-=x; return x; }
+    int advance(x) { x=MIN(x,len); data+=x; len-=x; return x; }
 
     int append(int type,char *data,int len,int adv) {
-        TOK *tok=NULL;
+        TOK *subtok=NULL;
         advance(adv);
-        return !(tok=TOK_new(type,LTV_new(data,len,LT_DUP))) || !CLL_splice(&expr->subtoks,&tok->lnk,TAIL);
+        return !(subtok=TOK_new(type,LTV_new(data,len,LT_DUP))) || !CLL_splice(&tok->subtoks,&subtok->lnk,TAIL);
     }
 
-    if (expr && (val=LTV_deq(&expr->ltvrs,HEAD)) && !(val->flags&LT_NSTR) && val->data) {
-        edata=val->data;
-        elen=val->len;
+    STRY(!tok,"testing for null tok");
+    TRY(!(val=LTV_deq(&tok->ltvrs,HEAD)),0,done,"testing for tok ltvr value");
 
-        while (elen>0) {
-            switch (*edata) {
-                case '\\': advance(1);
-                case ' ':
-                case '\t':
-                case '\n': tlen=series(edata,elen,WHITESPACE,NULL,NULL); advance(tlen); break;
-                case '<':  tlen=series(edata,elen,NULL,NULL,"<>");    STRY(append(TOK_EXPR|TOK_SCOPE,  edata+1,tlen-2,tlen),"appending scope");   break;
-                case '(':  tlen=series(edata,elen,NULL,NULL,"()");    STRY(append(TOK_EXPR|TOK_EXEC,   edata+1,tlen-2,tlen),"appending exec");    break;
-                case '{':  tlen=series(edata,elen,NULL,NULL,"{}");    STRY(append(TOK_EXPR|TOK_CURLY,  edata+1,tlen-2,tlen),"appending curly");   break;
-                case '\'': tlen=series(edata,elen,NULL,NULL,"\'\'");  STRY(append(TOK_EXPR|TOK_REDUCE, edata+1,tlen-2,tlen),"appending reduce");  break;
-                case '\"': tlen=series(edata,elen,NULL,NULL,"\"\"");  STRY(append(TOK_EXPR|TOK_FLATTEN,edata+1,tlen-2,tlen),"appending flatten"); break;
-                case '[':  tlen=series(edata,elen,NULL,NULL,"[]");    STRY(append(TOK_LIT,             edata+1,tlen-2,tlen),"appending lit");     break;
-                default:   tlen=series(edata,elen,OPS,ATOM_END,NULL); STRY(append(TOK_ATOM,            edata,  tlen,  tlen),"appending atom");    break;
+    TRY(val->flags&LT_NSTR,-1,release_val,"testing for non-string tok ltvr value");
+    TRY(!val->data,-1,release_val,"testing for null tok ltvr data");
+
+    data=val->data;
+    len=val->len;
+
+    if (tok->flags&TOK_EXPR) while (len) {
+        switch (*data) {
+            case '\\': advance(1);
+            case ' ':
+            case '\t':
+            case '\n': tlen=series(data,len,WHITESPACE,NULL,NULL); TRY(append(TOK_EXPR|TOK_WS,     data  ,tlen  ,tlen),-1,release_val,"appending ws");      break;
+            case '#':  tlen=series(data,len,"#\n",NULL,NULL);      TRY(append(TOK_EXPR|TOK_NOTE,   data+1,tlen-2,tlen),-1,release_val,"appending note");    break;
+            case '<':  tlen=series(data,len,NULL,NULL,"<>");       TRY(append(TOK_EXPR|TOK_SCOPE,  data+1,tlen-2,tlen),-1,release_val,"appending scope");   break;
+            case '(':  tlen=series(data,len,NULL,NULL,"()");       TRY(append(TOK_EXPR|TOK_EXEC,   data+1,tlen-2,tlen),-1,release_val,"appending exec");    break;
+            case '{':  tlen=series(data,len,NULL,NULL,"{}");       TRY(append(TOK_EXPR|TOK_CURLY,  data+1,tlen-2,tlen),-1,release_val,"appending curly");   break;
+            case '\'': tlen=series(data,len,NULL,NULL,"\'\'");     TRY(append(TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),-1,release_val,"appending reduce");  break;
+            case '\"': tlen=series(data,len,NULL,NULL,"\"\"");     TRY(append(TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),-1,release_val,"appending flatten"); break;
+            default:   tlen=series(data,len,OPS,ATOM_END,NULL);    TRY(append(TOK_ATOM,            data,  tlen,  tlen),-1,release_val,"appending atom");    break;
+        }
+    }
+    else if (tok->flags&TOK_ATOM) while (len) {
+        if (tlen=series(data,len,OPS,NULL,NULL)) { // ops
+            TRY(append(TOK_OPS,data,tlen,tlen),-1,release_val,"appending ops");
+            advance(tlen);
+        }
+
+        while (len) {
+            if ((tlen=series(data,len,NULL,".[",NULL))) {
+                int reverse=advance(data[0]=='-')?TOK_REV:0;
+                TRY(append(TOK_REF|reverse,data,tlen,tlen),-1,release_val,"appending ref");
+            }
+            while ((tlen=series(data,len,NULL,NULL,"[]")))
+                TRY(append(TOK_VAL,data+1,tlen-2,tlen),-1,release_val,"appending val");
+            if ((tlen=series(data,len,".",NULL,NULL))) {
+                if (tlen==3)
+                    TRY(append(TOK_ELL,NULL,0,0),-1,release_val,"appending ellipsis");
+                advance(tlen);
             }
         }
     }
-    else status=-1;
+
+    release_val:
+    LTV_release(val);
 
     done:
     return status;
 }
+
 
 #define LTV_NIL  LTV_new(NULL,0,LT_NIL)
 #define LTV_NULL LTV_new(NULL,0,LT_NULL)
@@ -293,6 +336,8 @@ int edict_eval(EDICT *edict)
         int exit_expr=0;
 
         int eval_tok(TOK *tok) {
+
+
             int eval_lit(TOK *tok) {
                 int status=0;
                 STRY(!LTV_enq(&context->anons,LTV_deq(&tok->ltvrs,HEAD),HEAD),"evaluating lit");
@@ -300,6 +345,9 @@ int edict_eval(EDICT *edict)
                 done:
                 return status;
             }
+
+
+
 
             // FIXME: convert all these inner functions to use TRY/STRY
             int eval_atom(TOK *tok) {
@@ -440,6 +488,10 @@ int edict_eval(EDICT *edict)
                 }
 
                 int status=0;
+                parse(tok);
+                show_tok(tok);
+
+#if 0
                 LTV *tok_ltv=NULL;
 
                 STRY(!(tok_ltv=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL)),"retrieving atom tok data");
@@ -450,6 +502,7 @@ int edict_eval(EDICT *edict)
 
                 for (i=0; (!i || i<tlen) && !exit_expr; i++)
                     resolve(tlen?data[i]:0,data+tlen,len-tlen);
+#endif
 
                 done:
                 TOK_free((TOK *) CLL_cut(&tok->lnk));
@@ -461,7 +514,13 @@ int edict_eval(EDICT *edict)
                 int status=0;
 
                 if (CLL_EMPTY(&tok->subtoks)) {
-                    if (parse_expr(tok)) TOK_free((TOK *) CLL_cut(&tok->lnk)); // empty expr
+                    if (parse(tok)) TOK_free((TOK *) CLL_cut(&tok->lnk)); // empty expr
+                    else if (tok->flags&TOK_WS || tok->flags&TOK_NOTE)
+                        TOK_free((TOK *) CLL_cut(&tok->lnk)); // for now
+                    else if (tok->flags&TOK_REDUCE)
+                        TOK_free((TOK *) CLL_cut(&tok->lnk)); // for now
+                    else if (tok->flags&TOK_FLATTEN)
+                        TOK_free((TOK *) CLL_cut(&tok->lnk)); // for now
                     else if (tok->flags&TOK_SCOPE)
                         LTV_enq(&context->dict,LTV_deq(&context->anons,HEAD),HEAD);
                     else if (tok->flags&TOK_EXEC) {
@@ -524,7 +583,6 @@ int edict_eval(EDICT *edict)
                 case TOK_FILE: STRY(eval_file(tok),"evaluating file"); break;
                 case TOK_EXPR: STRY(eval_expr(tok),"evaluating expr"); break;
                 case TOK_ATOM: STRY(eval_atom(tok),"evaluating atom"); break;
-                case TOK_LIT:  STRY(eval_lit(tok), "evaluating lit");  break;
                 default: TOK_free((TOK *) CLL_cut(&tok->lnk)); break;
             }
 
@@ -557,9 +615,10 @@ int edict_eval(EDICT *edict)
 ///////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////
 
-int edict_init(EDICT *edict,LTV *root)
+int edict_init(EDICT *edict)
 {
     int status=0;
+    LTV *root=LTV_new("ROOT",-1,0);
     LT_init();
     STRY(!edict,"validating arg edict");
     BZERO(*edict);

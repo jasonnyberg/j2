@@ -40,9 +40,9 @@ typedef struct EDICT
 //////////////////////////////////////////////////
 
 //  vm
-extern int edict_init(EDICT *edict,LTV *root);
+extern int edict_init(EDICT *edict);
+extern int edict_eval(EDICT *edict);
 extern int edict_destroy(EDICT *edict);
-extern int edict_repl(EDICT *edict);
 
 // embedded api
 extern LTV *edict_add(EDICT *edict,LTV *ltv);

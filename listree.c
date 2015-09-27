@@ -171,7 +171,7 @@ void LTI_free(LTI *lti)
 
 void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 {
-    int depth=0,halt=0,cleanup=0;
+    int depth=0,flags=0,cleanup=0;
     void *rval=NULL;
 
     void *LTV_traverse(LTV *ltv) {
@@ -180,13 +180,13 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
             if (!ltvr) goto done;
 
             if (cleanup && ltvr->ltv) LTV_traverse(ltvr->ltv);
-            else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
-                     (halt || (rval=LTV_traverse(ltv?ltv:ltvr->ltv))) ||
-                     postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
+            else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&flags)) ||
+                     ((flags&LT_TRAVERSE_HALT) || (rval=LTV_traverse(ltv?ltv:ltvr->ltv))) ||
+                     postop && (rval=postop(&lti,&ltvr,&ltv,depth,&flags)))
                 goto done;
 
             done:
-            halt=0;
+            flags=0;
             return rval;
         }
 
@@ -195,13 +195,13 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
             if (!lti) goto done;
 
             if (cleanup) CLL_map(&lti->ltvrs,FWD,LTVR_traverse);
-            else if  (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt)) ||
-                      (halt || (rval=ltvr?LTVR_traverse(&ltvr->lnk):CLL_map(&lti->ltvrs,FWD,LTVR_traverse))) ||
-                      postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt)))
+            else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&flags)) ||
+                     ((flags&LT_TRAVERSE_HALT) || (rval=ltvr?LTVR_traverse(&ltvr->lnk):CLL_map(&lti->ltvrs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
+                     postop && (rval=postop(&lti,&ltvr,&ltv,depth,&flags)))
                 goto done;
 
             done:
-            halt=0;
+            flags=0;
             return rval;
         }
 
@@ -211,22 +211,22 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
         if (cleanup) // remove absolute visited flag
             return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS))? LTV_map(ltv,FWD,LTI_traverse,LTVR_traverse):NULL;
         else if (!(ltv->flags&LT_RVIS)) {
-            if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&halt))) goto done;
+            if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&flags))) goto done;
 
-            if (halt) goto done;
+            if (flags&LT_TRAVERSE_HALT) goto done;
             ltv->flags|=LT_RVIS;
             depth++;
-            rval=lti?LTI_traverse(&lti->rbn):LTV_map(ltv,FWD,LTI_traverse,LTVR_traverse);
+            rval=lti?LTI_traverse(&lti->rbn):LTV_map(ltv,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTI_traverse,LTVR_traverse);
             depth--;
             ltv->flags&=~LT_RVIS;
             if (rval) goto done;
 
-            if (postop && (rval=postop(&lti,&ltvr,&ltv,depth,&halt))) goto done;
+            if (postop && (rval=postop(&lti,&ltvr,&ltv,depth,&flags))) goto done;
         }
 
         done:
         if (ltv) ltv->flags|=LT_AVIS;
-        halt=0;
+        flags=0;
         return rval;
     }
 
@@ -308,9 +308,9 @@ LTV *LTV_deq(CLL *ltvrs,int end)          { return LTV_get(ltvrs,POP,end,NULL,0,
 void print_ltv(LTV *ltv,int maxdepth)
 {
     char *indent="                                                                                                                ";
-    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt) {
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
         if (*lti) {
-            if (maxdepth && depth>=maxdepth) *halt=1;
+            if (maxdepth && depth>=maxdepth) *flags|=LT_TRAVERSE_HALT;
             fstrnprint(stdout,indent,depth*4);
             fprintf(stdout,"\"%s\"\n",(*lti)->name);
         }

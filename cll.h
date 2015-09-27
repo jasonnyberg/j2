@@ -34,17 +34,20 @@ enum { HEAD=0,TAIL=1,FWD=0,REV=1,KEEP=0,POP=1 };
 extern CLL *CLL_init(CLL *lst);                         // init and return lst
 extern void CLL_release(CLL *lst,void (*op)(CLL *cll)); // pop each list item and call op on it
 
-extern CLL *CLL_splice(CLL *a,CLL *b,int end);  // convert a<->a' and b<->b' to a<->b and a'<->b'
-extern CLL *CLL_cut(CLL *lnk);                  // cut lnk from list it's in and return it/NULL
-extern CLL *CLL_get(CLL *lst,int pop,int end);  // get/pop lst's head or tail, return it/NULL
-extern CLL *CLL_put(CLL *lst,CLL *lnk,int end); // add lnk to lst's head or tail, return it
+extern CLL *CLL_splice(CLL *a,CLL *b,int end);   // convert a<->a' and b<->b' to a<->b and a'<->b'
+extern CLL *CLL_cut(CLL *lnk);                   // cut lnk from list it's in and return it/NULL
+extern CLL *CLL_get(CLL *lst,int pop,int end);   // get/pop lst's head or tail, return it/NULL
+extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);  // add lnk to lst's head or tail, return it
+extern CLL *CLL_next(CLL *lst,CLL *lnk,int end); // return next (or prev) lnk in list, or NULL if none.
 
 // calls op(lnk,data) for each lnk in lst until op returns non-zero; returns what last op returns
 typedef void *(*CLL_OP)(CLL *lnk);
 extern void *CLL_map(CLL *sentinel,int dir,CLL_OP op);
 
 #define CLL_SIB(x,end) ((x)->lnk[end])
-#define CLL_EMPTY(sentinel) (!CLL_get((sentinel),FWD,KEEP))
+#define CLL_HEAD(sentinel) (CLL_get((sentinel),HEAD,KEEP))
+#define CLL_TAIL(sentinel) (CLL_get((sentinel),TAIL,KEEP))
+#define CLL_EMPTY(sentinel) (!CLL_HEAD(sentinel))
 #define CLL_ROT(sentinel,dir) (CLL_put((sentinel),CLL_get((sentinel),POP,(dir)),!(dir)))
 #define CLL_MERGE(dst,src,dir) (CLL_splice((dst),(src),(dir)),CLL_cut(src))
 

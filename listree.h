@@ -35,10 +35,10 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBN struct rb_node
 
 typedef enum {
-    LT_DUP =1<<0x00, // bufdup data for new LTV, free upon release
-    LT_OWN =1<<0x01, // responsible for freeing data
+    LT_DUP =1<<0x00, // bufdup'ed on LTV_new, not ref to existing buf
+    LT_OWN =1<<0x01, // handed malloc'ed buffer, responsible for freeing
     LT_DEP =1<<0x02, // dependent upon another ltv's data
-    LT_ESC =1<<0x03, // strip escapes (changes buf and len!)
+    LT_ESC =1<<0x03, // strip escapes (changes buf contents and len!)
     LT_RO  =1<<0x04, // disallow release
     LT_BIN =1<<0x05, // data is binary/unprintable
     LT_CVAR=1<<0x06, // LTV data is a C variable
@@ -50,7 +50,7 @@ typedef enum {
     LT_NIL =1<<0x0c, // false
     LT_NULL=1<<0x0d, // empty (as opposed to false)
     LT_IMM =1<<0x0e|LT_NIL|LT_NULL, // immediate value, not a pointer
-    LT_FREE=LT_DUP|LT_OWN,  // need to free data upon release
+    LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
 } LTV_FLAGS;
 
@@ -103,8 +103,8 @@ extern void LTI_free(LTI *lti);
 //////////////////////////////////////////////////
 // Combined pre-, in-, and post-fix LT traversal
 //////////////////////////////////////////////////
-
-typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *halt);
+enum { LT_TRAVERSE_HALT=1, LT_TRAVERSE_REVERSE=2 };
+typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
 void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 
 //////////////////////////////////////////////////
@@ -118,8 +118,8 @@ extern void LTI_release(RBN *rbn);
 // Dictionary
 //////////////////////////////////////////////////
 
+extern LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 extern LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr);
-extern LTV *LTV_get(CLL *ltvrs,int                                                                                                               pop,int end,void *match,int matchlen,LTVR **ltvr);
 
 extern LTV *LTV_enq(CLL *ltvrs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvrs,int end);

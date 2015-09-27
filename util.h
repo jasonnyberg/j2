@@ -78,6 +78,8 @@ typedef unsigned long long ull;
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
+#define NON_NULL (NULL-1)
+
 extern int Gmymalloc;
 
 static inline int minint(int a,int b) { return MIN(a,b); }
@@ -109,8 +111,9 @@ extern void try_loginfo(const char *func,const char *cond);
 extern void try_logerror(const char *func,const char *cond,int status);
 
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
+#pragma GCC diagnostic ignored "-Wformat-zero-length"
 #define TRY(_cond_,_fail_status_,_exitpoint_,_args_...)                 \
-    {                                                                   \
+    do {                                                                \
         if (try_context.depth<try_depth)                                \
         {                                                               \
             snprintf(try_context.msgstr,TRY_STRLEN,_args_);             \
@@ -137,7 +140,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
                                                                         \
             goto _exitpoint_;                                           \
         }                                                               \
-    }
+    } while (0)
 
 
 #define STRY(_cond_,_args_...) TRY((status=(_cond_)),status,done,_args_)
@@ -223,6 +226,19 @@ extern int hexdump(char *buf,int size);
 
 extern int series(char *buf,int len,char *include,char *exclude,char *balance);
 extern char *balanced_readline(FILE *ifile,int *length);
+
+
+// Coroutine tool... wrap function with crBegin and crFinish, and use crReturn to return after saving location at which to resume execution (must not be used within a switch()
+#define crBegin static int _crstate=0; switch(_crstate) { case 0:
+#define crReturn(x) do { _crstate=__LINE__; return x; case __LINE__:; } while (0)
+#define crFinish }
+// int function(void) {
+//    static int i;
+//    crBegin;
+//    for (i = 0; i < 10; i++)
+//        crReturn(1, i);
+//    crFinish;
+//}
 
 #endif
 

@@ -91,7 +91,6 @@ extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
-extern void LTV_commit(LTV *ltv);
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
 extern LTVR *LTVR_new(LTV *ltv);

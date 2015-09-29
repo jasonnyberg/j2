@@ -110,6 +110,8 @@ extern void try_reset();
 extern void try_loginfo(const char *func,const char *cond);
 extern void try_logerror(const char *func,const char *cond,int status);
 
+#define TRY_ERR -1
+
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
 #pragma GCC diagnostic ignored "-Wformat-zero-length"
 #define TRY(_cond_,_fail_status_,_exitpoint_,_args_...)                 \

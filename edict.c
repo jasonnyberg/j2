@@ -263,7 +263,7 @@ done:
 int parse(TOK *tok)
 {
     int status=0;
-    char *data=NULL;
+    char *data=NULL,*tdata=NULL;
     int len=0,tlen=0;
     LTV *tokval=NULL;
 
@@ -279,8 +279,8 @@ int parse(TOK *tok)
     STRY(!tok,"testing for null tok");
     TRY(!(tokval=LTV_deq(&tok->ltvrs,HEAD)),0,done,"testing for tok ltvr value");
 
-    TRY(tokval->flags&LT_NSTR,-1,release_val,"testing for non-string tok ltvr value");
-    TRY(!tokval->data,-1,release_val,"testing for null tok ltvr data");
+    TRY(tokval->flags&LT_NSTR,TRY_ERR,release_val,"testing for non-string tok ltvr value");
+    TRY(!tokval->data,TRY_ERR,release_val,"testing for null tok ltvr data");
 
     data=tokval->data;
     len=tokval->len;
@@ -290,33 +290,33 @@ int parse(TOK *tok)
             case '\\': advance(1);
             case ' ':
             case '\t':
-            case '\n': tlen=series(data,len,WHITESPACE,NULL,NULL); TRY(!append(tok,TOK_EXPR|TOK_WS,     data  ,tlen  ,tlen),-1,release_val,"appending ws");      break;
-            case '#':  tlen=series(data,len,"#\n",NULL,NULL);      TRY(!append(tok,TOK_EXPR|TOK_NOTE,   data+1,tlen-2,tlen),-1,release_val,"appending note");    break;
-            case '<':  tlen=series(data,len,NULL,NULL,"<>");       TRY(!append(tok,TOK_EXPR|TOK_SCOPE,  data+1,tlen-2,tlen),-1,release_val,"appending scope");   break;
-            case '(':  tlen=series(data,len,NULL,NULL,"()");       TRY(!append(tok,TOK_EXPR|TOK_EXEC,   data+1,tlen-2,tlen),-1,release_val,"appending exec");    break;
-            case '{':  tlen=series(data,len,NULL,NULL,"{}");       TRY(!append(tok,TOK_EXPR|TOK_CURLY,  data+1,tlen-2,tlen),-1,release_val,"appending curly");   break;
-            case '\'': tlen=series(data,len,NULL,NULL,"\'\'");     TRY(!append(tok,TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),-1,release_val,"appending reduce");  break;
-            case '\"': tlen=series(data,len,NULL,NULL,"\"\"");     TRY(!append(tok,TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),-1,release_val,"appending flatten"); break;
-            default:   tlen=series(data,len,OPS,ATOM_END,NULL);    TRY(!append(tok,TOK_ATOM,            data,  tlen,  tlen),-1,release_val,"appending atom");    break;
+            case '\n': tlen=series(data,len,WHITESPACE,NULL,NULL); TRY(!append(tok,TOK_EXPR|TOK_WS,     data  ,tlen  ,tlen),TRY_ERR,release_val,"appending ws");      break;
+            case '#':  tlen=series(data,len,"#\n",NULL,NULL);      TRY(!append(tok,TOK_EXPR|TOK_NOTE,   data+1,tlen-2,tlen),TRY_ERR,release_val,"appending note");    break;
+            case '<':  tlen=series(data,len,NULL,NULL,"<>");       TRY(!append(tok,TOK_EXPR|TOK_SCOPE,  data+1,tlen-2,tlen),TRY_ERR,release_val,"appending scope");   break;
+            case '(':  tlen=series(data,len,NULL,NULL,"()");       TRY(!append(tok,TOK_EXPR|TOK_EXEC,   data+1,tlen-2,tlen),TRY_ERR,release_val,"appending exec");    break;
+            case '{':  tlen=series(data,len,NULL,NULL,"{}");       TRY(!append(tok,TOK_EXPR|TOK_CURLY,  data+1,tlen-2,tlen),TRY_ERR,release_val,"appending curly");   break;
+            case '\'': tlen=series(data,len,NULL,NULL,"\'\'");     TRY(!append(tok,TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),TRY_ERR,release_val,"appending reduce");  break;
+            case '\"': tlen=series(data,len,NULL,NULL,"\"\"");     TRY(!append(tok,TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),TRY_ERR,release_val,"appending flatten"); break;
+            default:   tlen=series(data,len,OPS,ATOM_END,NULL);    TRY(!append(tok,TOK_ATOM,            data,  tlen,  tlen),TRY_ERR,release_val,"appending atom");    break;
         }
     }
     else if (tok->flags&TOK_ATOM) while (len) {
-        TOK *ops=NULL,*ref=NULL,*val=NULL;
+        TOK *ops=NULL,*ref=tok,*val=NULL;
 
         if (tlen=series(data,len,OPS,NULL,NULL)) // ops
-            TRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),-1,release_val,"appending ops");
+            TRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),TRY_ERR,release_val,"appending ops");
 
         while (len) {
             if ((tlen=series(data,len,NULL,".[",NULL))) {
                 int reverse=advance(data[0]=='-')?TOK_REV:0;
                 if (reverse) tlen-=1;
-                TRY(!(ref=append(tok,TOK_REF|reverse,data,tlen,tlen)),-1,release_val,"appending ref");
+                TRY(!(ref=append(tok,TOK_REF|reverse,data,tlen,tlen)),TRY_ERR,release_val,"appending ref");
             }
             while ((tlen=series(data,len,NULL,NULL,"[]")))
-                TRY(!(val=append(ref,TOK_VAL,data+1,tlen-2,tlen)),-1,release_val,"appending val");
+                TRY(!(val=append(ref,TOK_VAL,data+1,tlen-2,tlen)),TRY_ERR,release_val,"appending val");
             if ((tlen=series(data,len,".",NULL,NULL))) {
                 if (tlen==3)
-                    TRY(!(ref=append(tok,TOK_ELL,NULL,0,0)),-1,release_val,"appending ellipsis");
+                    TRY(!(ref=append(tok,TOK_ELL,NULL,0,0)),TRY_ERR,release_val,"appending ellipsis");
                 advance(tlen);
             }
         }
@@ -343,16 +343,6 @@ int edict_eval(EDICT *edict)
         int exit_expr=0;
 
         int eval_tok(TOK *tok) {
-
-            int eval_lit(TOK *tok) {
-                int status=0;
-                STRY(!LTV_enq(&context->anons,LTV_deq(&tok->ltvrs,HEAD),HEAD),"evaluating lit");
-                TOK_free((TOK *) CLL_cut(&tok->lnk));
-                done:
-                return status;
-            }
-
-
 
 
             // FIXME: convert all these inner functions to use TRY/STRY
@@ -512,8 +502,23 @@ int edict_eval(EDICT *edict)
                 {
                     int status=0;
 
-                    int resolve(TOK *ref,char *ops,int opslen) {
-                        int perform_ops(CLL *cll,int end,LTVR *ltvr) {
+                    int push_anon(LTV *ltv) {
+                        int status=0;
+                        STRY(!LTV_enq(&context->anons,ltv,HEAD),"pushing anon");
+                        done:
+                        return status;
+                    }
+
+                    int pop_anon(LTV *ltv) {
+                        int status=0;
+                        STRY(!LTV_enq(&context->anons,ltv,HEAD),"pushing anon");
+                        done:
+                        return status;
+                    }
+                    int status=0;
+
+                    int resolve_ops(TOK *ref,char *ops,int opslen) {
+                        int resolve(CLL *cll,int end,LTVR *ltvr) {
                             int status=0;
                             if (!ltvr)
                                 STRY(LTV_get(cll,KEEP,end,NULL,0,&ltvr)!=NULL,"getting final ltvr");
@@ -547,8 +552,10 @@ int edict_eval(EDICT *edict)
                             done:
                             return status;
                         }
+                    }
 
-                        int resolve_ref(LTV *ltv,TOK *ref) {
+                    int resolve_ref(TOK *ref) {
+                        int resolve(LTV *dict_ltv,TOK *ref_tok) {
                             /*
                             int resolve_val(LTI *lti,TOK *val) {
                                 LTV *tok_ltv=LTV_get(&val->ltvrs,KEEP,HEAD,NULL,0,NULL);
@@ -556,13 +563,16 @@ int edict_eval(EDICT *edict)
                             }
                             */
                             int status=0;
-                            LTV *tok_ltv;
-                            show_tok(ref);
-                            STRY(!(tok_ltv=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL)),"getting tok data");
+                            LTV *ref_ltv;
+                            fstrnprint(stdout,ops,opslen);
+                            show_tok(ref_tok);
+                            print_ltv(dict_ltv,0); printf("\n");
+                            STRY(!(ref_ltv=LTV_get(&ref_tok->ltvrs,KEEP,HEAD,NULL,0,NULL)),"getting ref_tok data");
+                            print_ltv(ref_ltv,0);
                             int insert=0; // FIXME parse ops to determine value
                             /*
                             LTI *lti=ltv?RBR_find(&ltv->sub.ltis,tok_ltv->data,tok_ltv->len):NULL;
-                            TOK *nextref=(TOK *) CLL_next(toks,&ref->lnk,FWD);
+                            TOK *nextref=(TOK *) CLL_next(toks,&ref_tok->lnk,FWD);
                             if (nextref) {
                                 if (CLL_EMPTY(&nextref->subtoks))
                                     return resolve_ref(LTV_get(&lti->ltvrs,KEEP,nextref->flags&TOK_REV?TAIL:HEAD,NULL,0,NULL),nextref);
@@ -576,14 +586,13 @@ int edict_eval(EDICT *edict)
                                     operate
                                     else {
                                     }
-
                             }
                             */
                             done:
                             return status;
                         }
 
-                        void *resolve_stackframe(CLL *lnk) { return resolve_ref(((LTVR *) lnk)->ltv,ref)?NON_NULL:NULL; }
+                        void *resolve_stackframe(CLL *lnk) { return resolve(((LTVR *) lnk)->ltv,ref)?NON_NULL:NULL; }
                         return !CLL_map(&context->dict,FWD,resolve_stackframe);
                     }
 
@@ -591,10 +600,12 @@ int edict_eval(EDICT *edict)
                     if (tos->flags&TOK_OPS) {
                         LTV *ltv=NULL; // optok's data
                         STRY(!(ltv=LTV_get(&tos->ltvrs,KEEP,HEAD,NULL,0,NULL)),"getting optok data");
-                        STRY(resolve((TOK *) CLL_next(toks,&tos->lnk,FWD),ltv->data,ltv->len),"resolving op/ref");
+                        STRY(resolve_ops((TOK *) CLL_next(toks,&tos->lnk,FWD),ltv->data,ltv->len),"resolving op/ref");
                     }
                     else if (tos->flags&TOK_REF)
-                        STRY(resolve(tos,NULL,0),"resolving ref");
+                        STRY(resolve_ref(tos),"resolving ref");
+                    else if (tos->flags&TOK_VAL) // lit
+                        STRY(push_anon(LTV_deq(&tos->ltvrs,HEAD)),"pushing lit");
 
                     done:
                     return status;
@@ -657,9 +668,9 @@ int edict_eval(EDICT *edict)
                     edict_graph(edict);
                     STRY(!(tok_data=LTV_get(&tok->ltvrs,KEEP,HEAD,NULL,0,NULL)),"validating file");
                     if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
-                    TRY((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,-1,close_file,"reading from file");
-                    TRY(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),-1,free_line,"allocating expr tok");
-                    TRY(!tokpush(&tok->subtoks,expr),-1,free_expr,"enqueing expr token");
+                    TRY((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,TRY_ERR,close_file,"reading from file");
+                    TRY(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
+                    TRY(!tokpush(&tok->subtoks,expr),TRY_ERR,free_expr,"enqueing expr token");
                     goto done; // success
 
                     free_expr:  TOK_free(expr);
@@ -717,7 +728,7 @@ int edict_eval(EDICT *edict)
 int edict_init(EDICT *edict)
 {
     int status=0;
-    LTV *root=LTV_new("ROOT",-1,0);
+    LTV *root=LTV_new("ROOT",TRY_ERR,0);
     LT_init();
     STRY(!edict,"validating arg edict");
     BZERO(*edict);

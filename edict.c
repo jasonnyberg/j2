@@ -515,7 +515,6 @@ int edict_eval(EDICT *edict)
                         done:
                         return status;
                     }
-                    int status=0;
 
                     int resolve_ops(TOK *ref,char *ops,int opslen) {
                         int resolve(CLL *cll,int end,LTVR *ltvr) {
@@ -564,7 +563,6 @@ int edict_eval(EDICT *edict)
                             */
                             int status=0;
                             LTV *ref_ltv;
-                            fstrnprint(stdout,ops,opslen);
                             show_tok(ref_tok);
                             print_ltv(dict_ltv,0); printf("\n");
                             STRY(!(ref_ltv=LTV_get(&ref_tok->ltvrs,KEEP,HEAD,NULL,0,NULL)),"getting ref_tok data");

@@ -54,7 +54,7 @@ void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
 }
 
 // return node that owns "name", inserting if desired AND required
-LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
+LTI *RBR_find(RBR *rbr,char *name,int len,int *insert)
 {
     LTI *lti=NULL;
     if (rbr && name) {
@@ -64,9 +64,13 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
             if (!result) return (LTI *) *rbn; // found it!
             else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
         }
-        if (insert && (lti=LTI_new(name,len))) {
-            rb_link_node(&lti->rbn,parent,rbn); // add
-            rb_insert_color(&lti->rbn,rbr); // rebalance
+        if (insert) {
+            if (*insert && (lti=LTI_new(name,len))) {
+                rb_link_node(&lti->rbn,parent,rbn); // add
+                rb_insert_color(&lti->rbn,rbr); // rebalance
+            } else {
+                *insert=0;
+            }
         }
     }
     return lti;
@@ -136,6 +140,7 @@ LTV *LTVR_free(LTVR *ltvr)
         if ((ltv=ltvr->ltv))
             ltv->refs--;
         CLL_put(&ltvr_repo,ltvr->repo,HEAD);
+        ltvr->flags=0;
         ltvr_count--;
     }
     return ltv;
@@ -265,6 +270,11 @@ void LTI_release(RBN *rbn) {
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
+extern LTI *LTV_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_first((RBR *) ltv->sub.ltis); }
+extern LTI *LTV_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_last((RBR *)  ltv->sub.ltis); }
+
+extern LTI *LTI_next(LTI *lti) { return lti? (LTI *) rb_next((RBN *) lti):NULL; }
+extern LTI *LTI_prev(LTI *lti) { return lti? (LTI *) rb_prev((RBN *) lti):NULL; }
 
 LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr_ret)
 {
@@ -330,6 +340,8 @@ void print_ltv(LTV *ltv,int maxdepth)
 
     listree_traverse(ltv,preop,NULL);
 }
+
+
 
 void print_ltvs(CLL *ltvrs,int maxdepth)
 {

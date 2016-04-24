@@ -72,6 +72,7 @@ typedef struct
     CLL repo[0]; // union without union semantics
     CLL lnk;
     LTV *ltv;
+    LTV_FLAGS flags;
 } LTVR; // LisTree Value Reference
 
 typedef struct
@@ -87,7 +88,7 @@ typedef void *(*RB_OP)(RBN *rbn);
 extern RBR *RBR_init(RBR *rbr);
 extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
+extern LTI *RBR_find(RBR *rbr,char *name,int len,int *insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
@@ -117,8 +118,14 @@ extern void LTI_release(RBN *rbn);
 // Dictionary
 //////////////////////////////////////////////////
 
-extern LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
+extern LTI *LTV_first(LTV *ltv);
+extern LTI *LTV_last(LTV *ltv);
+
+extern LTI *LTI_next(LTI *lti);
+extern LTI *LTI_prev(LTI *lti);
+
 extern LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr);
+extern LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
 extern LTV *LTV_enq(CLL *ltvrs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvrs,int end);

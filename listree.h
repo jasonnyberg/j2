@@ -49,16 +49,16 @@ typedef enum {
     LT_GC  =1<<0x0b, // garbage collect this node before deleting
     LT_NIL =1<<0x0c, // false
     LT_NULL=1<<0x0d, // empty (as opposed to false)
-    LT_IMM =1<<0x0e|LT_NIL|LT_NULL, // immediate value, not a pointer
+    LT_TEMP=1<<0x0e, // temp repl artifact, gc immediately
+    LT_IMM =1<<0x0f|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
 } LTV_FLAGS;
 
-typedef struct
-{
+typedef struct {
     CLL repo[0]; // union without union semantics
     union {
-        CLL ltvrs;
+        CLL ltvs;
         RBR ltis;
     } sub;
     LTV_FLAGS flags;
@@ -67,19 +67,17 @@ typedef struct
     int refs;
 } LTV; // LisTree Value
 
-typedef struct
-{
+typedef struct {
     CLL repo[0]; // union without union semantics
     CLL lnk;
     LTV *ltv;
     LTV_FLAGS flags;
 } LTVR; // LisTree Value Reference
 
-typedef struct
-{
+typedef struct {
     CLL repo[0]; // union without union semantics
     RBN rbn;
-    CLL ltvrs;
+    CLL ltvs;
     char *name;
 } LTI; // LisTree Item
 
@@ -124,14 +122,14 @@ extern LTI *LTV_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 
-extern LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr);
-extern LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
+extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
+extern LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
 
-extern LTV *LTV_enq(CLL *ltvrs,LTV *ltv,int end);
-extern LTV *LTV_deq(CLL *ltvrs,int end);
+extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
+extern LTV *LTV_deq(CLL *ltvs,int end);
 
 extern void print_ltv(LTV *ltv,int maxdepth);
-extern void print_ltvs(CLL *ltvrs,int maxdepth);
+extern void print_ltvs(CLL *ltvs,int maxdepth);
 
 extern void LT_init();
 

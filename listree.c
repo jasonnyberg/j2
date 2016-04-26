@@ -108,7 +108,7 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
     RBN *rbn=NULL,*next;
     void *result=NULL;
     if (ltv) {
-        if (ltv->flags&LT_LIST && cll_op) result=CLL_map(&ltv->sub.ltvrs,FWD,cll_op);
+        if (ltv->flags&LT_LIST && cll_op) result=CLL_map(&ltv->sub.ltvs,FWD,cll_op);
         else if (rb_op) {
             RBR *rbr=&ltv->sub.ltis;
             if (reverse) for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=rb_op(rbn)));rbn=next);
@@ -155,7 +155,7 @@ LTI *LTI_new(char *name,int len)
         ZERO(*lti);
         lti_count++;
         lti->name=bufdup(name,len);
-        CLL_init(&lti->ltvrs);
+        CLL_init(&lti->ltvs);
     }
     return lti;
 }
@@ -199,9 +199,9 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
             LTI *lti=(LTI *) rbn; LTVR *ltvr=NULL; LTV *ltv=NULL;
             if (!lti) goto done;
 
-            if (cleanup) CLL_map(&lti->ltvrs,FWD,LTVR_traverse);
+            if (cleanup) CLL_map(&lti->ltvs,FWD,LTVR_traverse);
             else if (preop && (rval=preop(&lti,&ltvr,&ltv,depth,&flags)) ||
-                     ((flags&LT_TRAVERSE_HALT) || (rval=ltvr?LTVR_traverse(&ltvr->lnk):CLL_map(&lti->ltvrs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
+                     ((flags&LT_TRAVERSE_HALT) || (rval=ltvr?LTVR_traverse(&ltvr->lnk):CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
                      postop && (rval=postop(&lti,&ltvr,&ltv,depth,&flags)))
                 goto done;
 
@@ -249,7 +249,7 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 void LTV_release(LTV *ltv)
 {
     if (ltv && !ltv->refs) {
-        if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvrs,LTVR_release);
+        if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvs,LTVR_release);
         else                    RBR_release(&ltv->sub.ltis,LTI_release);
         LTV_free(ltv);
     }
@@ -260,7 +260,7 @@ void LTVR_release(CLL *lnk) { LTV_release(LTVR_free((LTVR *) lnk)); }
 void LTI_release(RBN *rbn) {
     LTI *lti=(LTI *) rbn;
     if (lti) {
-        CLL_release(&lti->ltvrs,LTVR_release);
+        CLL_release(&lti->ltvs,LTVR_release);
         LTI_free(lti);
     }
 }
@@ -270,18 +270,18 @@ void LTI_release(RBN *rbn) {
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-extern LTI *LTV_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_first((RBR *) ltv->sub.ltis); }
-extern LTI *LTV_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_last((RBR *)  ltv->sub.ltis); }
+extern LTI *LTV_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_first((RBR *) &ltv->sub.ltis); }
+extern LTI *LTV_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_last((RBR *)  &ltv->sub.ltis); }
 
 extern LTI *LTI_next(LTI *lti) { return lti? (LTI *) rb_next((RBN *) lti):NULL; }
 extern LTI *LTI_prev(LTI *lti) { return lti? (LTI *) rb_prev((RBN *) lti):NULL; }
 
-LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr_ret)
+LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    if (ltvrs && ltv && (ltvr=LTVR_new(ltv))) {
-        if (CLL_put(ltvrs,&ltvr->lnk,end)) {
+    if (ltvs && ltv && (ltvr=LTVR_new(ltv))) {
+        if (CLL_put(ltvs,&ltvr->lnk,end)) {
             if (ltvr_ret) *ltvr_ret=ltvr;
             return ltv; //!!
         }
@@ -290,7 +290,7 @@ LTV *LTV_put(CLL *ltvrs,LTV *ltv,int end,LTVR **ltvr_ret)
     return NULL;
 }
 
-LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
+LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
 {
     void *ltv_match(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
@@ -301,7 +301,7 @@ LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
     if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_map(ltvrs,end,ltv_match):CLL_get(ltvrs,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_map(ltvs,end,ltv_match):CLL_get(ltvs,pop,end)))
         return NULL;
     ltv=ltvr->ltv;
     if (pop) {
@@ -312,8 +312,8 @@ LTV *LTV_get(CLL *ltvrs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret
     return ltv;
 }
 
-LTV *LTV_enq(CLL *ltvrs,LTV *ltv,int end) { return LTV_put(ltvrs,ltv,end,NULL); }
-LTV *LTV_deq(CLL *ltvrs,int end)          { return LTV_get(ltvrs,POP,end,NULL,0,NULL); }
+LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put(ltvs,ltv,end,NULL); }
+LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,0,NULL); }
 
 void print_ltv(LTV *ltv,int maxdepth)
 {
@@ -343,10 +343,10 @@ void print_ltv(LTV *ltv,int maxdepth)
 
 
 
-void print_ltvs(CLL *ltvrs,int maxdepth)
+void print_ltvs(CLL *ltvs,int maxdepth)
 {
     void *op(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; if (ltvr) print_ltv((LTV *) ltvr->ltv,maxdepth); return NULL; }
-    CLL_map(ltvrs,FWD,op);
+    CLL_map(ltvs,FWD,op);
 }
 
 void LT_init()

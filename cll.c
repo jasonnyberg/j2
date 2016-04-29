@@ -27,7 +27,7 @@
 
 #define LINK(x,y,end) (CLL_SIB((y),!(end))=(x),CLL_SIB((x),(end))=(y))
 
-CLL *CLL_init(CLL *cll) { return CLL_SIB(cll,FWD)=CLL_SIB(cll,REV)=cll; }
+CLL *CLL_init(CLL *cll) { return cll?CLL_SIB(cll,FWD)=CLL_SIB(cll,REV)=cll:NULL; }
 void CLL_release(CLL *sentinel,void (*op)(CLL *cll)) { CLL *cll; for (cll=NULL;cll=CLL_get(sentinel,POP,HEAD);op(cll)); }
 
 // convert a<->a' and b'<->b to a<->b and a'<->b', i.e. "splice OUT sub-CLL a thru b" OR "splice CLL b INTO CLL a at dir=HEAD/TAIL"

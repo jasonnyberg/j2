@@ -89,6 +89,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
         if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
         if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
         ltv->flags=flags;
+        print_ltv(ltv,1);
     }
     return ltv;
 }
@@ -314,6 +315,7 @@ LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
 
 LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put(ltvs,ltv,end,NULL); }
 LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,0,NULL); }
+LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,0,NULL); }
 
 void print_ltv(LTV *ltv,int maxdepth)
 {
@@ -327,7 +329,7 @@ void print_ltv(LTV *ltv,int maxdepth)
 
         if (*ltv) {
             fstrnprint(stdout,indent,depth*4+2);
-            fprintf(stdout,"[");
+            fprintf(stdout,"(%x)[",*ltv);
             if ((*ltv)->flags&LT_NULL)     ; // nothing
             else if ((*ltv)->flags&LT_NIL) printf("nil");
             else if ((*ltv)->flags&LT_IMM) printf("0x%p (immediate)",&(*ltv)->data);
@@ -355,5 +357,3 @@ void LT_init()
     CLL_init(&ltvr_repo);
     CLL_init(&lti_repo);
 }
-
-

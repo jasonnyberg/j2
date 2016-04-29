@@ -21,17 +21,10 @@
 
 #include "listree.h"
 
-struct EDICT;
-
-typedef int (*edict_bc_impl)(struct EDICT *edict,char *name,int len);
-
 typedef struct EDICT
 {
     CLL dict;
     CLL contexts;
-    int numbc;
-    char bc[256];
-    edict_bc_impl bcf[256];
 } EDICT;
 
 
@@ -43,15 +36,6 @@ typedef struct EDICT
 extern int edict_init(EDICT *edict);
 extern int edict_eval(EDICT *edict);
 extern int edict_destroy(EDICT *edict);
-
-// embedded api
-extern LTV *edict_add(EDICT *edict,LTV *ltv);
-extern LTV *edict_rem(EDICT *edict);
-extern LTV *edict_name(EDICT *edict,char *name,int len);
-extern LTV *edict_get(EDICT *edict,char *name,int len,int pop,LTI **lti);
-extern LTV *edict_ref(EDICT *edict,char *name,int len,int pop);
-
-extern void *CONTEXT_show(CLL *lnk,void *data);
 
 /*
 extern LTV *edict_add(RBR *rbr,LTV *ltv);

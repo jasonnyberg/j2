@@ -118,7 +118,6 @@ extern void LTI_release(RBN *rbn);
 
 extern LTI *LTV_first(LTV *ltv);
 extern LTI *LTV_last(LTV *ltv);
-
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 
@@ -127,6 +126,7 @@ extern LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **lt
 
 extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvs,int end);
+extern LTV *LTV_peek(CLL *ltvs,int end);
 
 extern void print_ltv(LTV *ltv,int maxdepth);
 extern void print_ltvs(CLL *ltvs,int maxdepth);

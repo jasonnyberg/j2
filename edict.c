@@ -191,7 +191,7 @@ void TOK_free(TOK *tok)
 
 void show_toks(char *pre,CLL *toks,char *post)
 {
-    void *op(CLL *lnk) { show_tok((TOK *) lnk); return NULL; }
+    void *op(CLL *lnk) { show_tok((TOK *) lnk); show_toks("(",&((TOK *) lnk)->subtoks,") "); return NULL; }
     if (pre) printf("%s",pre);
     CLL_map(toks,FWD,op);
     if (post) printf("%s",post);
@@ -206,15 +206,15 @@ void show_tok(TOK *tok) {
     if (tok->flags&TOK_REDUCE)  printf("REDUCE ");
     if (tok->flags&TOK_FLATTEN) printf("FLATTEN ");
     if (tok->flags&TOK_REV)     printf("REV ");
-    if (tok->flags&TOK_FILE)    { printf("FILE \n"); print_ltvs(&tok->ltvs,1); }
-    if (tok->flags&TOK_EXPR)    { printf("EXPR \n"); print_ltvs(&tok->ltvs,1); }
-    if (tok->flags&TOK_ATOM)    { printf("ATOM \n"); print_ltvs(&tok->ltvs,1); }
-    if (tok->flags&TOK_OPS)     { printf("OPS \n");  print_ltvs(&tok->ltvs,1); }
-    if (tok->flags&TOK_VAL)     { printf("VAL \n");  print_ltvs(&tok->ltvs,1); }
-    if (tok->flags&TOK_REF)     { printf("REF \n");  print_ltvs(&tok->ltvs,1); }
-    if (tok->flags&TOK_ELL)     printf("ELL \n");
+    if (tok->flags&TOK_FILE)    printf("FILE ");
+    if (tok->flags&TOK_EXPR)    printf("EXPR ");
+    if (tok->flags&TOK_ATOM)    printf("ATOM ");
+    if (tok->flags&TOK_OPS)     printf("OPS ");
+    if (tok->flags&TOK_VAL)     printf("VAL ");
+    if (tok->flags&TOK_REF)     printf("REF ");
+    if (tok->flags&TOK_ELL)     printf("ELL ");
     if (tok->flags==TOK_NONE)   printf("_ ");
-    show_toks("(",&tok->subtoks,") ");
+    print_ltvs(&tok->ltvs,1);
 }
 
 //////////////////////////////////////////////////
@@ -360,7 +360,7 @@ done:
 
 
 #define OPS "$@/!&|="
-#define ATOM_END (OPS WHITESPACE "<({\'\"")
+#define ATOM_END (WHITESPACE "<({\'\"")
 
 int parse(TOK *tok)
 {
@@ -394,6 +394,7 @@ int parse(TOK *tok)
             case '\t':
             case '\n': tlen=series(data,len,WHITESPACE,NULL,NULL); STRY(!append(tok,TOK_EXPR|TOK_WS,     data  ,tlen  ,tlen),"appending ws");      break;
             case '#':  tlen=series(data,len,"#\n",NULL,NULL);      STRY(!append(tok,TOK_EXPR|TOK_NOTE,   data+1,tlen-2,tlen),"appending note");    break;
+            case '[':  tlen=series(data,len,NULL,NULL,"[]");       STRY(!append(tok,TOK_EXPR|TOK_VAL,    data+1,tlen-2,tlen),"appending lit");     break;
             case '<':  tlen=series(data,len,NULL,NULL,"<>");       STRY(!append(tok,TOK_EXPR|TOK_SCOPE,  data+1,tlen-2,tlen),"appending scope");   break;
             case '(':  tlen=series(data,len,NULL,NULL,"()");       STRY(!append(tok,TOK_EXPR|TOK_EXEC,   data+1,tlen-2,tlen),"appending exec");    break;
             case '{':  tlen=series(data,len,NULL,NULL,"{}");       STRY(!append(tok,TOK_EXPR|TOK_CURLY,  data+1,tlen-2,tlen),"appending curly");   break;
@@ -528,10 +529,9 @@ int edict_eval(EDICT *edict)
                                     TOK *rtok=NULL;
                                     STRY(!tok,"validating tok");
                                     STRY(!(ltv=LTV_deq(&context->anons,HEAD)),"popping anon");
-                                    rtok=(TOK *) resolve_refs(tok,1);
-                                    STRY(!rtok,"looking up reference for '$'");
+                                    STRY(!(rtok=(TOK *) resolve_refs(tok,1)),"looking up reference for '$'");
                                     STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
-                                    STRY(!LTV_put(&tok->ref->lti->ltvs,ltv,rtok->flags&TOK_REV,NULL),"adding anon to lti");
+                                    STRY(!LTV_put(&rtok->ref->lti->ltvs,ltv,rtok->flags&TOK_REV,NULL),"adding anon to lti");
                                     break;
                                 }
                                 case '/': {
@@ -556,7 +556,7 @@ int edict_eval(EDICT *edict)
                                     LTV *ltv=NULL;
                                     STRY(!(ltv=LTV_deq(&context->anons,HEAD)),"popping anon");
                                     TOK *rtok=TOK_new(TOK_EXPR,ltv);
-                                    CLL_put(&tok->lnk,&rtok->lnk,TAIL); // insert ahead of this token
+                                    STRY(!CLL_put(&context->toks,&rtok->lnk,HEAD),"pushing lambda");
                                     break;
                                 }
                                 default:
@@ -609,9 +609,13 @@ int edict_eval(EDICT *edict)
                 int status=0;
 
                 if (CLL_EMPTY(&tok->subtoks)) {
-                    if (parse(tok))
-                        TOK_free(tok); // empty expr
-                    else if (tok->flags&TOK_WS || tok->flags&TOK_NOTE)
+                    if (tok->flags&TOK_VAL) {
+                        STRY(!LTV_enq(&context->anons,LTV_deq(&tok->ltvs,HEAD),HEAD),"pushing expr lit");
+                        TOK_free(tok); // for now
+                    }
+                    else if (tok->flags&TOK_NOTE)
+                        TOK_free(tok); // for now
+                    else if (tok->flags&TOK_WS)
                         TOK_free(tok); // for now
                     else if (tok->flags&TOK_REDUCE)
                         TOK_free(tok); // for now
@@ -622,11 +626,13 @@ int edict_eval(EDICT *edict)
                     else if (tok->flags&TOK_EXEC) {
                         LTV *lambda=LTV_deq(&context->anons,HEAD);
                         TOK *expr=TOK_new(TOK_EXPR,lambda);
-                        STRY(!CLL_put(&tok->subtoks,&expr->lnk,HEAD),"pushing exec expr");
+                        STRY(!CLL_put(&context->toks,&expr->lnk,HEAD),"pushing exec expr lambda");
                         expr=TOK_new(TOK_EXPR,LTV_deq(&tok->ltvs,HEAD));
-                        STRY(!CLL_put(&tok->subtoks,&expr->lnk,HEAD),"pushing exec expr");
+                        STRY(!CLL_put(&context->toks,&expr->lnk,HEAD),"pushing exec expr body");
                         STRY(!LTV_enq(&context->dict,lambda,HEAD),"pushing lambda scope");
                     }
+                    else if (parse(tok))
+                        TOK_free(tok); // empty expr
                 }
                 else { // evaluate
                     STRY(eval_tok((TOK *) CLL_get(&tok->subtoks,KEEP,HEAD)),"evaluating expr subtoks");
@@ -641,7 +647,6 @@ int edict_eval(EDICT *edict)
                 return status;
             }
 
-
             int eval_file(TOK *tok) {
                 int status=0;
                 char *line;
@@ -650,16 +655,12 @@ int edict_eval(EDICT *edict)
                 LTV *tok_data;
 
                 STRY(!tok,"validating file tok");
-                if (CLL_EMPTY(&tok->subtoks)) {
-                    printf("anons:\n"), print_ltvs(&context->anons,0);
-                    edict_graph(edict);
-                    STRY(!(tok_data=LTV_peek(&tok->ltvs,HEAD)),"validating file");
-                    if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
-                    TRY((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,TRY_ERR,close_file,"reading from file");
-                    TRY(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
-                    TRY(!tokpush(&tok->subtoks,expr),TRY_ERR,free_expr,"enqueing expr token");
-                }
-                STRY(eval_tok((TOK *) CLL_get(&tok->subtoks,KEEP,HEAD)),"evaluating file subtoks");
+                edict_graph(edict);
+                STRY(!(tok_data=LTV_peek(&tok->ltvs,HEAD)),"validating file");
+                if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
+                TRY((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,TRY_ERR,close_file,"reading from file");
+                TRY(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
+                TRY(!tokpush(&context->toks,expr),TRY_ERR,free_expr,"enqueing expr token");
                 goto done; // success
 
                 free_expr:  TOK_free(expr);
@@ -673,6 +674,7 @@ int edict_eval(EDICT *edict)
 
             STRY(!tok,"testing for null tok");
 
+            printf("anons:\n"), print_ltvs(&context->anons,0);
             switch(tok->flags&TOK_TYPES)
             {
                 case TOK_FILE: STRY(eval_file(tok),"evaluating file"); break;

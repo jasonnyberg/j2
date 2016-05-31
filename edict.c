@@ -215,6 +215,7 @@ void show_tok(TOK *tok) {
     if (tok->flags&TOK_ELL)     printf("ELL ");
     if (tok->flags==TOK_NONE)   printf("_ ");
     print_ltvs(&tok->ltvs,1);
+    fflush(stdout);
 }
 
 //////////////////////////////////////////////////
@@ -360,7 +361,7 @@ done:
 
 
 #define OPS "$@/!&|="
-#define ATOM_END (WHITESPACE "<({\'\"")
+#define ATOM_END (WHITESPACE OPS "<({\'\"")
 
 int parse(TOK *tok)
 {
@@ -425,6 +426,7 @@ int parse(TOK *tok)
         }
     }
 
+    printf("Parse results:\n");
     show_tok(tok);
 
     done:

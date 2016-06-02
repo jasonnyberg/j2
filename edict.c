@@ -197,23 +197,27 @@ void show_toks(char *pre,CLL *toks,char *post)
     if (post) printf("%s",post);
 }
 
+void show_tok_flags(FILE *ofile,TOK *tok) {
+    if (tok->flags&TOK_WS)      fprintf(ofile,"WS " );
+    if (tok->flags&TOK_NOTE)    fprintf(ofile,"NOTE " );
+    if (tok->flags&TOK_EXEC)    fprintf(ofile,"EXEC " );
+    if (tok->flags&TOK_SCOPE)   fprintf(ofile,"SCOPE ");
+    if (tok->flags&TOK_CURLY)   fprintf(ofile,"CURLY ");
+    if (tok->flags&TOK_REDUCE)  fprintf(ofile,"REDUCE ");
+    if (tok->flags&TOK_FLATTEN) fprintf(ofile,"FLATTEN ");
+    if (tok->flags&TOK_REV)     fprintf(ofile,"REV ");
+    if (tok->flags&TOK_FILE)    fprintf(ofile,"FILE ");
+    if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
+    if (tok->flags&TOK_ATOM)    fprintf(ofile,"ATOM ");
+    if (tok->flags&TOK_OPS)     fprintf(ofile,"OPS ");
+    if (tok->flags&TOK_VAL)     fprintf(ofile,"VAL ");
+    if (tok->flags&TOK_REF)     fprintf(ofile,"REF ");
+    if (tok->flags&TOK_ELL)     fprintf(ofile,"ELL ");
+    if (tok->flags==TOK_NONE)   fprintf(ofile,"_ ");
+}
+
 void show_tok(TOK *tok) {
-    if (tok->flags&TOK_WS)      printf("WS " );
-    if (tok->flags&TOK_NOTE)    printf("NOTE " );
-    if (tok->flags&TOK_EXEC)    printf("EXEC " );
-    if (tok->flags&TOK_SCOPE)   printf("SCOPE ");
-    if (tok->flags&TOK_CURLY)   printf("CURLY ");
-    if (tok->flags&TOK_REDUCE)  printf("REDUCE ");
-    if (tok->flags&TOK_FLATTEN) printf("FLATTEN ");
-    if (tok->flags&TOK_REV)     printf("REV ");
-    if (tok->flags&TOK_FILE)    printf("FILE ");
-    if (tok->flags&TOK_EXPR)    printf("EXPR ");
-    if (tok->flags&TOK_ATOM)    printf("ATOM ");
-    if (tok->flags&TOK_OPS)     printf("OPS ");
-    if (tok->flags&TOK_VAL)     printf("VAL ");
-    if (tok->flags&TOK_REF)     printf("REF ");
-    if (tok->flags&TOK_ELL)     printf("ELL ");
-    if (tok->flags==TOK_NONE)   printf("_ ");
+    show_tok_flags(stdout,tok);
     print_ltvs(&tok->ltvs,1);
     fflush(stdout);
 }
@@ -251,6 +255,7 @@ void CONTEXT_release(CLL *lnk) { CONTEXT_free((CONTEXT *) lnk); }
 
 int edict_graph(EDICT *edict) {
     int status=0;
+    int i=0;
     FILE *dumpfile;
 
     void graph_ltvs(CLL *ltvs) {
@@ -279,6 +284,10 @@ int edict_graph(EDICT *edict) {
             fstrnprint(dumpfile,ltv->data,ltv->len);
             fprintf(dumpfile,"\"]\n");
         }
+        else if ((ltv->flags&LT_IMM)==LT_IMM)
+            fprintf(dumpfile,"\"%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
+        else if (ltv->flags&LT_NULL)
+            fprintf(dumpfile,"\"%x\" [label=\"\" shape=box style=filled]\n",ltv);
         else if (ltv->flags&LT_NIL)
             fprintf(dumpfile,"\"%x\" [label=\"NIL\" shape=box style=filled]\n",ltv);
         else
@@ -290,46 +299,56 @@ int edict_graph(EDICT *edict) {
     }
 
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        //if (*lti || *ltv) fprintf(dumpfile,"subgraph cluster_%d {\n",i++);
         if (*lti)       graph_lti(*lti,depth,flags);
         else if (*ltvr) graph_ltvr(*ltvr,depth,flags);
         else if (*ltv)  graph_ltv(*ltv,depth,flags);
         return NULL;
     }
 
-    void descend_ltvr(LTVR *ltvr) { listree_traverse(ltvr->ltv,preop,NULL); }
+    void *postop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        //if (*lti || *ltv) fprintf(dumpfile,"}\n");
+        return NULL;
+    }
+
+    void descend_ltvr(LTVR *ltvr) { listree_traverse(ltvr->ltv,preop,postop); }
     void descend_ltvs(CLL *ltvs) {
         int halt=0;
+        graph_ltvs(ltvs);
         void *op(CLL *lnk) { graph_ltvr((LTVR *) lnk,0,&halt); descend_ltvr((LTVR *) lnk); return NULL; }
         CLL_map(ltvs,FWD,op);
     }
 
-    void descend_toks(CLL *toks) {
+    void descend_toks(CLL *toks,char *label) {
         void *op(CLL *lnk) {
             TOK *tok=(TOK *) lnk;
             fprintf(dumpfile,"\"%x\" [label=\"\" shape=box label=\"",tok);
-            fprintf(dumpfile,"xxxtokxxx");
+            show_tok_flags(dumpfile,tok);
             fprintf(dumpfile,"\"]\n");
+            fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",tok,lnk->lnk[0]);
+            //fprintf(dumpfile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
             fprintf(dumpfile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
-            graph_ltvs(&tok->ltvs);
             descend_ltvs(&tok->ltvs);
+            if (CLL_HEAD(&tok->subtoks)) {
+                fprintf(dumpfile,"\"%x\" -> \"%x\"\n",tok,&tok->subtoks);
+                descend_toks(&tok->subtoks,"Subtoks");
+            }
         }
 
-        fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=red]\n",toks);
+        fprintf(dumpfile,"\"%x\" [label=\"%s\"]\n",toks,label);
         fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",toks,toks->lnk[0]);
         CLL_map(toks,FWD,op);
     }
 
     void show_context(CONTEXT *context) {
         int halt=0;
-        fprintf(dumpfile,"\"Context%x\"\n",context);
-        fprintf(dumpfile,"\"A%2$x\" [label=\"Anons\"]\n\"Context%1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->anons);
-        graph_ltvs(&context->anons);
+        fprintf(dumpfile,"\"Context %x\"\n",context);
+        fprintf(dumpfile,"\"A%2$x\" [label=\"Anons\"]\n\"Context %1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->anons);
         descend_ltvs(&context->anons);
-        fprintf(dumpfile,"\"D%2$x\" [label=\"Dict\"]\n\"Context%1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
-        graph_ltvs(&context->dict);
+        fprintf(dumpfile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
         descend_ltvs(&context->dict);
-        fprintf(dumpfile,"\"T%2$x\" [label=\"TOKs\"]\n\"Context%1$x\" -> \"T%2$x\" -> \"%2$x\"\n",context,&context->toks);
-        descend_toks(&context->toks);
+        fprintf(dumpfile,"\"Context %x\" -> \"%x\"\n",context,&context->toks);
+        descend_toks(&context->toks,"Toks");
     }
 
     void show_contexts(char *pre,CLL *contexts,char *post)
@@ -343,7 +362,7 @@ int edict_graph(EDICT *edict) {
     if (!edict) goto done;
 
     dumpfile=fopen("/tmp/jj.dot","w");
-    fprintf(dumpfile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
+    fprintf(dumpfile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
 
     fprintf(dumpfile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
     fprintf(dumpfile,"ltv_count [label=\"ltv_count %d\"]\n",ltv_count);
@@ -360,8 +379,8 @@ done:
 }
 
 
-#define OPS "$@/!&|="
-#define ATOM_END (WHITESPACE OPS "<({\'\"")
+#define OPS "$@/!&|=<>(){}"
+#define ATOM_END (WHITESPACE OPS "<>(){}\'\"")
 
 int parse(TOK *tok)
 {
@@ -396,9 +415,10 @@ int parse(TOK *tok)
             case '\n': tlen=series(data,len,WHITESPACE,NULL,NULL); STRY(!append(tok,TOK_EXPR|TOK_WS,     data  ,tlen  ,tlen),"appending ws");      break;
             case '#':  tlen=series(data,len,"#\n",NULL,NULL);      STRY(!append(tok,TOK_EXPR|TOK_NOTE,   data+1,tlen-2,tlen),"appending note");    break;
             case '[':  tlen=series(data,len,NULL,NULL,"[]");       STRY(!append(tok,TOK_EXPR|TOK_VAL,    data+1,tlen-2,tlen),"appending lit");     break;
-            case '<':  tlen=series(data,len,NULL,NULL,"<>");       STRY(!append(tok,TOK_EXPR|TOK_SCOPE,  data+1,tlen-2,tlen),"appending scope");   break;
-            case '(':  tlen=series(data,len,NULL,NULL,"()");       STRY(!append(tok,TOK_EXPR|TOK_EXEC,   data+1,tlen-2,tlen),"appending exec");    break;
-            case '{':  tlen=series(data,len,NULL,NULL,"{}");       STRY(!append(tok,TOK_EXPR|TOK_CURLY,  data+1,tlen-2,tlen),"appending curly");   break;
+            //case '<':  tlen=series(data,len,NULL,NULL,"<>");       STRY(!append(tok,TOK_EXPR|TOK_SCOPE,  data+1,tlen-2,tlen),"appending scope");   break;
+            //case '(':  tlen=series(data,len,NULL,NULL,"()");       STRY(!append(tok,TOK_EXPR|TOK_EXEC,   data+1,tlen-2,tlen),"appending exec");    break;
+            //case '{':  tlen=series(data,len,NULL,NULL,"{}");       STRY(!append(tok,TOK_EXPR|TOK_CURLY,  data+1,tlen-2,tlen),"appending curly");   break;
+            case '<': case '>': case '(': case ')': case '{': case '}': STRY(!append(tok,TOK_ATOM,data,1,1),"appending %c",*data); break; // special, non-ganging op, no balance!
             case '\'': tlen=series(data,len,NULL,NULL,"\'\'");     STRY(!append(tok,TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),"appending reduce");  break;
             case '\"': tlen=series(data,len,NULL,NULL,"\"\"");     STRY(!append(tok,TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),"appending flatten"); break;
             default:   tlen=series(data,len,OPS,ATOM_END,NULL);    STRY(!append(tok,TOK_ATOM,            data,  tlen,  tlen),"appending atom");    break;
@@ -425,9 +445,6 @@ int parse(TOK *tok)
             }
         }
     }
-
-    printf("Parse results:\n");
-    show_tok(tok);
 
     done:
     return status;
@@ -548,6 +565,21 @@ int edict_eval(EDICT *edict)
                                         LTV_release(LTV_deq(&context->anons,HEAD));
                                     break;
                                 }
+                                case '<': // push anon onto the scope stack
+                                    STRY(!LTV_enq(&context->dict,LTV_deq(&context->anons,HEAD),HEAD),"pushing anon scope");
+                                    break;
+                                case '>': // pop scope stack back onto anon
+                                    STRY(!LTV_enq(&context->anons,LTV_deq(&context->dict,HEAD),HEAD),"popping anon scope");
+                                    break;
+                                case '(': // push anon onto the scope stack (for later exec?)
+                                    STRY(!LTV_enq(&context->dict,LTV_deq(&context->anons,HEAD),HEAD),"pushing anon scope");
+                                    break;
+                                case ')': { // exec top of scope stack
+                                    TOK *expr=TOK_new(TOK_EXPR,LTV_deq(&context->dict,HEAD));
+                                    STRY(!CLL_put(&context->toks,&expr->lnk,HEAD),"pushing exec expr lambda");
+                                    break;
+                                }
+                                case '{': case '}': break; // placeholder
                                 case '&':
                                     break;
                                 case '=': // structure copy
@@ -609,6 +641,10 @@ int edict_eval(EDICT *edict)
 
             int eval_expr(TOK *tok) {
                 int status=0;
+                static int viewer=1;
+
+                if (viewer>1)
+                    edict_graph(edict);
 
                 if (CLL_EMPTY(&tok->subtoks)) {
                     if (tok->flags&TOK_VAL) {
@@ -623,27 +659,20 @@ int edict_eval(EDICT *edict)
                         TOK_free(tok); // for now
                     else if (tok->flags&TOK_FLATTEN)
                         TOK_free(tok); // for now
-                    else if (tok->flags&TOK_SCOPE)
-                        LTV_enq(&context->dict,LTV_deq(&context->anons,HEAD),HEAD);
-                    else if (tok->flags&TOK_EXEC) {
-                        LTV *lambda=LTV_deq(&context->anons,HEAD);
-                        TOK *expr=TOK_new(TOK_EXPR,lambda);
-                        STRY(!CLL_put(&context->toks,&expr->lnk,HEAD),"pushing exec expr lambda");
-                        expr=TOK_new(TOK_EXPR,LTV_deq(&tok->ltvs,HEAD));
-                        STRY(!CLL_put(&context->toks,&expr->lnk,HEAD),"pushing exec expr body");
-                        STRY(!LTV_enq(&context->dict,lambda,HEAD),"pushing lambda scope");
-                    }
                     else if (parse(tok))
                         TOK_free(tok); // empty expr
                 }
                 else { // evaluate
                     STRY(eval_tok((TOK *) CLL_get(&tok->subtoks,KEEP,HEAD)),"evaluating expr subtoks");
                     if (CLL_EMPTY(&tok->subtoks)) {
-                        if (tok->flags&(TOK_EXEC|TOK_SCOPE|TOK_REDUCE|TOK_FLATTEN)) // nothing special for SCOPE, REDUCE or FLATTEN yet
+                        if (tok->flags&(TOK_REDUCE|TOK_FLATTEN)) // nothing special for SCOPE, REDUCE or FLATTEN yet
                             LTV_release(LTV_deq(&context->dict,HEAD));
                         TOK_free(tok); // evaluation done
                     }
                 }
+
+                if (viewer)
+                    edict_graph(edict);
 
                 done:
                 return status;
@@ -657,7 +686,6 @@ int edict_eval(EDICT *edict)
                 LTV *tok_data;
 
                 STRY(!tok,"validating file tok");
-                edict_graph(edict);
                 STRY(!(tok_data=LTV_peek(&tok->ltvs,HEAD)),"validating file");
                 if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
                 TRY((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,TRY_ERR,close_file,"reading from file");
@@ -676,7 +704,6 @@ int edict_eval(EDICT *edict)
 
             STRY(!tok,"testing for null tok");
 
-            printf("anons:\n"), print_ltvs(&context->anons,0);
             switch(tok->flags&TOK_TYPES)
             {
                 case TOK_FILE: STRY(eval_file(tok),"evaluating file"); break;

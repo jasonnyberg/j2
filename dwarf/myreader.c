@@ -174,7 +174,7 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
                         default:
                             break;
                     }
-                printf(">" END);
+                printf(">/" END);
             }
 
             dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
@@ -183,7 +183,7 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
         dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
     }
 
-    printf(">" END);
+    printf(">/" END);
     printf("[----------------------------------------------------------]" END);
     return;
 
@@ -367,7 +367,7 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     get_die_and_siblings(dbg,child,level+1);
 
  done:
-    printf(">" END);
+    printf(">/" END);
     return;
 
  panic:
@@ -426,7 +426,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         cu_number++;
     }
 
-    printf(END "[!]!deps [/]!die_offsets>" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
+    printf(END "[!]!deps [/]!die_offsets>/" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
 
  done:
     return;

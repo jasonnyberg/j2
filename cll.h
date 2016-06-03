@@ -44,7 +44,7 @@ extern CLL *CLL_next(CLL *lst,CLL *lnk,int end); // return next (or prev) lnk in
 typedef void *(*CLL_OP)(CLL *lnk);
 extern void *CLL_map(CLL *sentinel,int dir,CLL_OP op);
 
-#define CLL_SIB(x,end) ((x)->lnk[end])
+#define CLL_SIB(x,end) ((x)->lnk[(end)!=0])
 #define CLL_HEAD(sentinel) (CLL_get((sentinel),HEAD,KEEP))
 #define CLL_TAIL(sentinel) (CLL_get((sentinel),TAIL,KEEP))
 #define CLL_EMPTY(sentinel) (!CLL_HEAD(sentinel))

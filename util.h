@@ -114,7 +114,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
 
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
 #pragma GCC diagnostic ignored "-Wformat-zero-length"
-#define TRY(_cond_,_fail_status_,_exitpoint_,_args_...)                 \
+#define TRY(_cond_,_args_...)                                           \
     do {                                                                \
         if (try_context.depth<try_depth)                                \
         {                                                               \
@@ -123,10 +123,13 @@ extern void try_logerror(const char *func,const char *cond,int status);
         }                                                               \
                                                                         \
         try_context.depth++;                                            \
-        int _pass_=!(_cond_);                                           \
+        status=(_cond_);                                                \
         try_context.depth--;                                            \
-                                                                        \
-        if (!(_pass_))                                                  \
+    } while (0)
+
+#define CATCH(_cond_,_fail_status_,_todo_,_args_...)                    \
+    do {                                                                \
+        if (_cond_)                                                     \
         {                                                               \
             status=(_fail_status_);                                     \
             if (status)                                                 \
@@ -140,12 +143,14 @@ extern void try_logerror(const char *func,const char *cond,int status);
                 try_reset();                                            \
             }                                                           \
                                                                         \
-            goto _exitpoint_;                                           \
+            _todo_;                                                     \
         }                                                               \
     } while (0)
 
+#define SCATCH(_args_...) CATCH(status!=0,TRY_ERR,goto done,_args_);
 
-#define STRY(_cond_,_args_...) TRY((status=(_cond_)),status,done,_args_)
+#define TRYCATCH(_cond_,_fail_status_,_exit_,_args_...) do { TRY(_cond_,_args_); CATCH(status!=0,_fail_status_,goto _exit_,_args_); } while (0)
+#define STRY(_cond_,_args_...) TRYCATCH(_cond_,TRY_ERR,done,_args_)
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 

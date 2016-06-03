@@ -21,6 +21,6 @@ static int testfunc(int arga, teststruct *argb, testenum argc)
     return x+y[5]+*z+arga+argb->b+localc;
 }
 
-main(int argc,char *argv[])
+int main(int argc,char *argv[])
 {
 }

@@ -262,7 +262,7 @@ void CONTEXT_release(CLL *lnk) { CONTEXT_free((CONTEXT *) lnk); }
 
 int edict_graph(EDICT *edict) {
     int status=0;
-    int i=0;
+    int i=0,d=0;
     FILE *dumpfile;
 
     void graph_ltvs(CLL *ltvs) {
@@ -270,21 +270,21 @@ int edict_graph(EDICT *edict) {
         fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",ltvs,ltvs->lnk[0]);
     }
 
-    void graph_lti(LTI *lti,int depth,int *halt) {
+    void graph_lti(LTI *lti,int depth,int *flags) {
         fprintf(dumpfile,"\"%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
         if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\"%x\" -> \"%x\" [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
         fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
         graph_ltvs(&lti->ltvs);
     }
 
-    void graph_ltvr(LTVR *ltvr,int depth,int *halt) {
+    void graph_ltvr(LTVR *ltvr,int depth,int *flags) {
         if (ltvr->ltv) fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",ltvr,ltvr->ltv);
         fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=brown]\n",&ltvr->lnk);
         fprintf(dumpfile,"\"%x\" -> \"%x\" [color=brown]\n",&ltvr->lnk,ltvr->lnk.lnk[0]);
     }
 
-    void graph_ltv(LTV *ltv,int depth,int *halt) {
-        if (ltv->flags&LT_AVIS && (*halt=1)) return;
+    void graph_ltv(LTV *ltv,int depth,int *flags) {
+        if (ltv->flags&LT_AVIS && (*flags=LT_TRAVERSE_HALT)) return;
 
         if (ltv->len && !(ltv->flags&LT_NSTR)) {
             fprintf(dumpfile,"\"%x\" [style=filled shape=box label=\"",ltv);
@@ -306,7 +306,7 @@ int edict_graph(EDICT *edict) {
     }
 
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        if (*ltv) fprintf(dumpfile,"subgraph cluster_%d {\n",i++);
+        //if (*ltv) fprintf(dumpfile,"subgraph cluster_%s_%d { // %d\n",(*ltv)->data,i++,d++);
         if (*lti)       graph_lti(*lti,depth,flags);
         else if (*ltvr) graph_ltvr(*ltvr,depth,flags);
         else if (*ltv)  graph_ltv(*ltv,depth,flags);
@@ -314,7 +314,7 @@ int edict_graph(EDICT *edict) {
     }
 
     void *postop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        if (*ltv) fprintf(dumpfile,"}\n");
+        //if (*ltv) fprintf(dumpfile,"} // %d\n",--d);
         return NULL;
     }
 
@@ -542,7 +542,7 @@ int edict_eval(EDICT *edict)
 
                     void *iterate_ref(TOK *ref_tok) {
                         TOK *rtok=(TOK *) CLL_TAIL(&ref_tok->subtoks);
-                        if (!rtok->ref)
+                        if (!rtok || !rtok->ref)
                             return resolve_ref(ref_tok,0);
                         else
                             return NULL; // A) while no next-item, walk subtoks in reverse. B) re-resolve back to the end using (a cut-down version of) resolve_ref()

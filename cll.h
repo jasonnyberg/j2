@@ -45,8 +45,8 @@ typedef void *(*CLL_OP)(CLL *lnk);
 extern void *CLL_map(CLL *sentinel,int dir,CLL_OP op);
 
 #define CLL_SIB(x,end) ((x)->lnk[(end)!=0])
-#define CLL_HEAD(sentinel) (CLL_get((sentinel),HEAD,KEEP))
-#define CLL_TAIL(sentinel) (CLL_get((sentinel),TAIL,KEEP))
+#define CLL_HEAD(sentinel) (CLL_get((sentinel),KEEP,HEAD))
+#define CLL_TAIL(sentinel) (CLL_get((sentinel),KEEP,TAIL))
 #define CLL_EMPTY(sentinel) (!CLL_HEAD(sentinel))
 #define CLL_ROT(sentinel,dir) (CLL_put((sentinel),CLL_get((sentinel),POP,(dir)),!(dir)))
 #define CLL_MERGE(dst,src,dir) (CLL_splice((dst),(src),(dir)),CLL_cut(src))

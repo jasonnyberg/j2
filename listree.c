@@ -330,11 +330,11 @@ void print_ltv(LTV *ltv,int maxdepth)
         if (*ltv) {
             fstrnprint(stdout,indent,depth*4+2);
             fprintf(stdout,"[");
-            if ((*ltv)->flags&LT_NULL)     ; // nothing
-            else if ((*ltv)->flags&LT_NIL) printf("nil");
-            else if ((*ltv)->flags&LT_IMM) printf("0x%p (immediate)",&(*ltv)->data);
-            else if ((*ltv)->flags&LT_BIN) hexdump((*ltv)->data,(*ltv)->len);
-            else                           fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
+            if (((*ltv)->flags&LT_IMM)==LT_IMM) printf("0x%p (immediate)",&(*ltv)->data);
+            else if ((*ltv)->flags&LT_NULL)     ; // nothing
+            else if ((*ltv)->flags&LT_NIL)      printf("nil");
+            else if ((*ltv)->flags&LT_BIN)      hexdump((*ltv)->data,(*ltv)->len);
+            else                                fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
             fprintf(stdout,"]\n");
         }
         return NULL;

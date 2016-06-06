@@ -230,6 +230,10 @@ int strncspn(char *str,int len,char *reject)
 int fnmatch_len(char *pat,int plen,char *str,int slen)
 {
     int result;
+    if (plen==-1)
+        plen=strlen(pat);
+    if (slen==-1)
+        slen=strlen(pat);
     char peos=pat[plen],seos=str[slen];
     pat[plen]=str[slen]=0;
     result=fnmatch(pat,str,FNM_EXTMATCH);

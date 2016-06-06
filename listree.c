@@ -58,18 +58,22 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int *insert)
 {
     LTI *lti=NULL;
     if (rbr && name) {
-        RBN *parent=NULL,**rbn = &rbr->rb_node;
-        while (*rbn) {
-            int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
-            if (!result) return (LTI *) *rbn; // found it!
-            else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
-        }
-        if (insert) {
-            if (*insert && (lti=LTI_new(name,len))) {
-                rb_link_node(&lti->rbn,parent,rbn); // add
-                rb_insert_color(&lti->rbn,rbr); // rebalance
-            } else {
-                *insert=0;
+        if (series(name,len,NULL,"*?",NULL)<len) { // contains wildcard, do not insert
+            for (lti=(LTI *) rb_first(rbr); lti && fnmatch_len(name,len,lti->name,-1); lti=LTI_next(lti));
+        } else {
+            RBN *parent=NULL,**rbn = &rbr->rb_node;
+            while (*rbn) {
+                int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
+                if (!result) return (LTI *) *rbn; // found it!
+                else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
+            }
+            if (insert) {
+                if (*insert && (lti=LTI_new(name,len))) {
+                    rb_link_node(&lti->rbn,parent,rbn); // add
+                    rb_insert_color(&lti->rbn,rbr); // rebalance
+                } else {
+                    *insert=0;
+                }
             }
         }
     }

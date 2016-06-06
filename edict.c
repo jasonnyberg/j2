@@ -438,8 +438,9 @@ int parse(TOK *tok)
         while (len) {
             if ((tlen=series(data,len,NULL,".[",NULL))) {
                 int reverse=advance(data[0]=='-')?TOK_REV:0;
+                int wildcard=series(data,len,NULL,"*?",NULL)<tlen?TOK_WC:0;
                 if (reverse) tlen-=1;
-                STRY(!(ref=append(tok,TOK_REF|reverse,data,tlen,tlen)),"appending ref");
+                STRY(!(ref=append(tok,TOK_REF|reverse|wildcard,data,tlen,tlen)),"appending ref");
             }
             while ((tlen=series(data,len,NULL,NULL,"[]")))
                 STRY(!(val=append(ref,TOK_VAL,data+1,tlen-2,tlen)),"appending val");
@@ -484,7 +485,7 @@ int edict_eval(EDICT *edict)
                                     *lti=acc_tok->ref->lti;
                                 } else {
                                     LTV *ref_ltv=NULL;
-                                    STRY(!(ref_ltv=LTV_peek(&acc_tok->ltvs,HEAD)),"getting ltvr w/name from token");
+                                    STRY(!(ref_ltv=LTV_peek(&acc_tok->ltvs,HEAD)),"getting token name");
                                     int inserted=insert && !((*ltv)->flags&LT_RO) && (!(*ltvr) || !((*ltvr)->flags&LT_RO)); // directive on way in, status on way out
                                     STRY(!((*lti)=RBR_find(&(*ltv)->sub.ltis,ref_ltv->data,ref_ltv->len,&inserted)),"looking up name in ltv");
                                     if (acc_tok->ref)
@@ -553,18 +554,27 @@ int edict_eval(EDICT *edict)
                     if (!rtok || !rtok->ref)
                         return resolve_ref(ref_tok,0);
                     else { // long version A) while no next-item, walk subtoks in reverse. B) re-resolve back to the end using (a cut-down version of) resolve_ref()
-                        // shortct: iterate over just the tail of the stack, i.e. assume ref is fully resolved with no wildcards above (and no list of specific vals)
+                        // shortcut: iterate over just the tail of the stack, i.e. assume ref is fully resolved with no wildcards above (and no list of specific vals)
+                        // shortcut2: if "name" is a wildcard name, iterate to the next matching name
                         int reverse=rtok->flags&TOK_REV;
                         REF *ref=rtok->ref;
                         LTVR *ltvr=NULL;
-                        if (!ref->lti || (ltvr=(LTVR *) CLL_next(&ref->lti->ltvs,&ref->ltvr->lnk,reverse))) {
+                        if (ref->lti && ref_tok->flags&TOK_WC) {
+                            LTV *ref_ltv=NULL;
+                            LTI *lti=NULL;
+                            ref_ltv=LTV_peek(&ref_tok->ltvs,HEAD);
+                            for (lti=LTI_next(ref->lti); lti && fnmatch_len(ref_ltv->data,ref_ltv->len,lti->name,-1); lti=LTI_next(lti)) {}
+                            if (lti) {
+                                TOK_freeref(ref_tok);
+                                ref=ref_tok->ref=REF_new(lti);
+                            }
+                        }
+                        if (!ref->lti || (ltvr=(LTVR *) CLL_next(&ref->lti->ltvs,ref->ltvr?&ref->ltvr->lnk:NULL,reverse))) {
                             LTV_release(LTV_deq(&ref->ltvs,HEAD));
                             LTV_enq(&ref->ltvs,ltvr->ltv,HEAD); // ensure that ltv is referenced by at least one thing so it won't disappear
                             ref->ltvr=ltvr;
                             return rtok;
                         }
-                        else
-                            return NULL;
                     }
                 }
 

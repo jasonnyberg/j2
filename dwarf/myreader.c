@@ -77,7 +77,7 @@
 
 void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level);
 
-#define DIE(cond) TRY(cond!=DW_DLV_OK,-1,panic,END)
+#define DIE(cond) TRYCATCH(cond!=DW_DLV_OK,-1,panic,END)
 #define SKIP(cond,followup) if (cond==DW_DLV_OK) followup
 
 typedef void (*attrib_handler)(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr);
@@ -318,11 +318,11 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
 
     int res;
 
-    TRY((res=dwarf_diename(die,&diename,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_diename , level %d" END,level);
+    TRYCATCH((res=dwarf_diename(die,&diename,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_diename , level %d" END,level);
     name=diename?diename:"anonymous";
-    TRY(dwarf_tag(die,&tag,&error) != DW_DLV_OK,-1,panic,"checking dwarf_tag , level %d" END,level);
-    TRY(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"checking dwarf_get_TAG_name , level %d" END,level);
-    TRY(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"checking dwarf_dieoffset, level %d" END,level);
+    TRYCATCH(dwarf_tag(die,&tag,&error) != DW_DLV_OK,-1,panic,"checking dwarf_tag , level %d" END,level);
+    TRYCATCH(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"checking dwarf_get_TAG_name , level %d" END,level);
+    TRYCATCH(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"checking dwarf_dieoffset, level %d" END,level);
 
     printf("[%s]@children" END END,name);
     printf("reflection.module@module" END);
@@ -361,8 +361,8 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     traverse_attribs(dbg,die,dump_attrib_location);
     dwarf_dealloc(dbg,diename,DW_DLA_STRING);
 
-    TRY((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_child , level %d" END,level);
-    TRY(res!=DW_DLV_OK,0,done,"checking if die finished" END);
+    TRYCATCH((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_child , level %d" END,level);
+    TRYCATCH(res!=DW_DLV_OK,0,done,"checking if die finished" END);
 
     get_die_and_siblings(dbg,child,level+1);
 
@@ -384,8 +384,8 @@ void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level)
         Dwarf_Error error;
         int res;
         print_die_data(dbg,cur_die,level);
-        TRY((res=dwarf_siblingof(dbg,cur_die,&sib_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof , level %d" END,level);
-        TRY(res==DW_DLV_NO_ENTRY,0,done,"checking for DW_DLV_NO_ENTRY"); /* Done at this level. */
+        TRYCATCH((res=dwarf_siblingof(dbg,cur_die,&sib_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof , level %d" END,level);
+        TRYCATCH(res==DW_DLV_NO_ENTRY,0,done,"checking for DW_DLV_NO_ENTRY"); /* Done at this level. */
         if(cur_die!=in_die)
             dwarf_dealloc(dbg,cur_die,DW_DLA_DIE);
         cur_die=sib_die;
@@ -416,19 +416,18 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
         Dwarf_Die cu_die = NULL;
         int res=dwarf_next_cu_header(dbg,&cu_header_length,&version_stamp,&abbrev_offset,&address_size,&next_cu_header,&error);
 
-        TRY(res==DW_DLV_NO_ENTRY,0,done,"checking DW_DLV_NO_ENTRY");
-        TRY(res==DW_DLV_ERROR,-1,panic,"checking dwarf_next_cu_header" END);
-        TRY((res=dwarf_siblingof(dbg,no_die,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof on CU die" END);
-        TRY(res==DW_DLV_NO_ENTRY,-1,panic,"checking for DW_DLV_NO_ENTRY in dwarf_siblingof on CU die" END);
+        TRYCATCH(res==DW_DLV_NO_ENTRY,0,done,"checking DW_DLV_NO_ENTRY");
+        TRYCATCH(res==DW_DLV_ERROR,-1,panic,"checking dwarf_next_cu_header" END);
+        TRYCATCH((res=dwarf_siblingof(dbg,no_die,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof on CU die" END);
+        TRYCATCH(res==DW_DLV_NO_ENTRY,-1,panic,"checking for DW_DLV_NO_ENTRY in dwarf_siblingof on CU die" END);
 
         get_die_and_siblings(dbg,cu_die,0);
         dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
         cu_number++;
     }
 
-    printf(END "[!]!deps [/]!die_offsets>/" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
-
  done:
+    printf(END "[!]!/deps [/]!/die_offsets>/" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
     return;
  panic:
     exit(1);

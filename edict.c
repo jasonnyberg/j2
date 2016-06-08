@@ -260,71 +260,11 @@ void CONTEXT_release(CLL *lnk) { CONTEXT_free((CONTEXT *) lnk); }
 // Edict
 //////////////////////////////////////////////////
 
+
+
 int edict_graph(EDICT *edict) {
     int status=0;
-    int i=0,d=0;
     FILE *dumpfile;
-
-    void graph_ltvs(CLL *ltvs) {
-        fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=red]\n",ltvs);
-        fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",ltvs,ltvs->lnk[0]);
-    }
-
-    void graph_lti(LTI *lti,int depth,int *flags) {
-        fprintf(dumpfile,"\"%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
-        if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\"%x\" -> \"%x\" [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
-        fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
-        graph_ltvs(&lti->ltvs);
-    }
-
-    void graph_ltvr(LTVR *ltvr,int depth,int *flags) {
-        if (ltvr->ltv) fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",ltvr,ltvr->ltv);
-        fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=brown]\n",&ltvr->lnk);
-        fprintf(dumpfile,"\"%x\" -> \"%x\" [color=brown]\n",&ltvr->lnk,ltvr->lnk.lnk[0]);
-    }
-
-    void graph_ltv(LTV *ltv,int depth,int *flags) {
-        if (ltv->flags&LT_AVIS && (*flags=LT_TRAVERSE_HALT)) return;
-
-        if (ltv->len && !(ltv->flags&LT_NSTR)) {
-            fprintf(dumpfile,"\"%x\" [style=filled shape=box label=\"",ltv);
-            fstrnprint(dumpfile,ltv->data,ltv->len);
-            fprintf(dumpfile,"\"]\n");
-        }
-        else if ((ltv->flags&LT_IMM)==LT_IMM)
-            fprintf(dumpfile,"\"%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
-        else if (ltv->flags&LT_NULL)
-            fprintf(dumpfile,"\"%x\" [label=\"\" shape=box style=filled]\n",ltv);
-        else if (ltv->flags&LT_NIL)
-            fprintf(dumpfile,"\"%x\" [label=\"NIL\" shape=box style=filled]\n",ltv);
-        else
-            fprintf(dumpfile,"\"%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
-
-        if (ltv->sub.ltis.rb_node)
-            //fprintf(dumpfile,"\"%1$x\" -> \"%2$x\" [color=blue lhead=\"cluster_%2$x\"]\n\n",ltv,ltv->sub.ltis.rb_node);
-            fprintf(dumpfile,"\"%1$x\" -> \"%2$x\" [color=blue]\n",ltv,ltv->sub.ltis.rb_node);
-    }
-
-    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        //if (*ltv) fprintf(dumpfile,"subgraph cluster_%s_%d { // %d\n",(*ltv)->data,i++,d++);
-        if (*lti)       graph_lti(*lti,depth,flags);
-        else if (*ltvr) graph_ltvr(*ltvr,depth,flags);
-        else if (*ltv)  graph_ltv(*ltv,depth,flags);
-        return NULL;
-    }
-
-    void *postop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        //if (*ltv) fprintf(dumpfile,"} // %d\n",--d);
-        return NULL;
-    }
-
-    void descend_ltvr(LTVR *ltvr) { listree_traverse(ltvr->ltv,preop,postop); }
-    void descend_ltvs(CLL *ltvs) {
-        int halt=0;
-        graph_ltvs(ltvs);
-        void *op(CLL *lnk) { graph_ltvr((LTVR *) lnk,0,&halt); descend_ltvr((LTVR *) lnk); return NULL; }
-        CLL_map(ltvs,FWD,op);
-    }
 
     void descend_toks(CLL *toks,char *label) {
         void *op(CLL *lnk) {
@@ -335,7 +275,7 @@ int edict_graph(EDICT *edict) {
             fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",tok,lnk->lnk[0]);
             //fprintf(dumpfile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
             fprintf(dumpfile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
-            descend_ltvs(&tok->ltvs);
+            ltvs2dot(dumpfile,&tok->ltvs,0);
             if (CLL_HEAD(&tok->subtoks)) {
                 fprintf(dumpfile,"\"%x\" -> \"%x\"\n",tok,&tok->subtoks);
                 descend_toks(&tok->subtoks,"Subtoks");
@@ -351,9 +291,9 @@ int edict_graph(EDICT *edict) {
         int halt=0;
         fprintf(dumpfile,"\"Context %x\"\n",context);
         fprintf(dumpfile,"\"A%2$x\" [label=\"Anons\"]\n\"Context %1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->anons);
-        descend_ltvs(&context->anons);
+        ltvs2dot(dumpfile,&context->anons,0);
         fprintf(dumpfile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
-        descend_ltvs(&context->dict);
+        ltvs2dot(dumpfile,&context->dict,0);
         fprintf(dumpfile,"\"Context %x\" -> \"%x\"\n",context,&context->toks);
         descend_toks(&context->toks,"Toks");
     }

@@ -427,7 +427,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
     }
 
  done:
-    printf(END "[!]!/deps [/]!/die_offsets>/" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
+    printf(END "[!]!/deps [/]!/die_offsets>/\n\n" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
     return;
  panic:
     exit(1);

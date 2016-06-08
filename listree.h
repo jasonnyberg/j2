@@ -26,11 +26,11 @@
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////
 
-extern int ltv_count,ltvr_count,lti_count;
-
+#include <stdio.h>
 #include "cll.h"
 #include "rbtree.h"
 
+extern int ltv_count,ltvr_count,lti_count;
 #define RBR struct rb_root
 #define RBN struct rb_node
 
@@ -130,6 +130,9 @@ extern LTV *LTV_peek(CLL *ltvs,int end);
 
 extern void print_ltv(LTV *ltv,int maxdepth);
 extern void print_ltvs(CLL *ltvs,int maxdepth);
+
+extern void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth);
+extern void graph_ltvs(CLL *ltvs,int maxdepth);
 
 extern void LT_init();
 

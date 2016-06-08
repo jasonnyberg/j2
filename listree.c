@@ -353,6 +353,94 @@ void print_ltvs(CLL *ltvs,int maxdepth)
     CLL_map(ltvs,FWD,op);
 }
 
+
+void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth) {
+    int i=0;
+    int halt=0;
+
+    void ltvs2dot(CLL *ltvs) {
+        fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=red]\n",ltvs);
+        fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",ltvs,ltvs->lnk[0]);
+    }
+
+    void lti2dot(LTI *lti,int depth,int *flags) {
+        fprintf(dumpfile,"\"%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
+        if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\"%x\" -> \"%x\" [color=blue weight=0]\n",rb_parent(&lti->rbn),&lti->rbn);
+        fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
+        ltvs2dot(&lti->ltvs);
+    }
+
+    void ltvr2dot(LTVR *ltvr,int depth,int *flags) {
+        if (ltvr->ltv) fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",ltvr,ltvr->ltv);
+        fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=brown]\n",&ltvr->lnk);
+        fprintf(dumpfile,"\"%x\" -> \"%x\" [color=brown]\n",&ltvr->lnk,ltvr->lnk.lnk[0]);
+    }
+
+    void ltv2dot(LTV *ltv,int depth,int *flags) {
+        if (ltv->flags&LT_AVIS && (*flags=LT_TRAVERSE_HALT)) return;
+
+        if (ltv->len && !(ltv->flags&LT_NSTR)) {
+            fprintf(dumpfile,"\"%x\" [style=filled shape=box label=\"",ltv);
+            fstrnprint(dumpfile,ltv->data,ltv->len);
+            fprintf(dumpfile,"\"]\n");
+        }
+        else if ((ltv->flags&LT_IMM)==LT_IMM)
+            fprintf(dumpfile,"\"%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
+        else if (ltv->flags&LT_NULL)
+            fprintf(dumpfile,"\"%x\" [label=\"\" shape=box style=filled]\n",ltv);
+        else if (ltv->flags&LT_NIL)
+            fprintf(dumpfile,"\"%x\" [label=\"NIL\" shape=box style=filled]\n",ltv);
+        else
+            fprintf(dumpfile,"\"%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
+
+        fprintf(dumpfile,"subgraph cluster_%d {\nsubgraph { rank=same\n",i++);
+        for (LTI *lti=LTV_first(ltv);lti;lti=LTI_next(lti)) { // for some reason kgraphviewer puts them in reverse order
+            fprintf(dumpfile,"\"%x\"\n",lti);
+            //    fprintf(dumpfile,"\"%x\" -> \"%x\" [color=grey]\n",ltv,lti);
+        }
+        fprintf(dumpfile,"}\n}\n");
+
+        if (ltv->sub.ltis.rb_node)
+            fprintf(dumpfile,"\"%1$x\" -> \"%2$x\" [color=blue weight=0]\n",ltv,ltv->sub.ltis.rb_node);
+    }
+
+    void descend_ltv(LTV *ltv) {
+        void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+            if (*lti) {
+                if (maxdepth && depth>=maxdepth)
+                    *flags|=LT_TRAVERSE_HALT;
+                else
+                    lti2dot(*lti,depth,flags);
+            }
+            else if (*ltvr) ltvr2dot(*ltvr,depth,flags);
+            else if (*ltv)  ltv2dot(*ltv,depth,flags);
+            return NULL;
+        }
+
+        listree_traverse(ltv,preop,NULL);
+    }
+
+    void descend_ltvr(LTVR *ltvr) {
+        ltvr2dot(ltvr,0,&halt);
+        descend_ltv(ltvr->ltv);
+    }
+
+    void *op(CLL *lnk) { descend_ltvr((LTVR *) lnk); return NULL; }
+    ltvs2dot(ltvs);
+    CLL_map(ltvs,FWD,op);
+}
+
+void graph_ltvs(CLL *ltvs,int maxdepth) {
+    FILE *dumpfile;
+
+    dumpfile=fopen("/tmp/jj.dot","w");
+    fprintf(dumpfile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    ltvs2dot(dumpfile,ltvs,maxdepth);
+    fprintf(dumpfile,"}\n");
+    fclose(dumpfile);
+}
+
+
 void LT_init()
 {
     CLL_init(&ltv_repo);

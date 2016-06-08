@@ -81,10 +81,9 @@ typedef enum {
 
     // expr modifiers
     TOK_WS       =1<<0x07,
-    TOK_NOTE     =1<<0x08,
     TOK_REDUCE   =1<<0x0c,
     TOK_FLATTEN  =1<<0x0d,
-    TOK_EXPRS    =TOK_WS | TOK_NOTE | TOK_REDUCE | TOK_FLATTEN,
+    TOK_EXPRS    =TOK_WS | TOK_REDUCE | TOK_FLATTEN,
 
     // repl helpers
     TOK_REV      =1<<0x10,
@@ -201,7 +200,6 @@ void TOK_free(TOK *tok)
 
 void show_tok_flags(FILE *ofile,TOK *tok) {
     if (tok->flags&TOK_WS)      fprintf(ofile,"WS " );
-    if (tok->flags&TOK_NOTE)    fprintf(ofile,"NOTE " );
     if (tok->flags&TOK_REDUCE)  fprintf(ofile,"REDUCE ");
     if (tok->flags&TOK_FLATTEN) fprintf(ofile,"FLATTEN ");
     if (tok->flags&TOK_REV)     fprintf(ofile,"REV ");
@@ -326,7 +324,7 @@ done:
 }
 
 
-#define OPS "$@/!&|=<>(){}"
+#define OPS "$@/!&|=<>(){}#"
 #define ATOM_END (WHITESPACE OPS "<>(){}\'\"")
 
 int parse(TOK *tok)
@@ -361,7 +359,6 @@ int parse(TOK *tok)
             case ' ':
             case '\t':
             case '\n': tlen=series(data,len,WHITESPACE,NULL,NULL);      STRY(!append(tok,TOK_EXPR|TOK_WS,     data  ,tlen  ,tlen),"appending ws");       break;
-            case '#':  tlen=series(data,len,"#\n",NULL,NULL);           STRY(!append(tok,TOK_EXPR|TOK_NOTE,   data+1,tlen-2,tlen),"appending note");     break;
             case '[':  tlen=series(data,len,NULL,NULL,"[]");            STRY(!append(tok,TOK_EXPR|TOK_VAL,    data+1,tlen-2,tlen),"appending lit");      break;
             case '\'': tlen=series(data,len,NULL,NULL,"\'\'");          STRY(!append(tok,TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),"appending reduce");   break;
             case '\"': tlen=series(data,len,NULL,NULL,"\"\"");          STRY(!append(tok,TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),"appending flatten");  break;
@@ -427,7 +424,8 @@ int edict_eval(EDICT *edict)
                                     LTV *ref_ltv=NULL;
                                     STRY(!(ref_ltv=LTV_peek(&acc_tok->ltvs,HEAD)),"getting token name");
                                     int inserted=insert && !((*ltv)->flags&LT_RO) && (!(*ltvr) || !((*ltvr)->flags&LT_RO)); // directive on way in, status on way out
-                                    STRY(!((*lti)=RBR_find(&(*ltv)->sub.ltis,ref_ltv->data,ref_ltv->len,&inserted)),"looking up name in ltv");
+                                    if ((status=!((*lti)=RBR_find(&(*ltv)->sub.ltis,ref_ltv->data,ref_ltv->len,&inserted))))
+                                        goto done;
                                     if (acc_tok->ref)
                                         acc_tok->ref->lti=*lti;
                                     else
@@ -539,8 +537,19 @@ int edict_eval(EDICT *edict)
 
                     for (int i=0;i<opslen;i++) {
                         switch (ops[i]) {
-                            case '$': {
+                            case '$':
                                 STRY(deref(0),"resolving dereference");
+                                break;
+                            case '#': {
+                                if (tok) {
+                                    TOK *rtok=NULL;
+                                    STRY(!(rtok=(TOK *) resolve_ref(tok,0)),"looking up reference for '@'");
+                                    STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
+                                    print_ltvs(&rtok->ref->lti->ltvs,1);
+                                    graph_ltvs(&rtok->ref->lti->ltvs,0);
+                                } else {
+                                    edict_graph(edict);
+                                }
                                 break;
                             }
                             case '@': { // resolve refs needs to not worry about last ltv, just the lti is important.
@@ -561,8 +570,9 @@ int edict_eval(EDICT *edict)
                                     LTVR_release(&rtok->ref->ltvr->lnk);
                                     TOK_freeref(rtok);
                                 }
-                                else
+                                else {
                                     LTV_release(LTV_deq(&context->anons,HEAD));
+                                }
                                 nothing_to_release:
                                 break;
                             }
@@ -672,8 +682,6 @@ int edict_eval(EDICT *edict)
                         STRY(!LTV_enq(&context->anons,LTV_deq(&tok->ltvs,HEAD),HEAD),"pushing expr lit");
                         TOK_free(tok); // for now
                     }
-                    else if (tok->flags&TOK_NOTE)
-                        TOK_free(tok); // for now
                     else if (tok->flags&TOK_WS)
                         TOK_free(tok); // for now
                     else if (tok->flags&TOK_REDUCE)
@@ -712,7 +720,7 @@ int edict_eval(EDICT *edict)
                 int len;
                 TOK *expr=NULL;
                 LTV *tok_data;
-                int viewer=1;
+                int viewer=0;
 
                 STRY(!tok,"validating file tok");
                 STRY(!(tok_data=LTV_peek(&tok->ltvs,HEAD)),"validating file");

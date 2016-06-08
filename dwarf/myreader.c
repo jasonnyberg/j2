@@ -97,19 +97,17 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
     Dwarf_Bool vbool;
     //Dwarf_Block *vblock;
 
-    printf("[]@attribs attribs<" END);
-
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     DIE(dwarf_get_AT_name(vshort,&vcstr));
-    printf("[%d]@attr [%s]@attr_name" END,vshort,vcstr);
+    printf("[%d]@attr [%s]@attr.name" END,vshort,vcstr);
 
     DIE(dwarf_whatform(*attr,&vshort,&error));
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    printf("[%d]@form [%s]@form_name" END,vshort,vcstr);
+    printf("[%d]@form [%s]@form.name" END,vshort,vcstr);
 
     DIE(dwarf_whatform_direct(*attr,&vshort,&error));
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    printf("[%d]@form_direct [%s]@form_direct_name" END,vshort,vcstr);
+    printf("[%d]@form_direct [%s]@form_direct.name" END,vshort,vcstr);
 
     //SKIP(dwarf_formref(*attr,&voffset,&error),printf("[%d]@formref" END,(int) voffset));
     SKIP(dwarf_global_formref(*attr,&voffset,&error),printf("[%d]@global_formref" END,(int) voffset));
@@ -183,8 +181,6 @@ void dump_attrib(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
         dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
     }
 
-    printf(">/" END);
-    printf("[----------------------------------------------------------]" END);
     return;
 
  panic:
@@ -249,7 +245,6 @@ void dump_attrib_location(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
                             default:
                                 break;
                         }
-                    printf(END);
                 }
 
                 dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
@@ -277,8 +272,7 @@ void dump_attrib_base(Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     if (vshort==DW_AT_type)
         SKIP(dwarf_global_formref(*attr,&voffset,&error),
-             printf("[die_offsets.%d@die_offsets.%d.base]@module.deps" END,
-                    (int) voffset,(int) die_offset));
+             printf("[die_offsets[%d]@die_offsets[%d].base]@reflection.module.deps" END,(int) voffset,(int) die_offset));
     return;
 
  panic:
@@ -324,11 +318,24 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     TRYCATCH(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"checking dwarf_get_TAG_name , level %d" END,level);
     TRYCATCH(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"checking dwarf_dieoffset, level %d" END,level);
 
-    printf("[%s]@children" END END,name);
-    printf("reflection.module@module" END);
-    printf("children@module.die_offsets.%d" END,(int) die_offset);
-    printf("module.tags+%s@children.tag" END,tagname+7); // skip "DW_TAG_"
-    //printf("children@module.tags=%s.%s" END,tagname+7,name); // skip "DW_TAG_"
+    printf("reflection.module<" END);
+    printf("[%d]@die_offsets" END,(int) die_offset);
+    printf("die_offsets@tagnames[%s].%s" END,tagname+7,name);
+    printf(">/" END);
+    printf("reflection.module.die_offsets[%d]<" END,(int) die_offset);
+    printf("[%s]@tagname" END,tagname+7); // skip "DW_TAG_"
+    printf("[%s]@name" END,name); // skip "DW_TAG_"
+    dwarf_dealloc(dbg,diename,DW_DLA_STRING);
+    SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc" END,(int) vaddr));
+    SKIP(dwarf_highpc(die,&vaddr,&error),printf("[%d]@highpc" END,(int) vaddr));
+    SKIP(dwarf_bytesize(die,&vuint,&error),printf("[%d]@bytesize" END,(int) vuint));
+    SKIP(dwarf_bitsize(die,&vuint,&error),printf("[%d]@bitsize" END,(int) vuint));
+    SKIP(dwarf_bitoffset(die,&vuint,&error),printf("[%d]@bitoffset" END,(int) vuint));
+    SKIP(dwarf_srclang(die,&vuint,&error),printf("[%d]@srclang" END,(int) vuint));
+    SKIP(dwarf_arrayorder(die,&vuint,&error),printf("[%d]@arrayorder" END,(int) vuint));
+
+    traverse_attribs(dbg,die,dump_attrib_location);
+
     switch(tag)
     {
         case DW_TAG_compile_unit:
@@ -344,22 +351,11 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
             break;
     }
 
-    traverse_attribs(dbg,die,dump_attrib_base);
-
-    printf("/module" END);
-    printf("children<" END);
-
-    SKIP(dwarf_lowpc(die,&vaddr,&error),printf("[%d]@lowpc" END,(int) vaddr));
-    SKIP(dwarf_highpc(die,&vaddr,&error),printf("[%d]@highpc" END,(int) vaddr));
-    SKIP(dwarf_bytesize(die,&vuint,&error),printf("[%d]@bytesize" END,(int) vuint));
-    SKIP(dwarf_bitsize(die,&vuint,&error),printf("[%d]@bitsize" END,(int) vuint));
-    SKIP(dwarf_bitoffset(die,&vuint,&error),printf("[%d]@bitoffset" END,(int) vuint));
-    SKIP(dwarf_srclang(die,&vuint,&error),printf("[%d]@srclang" END,(int) vuint));
-    SKIP(dwarf_arrayorder(die,&vuint,&error),printf("[%d]@arrayorder" END,(int) vuint));
-
     //traverse_attribs(dbg,die,dump_attrib);
-    traverse_attribs(dbg,die,dump_attrib_location);
-    dwarf_dealloc(dbg,diename,DW_DLA_STRING);
+    printf(">/" END);
+
+    traverse_attribs(dbg,die,dump_attrib_base);
+    printf(END);
 
     TRYCATCH((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_child , level %d" END,level);
     TRYCATCH(res!=DW_DLV_OK,0,done,"checking if die finished" END);
@@ -367,7 +363,6 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
     get_die_and_siblings(dbg,child,level+1);
 
  done:
-    printf(">/" END);
     return;
 
  panic:
@@ -377,9 +372,9 @@ void print_die_data(Dwarf_Debug dbg,Dwarf_Die die,int level)
 void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die in_die,int level)
 {
     int status=0;
-    Dwarf_Die cur_die,sib_die;
+    Dwarf_Die cur_die=in_die,sib_die=0;
 
-    for(cur_die=in_die,sib_die=0;cur_die;cur_die=sib_die)
+    while (cur_die)
     {
         Dwarf_Error error;
         int res;
@@ -408,7 +403,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
     Dwarf_Error error;
     int cu_number = 0;
 
-    printf("[%s]@reflection.module reflection.module<" END,module); // enter "reflection.module" namespace
+    printf("[%s]@reflection.module" END,module); // enter "reflection.module" namespace
 
     while (1)
     {
@@ -427,7 +422,7 @@ void read_cu_list(Dwarf_Debug dbg,char *module)
     }
 
  done:
-    printf(END "[!]!/deps [/]!/die_offsets>/\n\n" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
+    printf(END "reflection.module<[!]!/deps [/]!/die_offsets>/\n\n" END END); // instantiate dependencies, remove die_offsets, end "reflection.module" namespace
     return;
  panic:
     exit(1);

@@ -102,15 +102,17 @@ void dump_attrib(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr
 
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     DIE(dwarf_get_AT_name(vshort,&vcstr));
-    fprintf(ofile,"[%d]@attr attr<[%s]@name" SPC,vshort,vcstr);
+    //fprintf(ofile,"[%d]@attr attr<[%s]@name" SPC,vshort,vcstr);
+    fprintf(ofile,"[%s]@attr attr<" SPC,vcstr);
 
     DIE(dwarf_whatform(*attr,&vshort,&error));
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    fprintf(ofile,"[%d]@form [%s]@form.name" SPC,vshort,vcstr);
+    //fprintf(ofile,"[%d]@form [%s]@form.name" SPC,vshort,vcstr);
+    fprintf(ofile,"[%s]@form_name" SPC,vcstr);
 
     DIE(dwarf_whatform_direct(*attr,&vshort,&error));
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    fprintf(ofile,"[%d]@form_direct [%s]@form_direct.name" SPC,vshort,vcstr);
+    //fprintf(ofile,"[%d]@form_direct [%s]@form_direct.name" SPC,vshort,vcstr);
 
     //SKIP(dwarf_formref(*attr,&voffset,&error),fprintf(ofile,"[%d]@formref" SPC,(int) voffset));
     SKIP(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"[%d]@global_formref" SPC,(int) voffset));
@@ -278,7 +280,8 @@ void dump_attrib_base(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute 
     dwarf_dieoffset(die,&die_offset,&error);
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     if (vshort==DW_AT_type)
-        SKIP(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"[%x]@base" SPC,(int) voffset));
+        SKIP(dwarf_global_formref(*attr,&voffset,&error),
+             fprintf(ofile,"reflection.module<[id[%x].die@id[%x].die.base]@finalize>/" SPC,(int) voffset,(int) die_offset));
     return;
 
  panic:
@@ -326,15 +329,10 @@ void print_die_data(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,int level)
     TRYCATCH(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"checking dwarf_get_TAG_name , level %d" END,level);
     TRYCATCH(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"checking dwarf_dieoffset, level %d" END,level);
 
-    //fprintf(ofile,"import<[%x]@id id@%s[%s].id>/" END,(int) die_offset,tagname+7,name);
     fprintf(ofile,END);
     fstrnprint(ofile,indent,level*2);
-    fprintf(ofile,"[%s]@%s" SPC,name,tagname+7);
-    fprintf(ofile,"%s<" SPC,tagname+7);
+    fprintf(ofile,"[%s]@-%2$s -%2$s<[%2$s]@type" SPC,name,tagname+7);
 
-    //fprintf(ofile,"[%x]@id" SPC,(int) die_offset);
-    //fprintf(ofile,"[%s]@type" SPC,tagname+7); // skip "DW_TAG_"
-    //fprintf(ofile,"[%s]@name" SPC,name); // skip "DW_TAG_"
     dwarf_dealloc(dbg,diename,DW_DLA_STRING);
     SKIP(dwarf_lowpc(die,&vaddr,&error),fprintf(ofile,"[%d]@lowpc" SPC,(int) vaddr));
     SKIP(dwarf_highpc(die,&vaddr,&error),fprintf(ofile,"[%d]@highpc" SPC,(int) vaddr));
@@ -345,7 +343,7 @@ void print_die_data(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,int level)
     SKIP(dwarf_arrayorder(die,&vuint,&error),fprintf(ofile,"[%d]@arrayorder" SPC,(int) vuint));
 
     traverse_attribs(ofile,dbg,die,dump_attrib_location);
-    //traverse_attribs(ofile,dbg,die,dump_attrib);
+    traverse_attribs(ofile,dbg,die,dump_attrib);
 
     switch(tag)
     {
@@ -431,10 +429,10 @@ void read_cu_list(FILE *ofile,Dwarf_Debug dbg,char *module)
         cu_number++;
     }
 
- done:
-    fprintf(ofile,">/" END END);
-    //fprintf(ofile,"import<[!]!/deps>/" END END);
-    //fprintf(ofile,"import@reflection.module\n" END END); // instantiate dependencies
+    done:
+    fprintf(ofile,END END); // instantiate dependencies
+    fprintf(ofile,"[!]!/finalize [/]!/reflection.module.id" END); // instantiate dependencies
+    fprintf(ofile,">/" END END); // instantiate dependencies
     return;
  panic:
     exit(1);

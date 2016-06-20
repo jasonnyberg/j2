@@ -98,21 +98,31 @@ void dump_attrib(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr
     Dwarf_Off voffset;
     Dwarf_Addr vaddr;
     Dwarf_Bool vbool;
-    //Dwarf_Block *vblock;
+    Dwarf_Block *vblock;
 
     DIE(dwarf_whatattr(*attr,&vshort,&error));
+    switch (vshort) {
+        case DW_AT_data_member_location:
+        case DW_AT_const_value:
+            break;
+        default:
+            //break;
+            return;
+    }
+
+    /*
+    fprintf(ofile,"[" END);
+    DIE(dwarf_whatattr(*attr,&vshort,&error));
     DIE(dwarf_get_AT_name(vshort,&vcstr));
-    //fprintf(ofile,"[%d]@attr attr<[%s]@name" SPC,vshort,vcstr);
-    fprintf(ofile,"[%s]@attr attr<" SPC,vcstr);
+    fprintf(ofile,"[%d]@attr attr<[%s]@name" SPC,vshort,vcstr);
 
     DIE(dwarf_whatform(*attr,&vshort,&error));
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    //fprintf(ofile,"[%d]@form [%s]@form.name" SPC,vshort,vcstr);
-    fprintf(ofile,"[%s]@form_name" SPC,vcstr);
+    fprintf(ofile,"[%d]@form [%s]@form.name" SPC,vshort,vcstr);
 
     DIE(dwarf_whatform_direct(*attr,&vshort,&error));
     DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    //fprintf(ofile,"[%d]@form_direct [%s]@form_direct.name" SPC,vshort,vcstr);
+    fprintf(ofile,"[%d]@form_direct [%s]@form_direct.name" SPC,vshort,vcstr);
 
     //SKIP(dwarf_formref(*attr,&voffset,&error),fprintf(ofile,"[%d]@formref" SPC,(int) voffset));
     SKIP(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"[%d]@global_formref" SPC,(int) voffset));
@@ -121,7 +131,21 @@ void dump_attrib(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr
     SKIP(dwarf_formudata(*attr,&vuint,&error),fprintf(ofile,"[0x%x]@udata" SPC,(unsigned) vuint));
     //SKIP(dwarf_formblock(*attr,&vblock,&error),fprintf(ofile,"[%d]@block" SPC,vblock));
     SKIP(dwarf_formstring(*attr,&vstr,&error),fprintf(ofile,"[%s]@string" SPC,vstr));
-    fprintf(ofile,END);
+    fprintf(ofile,END "]@full_data" END);
+    */
+
+    fprintf(ofile,"[");
+    //SKIP(dwarf_formref(*attr,&voffset,&error),fprintf(ofile,"[0x%" DW_PR_DSx "]@formref" SPC,voffset));
+    //SKIP(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"[0x%" DW_PR_DSx "]@global_formref" SPC,voffset));
+    SKIP(dwarf_formaddr(*attr,&vaddr,&error),fprintf(ofile,"0x%" DW_PR_DUx SPC,vaddr));
+    SKIP(dwarf_formflag(*attr,&vbool,&error),fprintf(ofile,"%" DW_PR_DSd SPC,vbool));
+    SKIP(dwarf_formudata(*attr,&vuint,&error),fprintf(ofile,"0x%" DW_PR_DUx SPC,vuint));
+    //SKIP(dwarf_formblock(*attr,&vblock,&error),fprintf(ofile,"0x%" DW_PR_DUx SPC,vblock->bl_len));
+    SKIP(dwarf_formstring(*attr,&vstr,&error),fprintf(ofile,"%s" SPC,vstr));
+    fprintf(ofile,"]");
+
+    DIE(dwarf_get_AT_name(vshort,&vcstr));
+    fprintf(ofile,"@%s" END,vcstr+6); // skip DW_AT_
 
     Dwarf_Locdesc **llbuf;
     if (dwarf_loclist_n(*attr,&llbuf,&vint,&error) == DW_DLV_OK)
@@ -133,9 +157,7 @@ void dump_attrib(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr
 
             fprintf(ofile,"[%" DW_PR_DUx "]@lowpc" SPC,llbuf[i]->ld_lopc);
             fprintf(ofile,"[%" DW_PR_DUx "]@hipc" SPC,llbuf[i]->ld_hipc);
-            fprintf(ofile,"[%" DW_PR_DUx "]@section_offset.%s" SPC,
-                   llbuf[i]->ld_section_offset,
-                   llbuf[i]->ld_from_loclist?"debug_loc":"debug_info");
+            fprintf(ofile,"[%" DW_PR_DUx "]@section_offset.%s" SPC,llbuf[i]->ld_section_offset,llbuf[i]->ld_from_loclist?"debug_loc":"debug_info");
             fprintf(ofile,"[%d]@ld_cents" SPC,llbuf[i]->ld_cents);
             for (j=0;j<llbuf[i]->ld_cents;j++)
             {
@@ -188,86 +210,12 @@ void dump_attrib(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr
         dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
     }
 
-    fprintf(ofile,">/" END); // attr
-
     return;
 
  panic:
     exit(1);
 }
 
-void dump_attrib_location(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
-{
-    int status=0;
-    Dwarf_Error error=0;
-
-    Dwarf_Signed vint;
-    Dwarf_Half vshort;
-
-    DIE(dwarf_whatattr(*attr,&vshort,&error));
-    if (vshort==DW_AT_location)
-    {
-        Dwarf_Locdesc **llbuf;
-        if (dwarf_loclist_n(*attr,&llbuf,&vint,&error) == DW_DLV_OK)
-        {
-            int i,j;
-            for (i=0;i<vint;i++)
-            {
-                for (j=0;j<llbuf[i]->ld_cents;j++)
-                {
-                    if (llbuf[i]->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf[i]->ld_s[j].lr_atom <= DW_OP_breg31)
-                        fprintf(ofile,"[%" DW_PR_DSd "]@-location" SPC, (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
-                    else
-                        switch(llbuf[i]->ld_s[j].lr_atom)
-                        {
-                            case DW_OP_addr:
-                                fprintf(ofile,"[0x%" DW_PR_DUx "]@-location" SPC, llbuf[i]->ld_s[j].lr_number);
-                                break;
-                            case DW_OP_const1s:
-                            case DW_OP_const2s:
-                            case DW_OP_const4s:
-                            case DW_OP_const8s:
-                            case DW_OP_consts:
-                            case DW_OP_skip:
-                            case DW_OP_bra:
-                            case DW_OP_fbreg:
-                                fprintf(ofile,"[%" DW_PR_DSd "]@-location" SPC, (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
-                                break;
-                            case DW_OP_const1u:
-                            case DW_OP_const2u:
-                            case DW_OP_const4u:
-                            case DW_OP_const8u:
-                            case DW_OP_constu:
-                            case DW_OP_pick:
-                            case DW_OP_plus_uconst:
-                            case DW_OP_regx:
-                            case DW_OP_piece:
-                            case DW_OP_deref_size:
-                            case DW_OP_xderef_size:
-                                fprintf(ofile,"[%" DW_PR_DUu "]@-location" SPC, llbuf[i]->ld_s[j].lr_number);
-                                break;
-                            case DW_OP_bregx:
-                                fprintf(ofile,"[bregx_%" DW_PR_DUu "([%" DW_PR_DSd "])]@-location" SPC,
-                                       llbuf[i]->ld_s[j].lr_number,
-                                       llbuf[i]->ld_s[j].lr_number2);
-                                break;
-                            default:
-                                break;
-                        }
-                }
-
-                dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
-                dwarf_dealloc(dbg,llbuf[i], DW_DLA_LOCDESC);
-            }
-            dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
-        }
-    }
-
-    return;
-
- panic:
-    exit(1);
-}
 
 void dump_attrib_base(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
 {
@@ -281,7 +229,7 @@ void dump_attrib_base(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute 
     DIE(dwarf_whatattr(*attr,&vshort,&error));
     if (vshort==DW_AT_type)
         SKIP(dwarf_global_formref(*attr,&voffset,&error),
-             fprintf(ofile,"reflection.module<[id[%x].die@id[%x].die.base]@finalize>/" SPC,(int) voffset,(int) die_offset));
+             fprintf(ofile,"reflection.module<[id[0x%" DW_PR_DUx "].die@id[0x%" DW_PR_DUx "].die.base]@finalize>/" SPC,(int) voffset,(int) die_offset));
     return;
 
  panic:
@@ -331,18 +279,17 @@ void print_die_data(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,int level)
 
     fprintf(ofile,END);
     fstrnprint(ofile,indent,level*2);
-    fprintf(ofile,"[%s]@-%2$s -%2$s<[%2$s]@type" SPC,name,tagname+7);
+    fprintf(ofile,"[%s]@-%2$s -%2$s<[%2$s]@tag" SPC,name,tagname+7);
 
     dwarf_dealloc(dbg,diename,DW_DLA_STRING);
-    SKIP(dwarf_lowpc(die,&vaddr,&error),fprintf(ofile,"[%d]@lowpc" SPC,(int) vaddr));
-    SKIP(dwarf_highpc(die,&vaddr,&error),fprintf(ofile,"[%d]@highpc" SPC,(int) vaddr));
-    SKIP(dwarf_bytesize(die,&vuint,&error),fprintf(ofile,"[%d]@bytesize" SPC,(int) vuint));
-    SKIP(dwarf_bitsize(die,&vuint,&error),fprintf(ofile,"[%d]@bitsize" SPC,(int) vuint));
-    SKIP(dwarf_bitoffset(die,&vuint,&error),fprintf(ofile,"[%d]@bitoffset" SPC,(int) vuint));
-    SKIP(dwarf_srclang(die,&vuint,&error),fprintf(ofile,"[%d]@srclang" SPC,(int) vuint));
-    SKIP(dwarf_arrayorder(die,&vuint,&error),fprintf(ofile,"[%d]@arrayorder" SPC,(int) vuint));
+    SKIP(dwarf_lowpc(die,&vaddr,&error),fprintf(ofile,"[0x%" DW_PR_DUx "]@lowpc" SPC,vaddr));
+    SKIP(dwarf_highpc(die,&vaddr,&error),fprintf(ofile,"[0x%" DW_PR_DUx "]@highpc" SPC,vaddr));
+    SKIP(dwarf_bytesize(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@bytesize" SPC,vuint));
+    SKIP(dwarf_bitsize(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@bitsize" SPC,vuint));
+    SKIP(dwarf_bitoffset(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@bitoffset" SPC,vuint));
+    SKIP(dwarf_srclang(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@srclang" SPC,vuint));
+    SKIP(dwarf_arrayorder(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@arrayorder" SPC,vuint));
 
-    traverse_attribs(ofile,dbg,die,dump_attrib_location);
     traverse_attribs(ofile,dbg,die,dump_attrib);
 
     switch(tag)
@@ -370,7 +317,7 @@ void print_die_data(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,int level)
     fprintf(ofile,END);
     fstrnprint(ofile,indent,level*2);
     traverse_attribs(ofile,dbg,die,dump_attrib_base);
-    fprintf(ofile,"> reflection.module<@id[%x].die>/ /" END,(int) die_offset); // scope element left on anon stack upon closure!
+    fprintf(ofile,"> reflection.module<@id[0x%" DW_PR_DUx "].die>/ /" END,(int) die_offset); // scope element left on anon stack upon closure!
     return;
 
  panic:

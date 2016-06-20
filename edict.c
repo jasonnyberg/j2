@@ -674,11 +674,12 @@ int edict_eval(EDICT *edict)
                                             STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
                                             CLL *ltvs=(rtok->ref->flags&REF_MATCH)?&rtok->ref->ltvs:&rtok->ref->lti->ltvs;
                                             graph_ltvs(ltvs,0);
-                                            print_ltvs("",ltvs,"\n",0);
+                                            print_ltvs("",ltvs,"\n",2);
                                         }
                                     }
                                 } else {
                                     edict_graph(edict);
+                                    print_ltvs("Anons:\n",&context->anons,"\n",0);
                                 }
                                 break;
                             }

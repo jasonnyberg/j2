@@ -24,6 +24,5 @@ int main()
 {
     EDICT edict;
     edict_init(&edict);
-    edict_eval(&edict);
     edict_destroy(&edict);
 }

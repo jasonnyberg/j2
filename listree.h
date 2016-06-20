@@ -128,8 +128,8 @@ extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvs,int end);
 extern LTV *LTV_peek(CLL *ltvs,int end);
 
-extern void print_ltv(LTV *ltv,int maxdepth);
-extern void print_ltvs(CLL *ltvs,int maxdepth);
+extern void print_ltv(char *pre,LTV *ltv,char *post,int maxdepth);
+extern void print_ltvs(char *pre,CLL *ltvs,char *post,int maxdepth);
 
 extern void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth);
 extern void graph_ltvs(CLL *ltvs,int maxdepth);

@@ -22,6 +22,7 @@
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
+#include <libgen.h> // basename
 
 #include "cll.h"
 
@@ -31,6 +32,8 @@
 #include <stdlib.h>
 #include "util.h"
 #include "edict.h"
+
+extern int dwarf2edict(char *import,char *export);
 
 int debug_dump=0;
 int prompt=1;
@@ -46,11 +49,17 @@ struct CONTEXT;
 CLL ref_repo;
 int ref_count=0;
 
+typedef enum {
+    REF_NONE  = 0,
+    REF_MATCH = 1<<0
+} REF_FLAGS;
+
 typedef struct REF {
     CLL lnk;
     LTI *lti;
     CLL ltvs; // hold ltv in list for refcount
     LTVR *ltvr;
+    REF_FLAGS flags;
 } REF;
 
 REF *REF_new(LTI *lti);
@@ -103,7 +112,7 @@ typedef struct TOK {
 TOK *TOK_new(TOK_FLAGS flags,LTV *ltv);
 void TOK_free(TOK *tok);
 
-void show_tok(TOK *tok);
+void show_tok(char *pre,TOK *tok,char *post);
 void show_toks(char *pre,CLL *toks,char *post);
 
 //////////////////////////////////////////////////
@@ -136,6 +145,7 @@ REF *REF_new(LTI *lti)
         CLL_init(&ref->ltvs);
         ref->lti=lti;
         ref->ltvr=NULL;
+        ref->flags=REF_NONE;
         ref_count++;
     }
     return ref;
@@ -213,18 +223,23 @@ void show_tok_flags(FILE *ofile,TOK *tok) {
     if (tok->flags==TOK_NONE)   fprintf(ofile,"_ ");
 }
 
-void show_tok(TOK *tok) {
+void show_tok(char *pre,TOK *tok,char *post) {
+    if (pre) printf("%s",pre);
     show_tok_flags(stdout,tok);
-    print_ltvs(&tok->ltvs,1);
+    print_ltvs("",&tok->ltvs,"",1);
+    show_toks("(",&tok->subtoks,")");
+    if (post) printf("%s",post);
     fflush(stdout);
 }
 
 void show_toks(char *pre,CLL *toks,char *post)
 {
-    void *op(CLL *lnk) { show_tok((TOK *) lnk); show_toks("(",&((TOK *) lnk)->subtoks,") "); return NULL; }
-    if (pre) printf("%s",pre);
-    CLL_map(toks,FWD,op);
-    if (post) printf("%s",post);
+    void *op(CLL *lnk) { show_tok(NULL,(TOK *) lnk,NULL); return NULL; }
+    if (toks) {
+        if (pre) printf("%s",pre);
+        CLL_map(toks,FWD,op);
+        if (post) printf("%s",post);
+    }
 }
 
 //////////////////////////////////////////////////
@@ -363,7 +378,7 @@ int parse(TOK *tok)
             case '\'': tlen=series(data,len,NULL,NULL,"\'\'");          STRY(!append(tok,TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),"appending reduce");   break;
             case '\"': tlen=series(data,len,NULL,NULL,"\"\"");          STRY(!append(tok,TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),"appending flatten");  break;
             case '<': case '>': case '(': case ')': case '{': case '}': STRY(!append(tok,TOK_ATOM,            data  ,     1,   1),"appending %c",*data); break; // special, non-ganging op, no balance!
-            default:   tlen=series(data,len,OPS,ATOM_END,NULL);         STRY(!append(tok,TOK_ATOM,            data  ,tlen  ,tlen),"appending atom");     break;
+            default:   tlen=series(data,len,OPS,ATOM_END,"[]");         STRY(!append(tok,TOK_ATOM,            data  ,tlen  ,tlen),"appending atom");     break;
         }
     }
     else if (tok->flags&TOK_ATOM) while (len) {
@@ -399,6 +414,16 @@ int parse(TOK *tok)
 
 #define CONDITIONAL_BAIL 1
 
+enum {
+    DEBUG_FILE      = 1<<0,
+    DEBUG_ATOM      = 1<<1,
+    DEBUG_EXPR      = 1<<2,
+    DEBUG_BAIL      = 1<<3,
+    DEBUG_PREEVAL   = 1<<4,
+    DEBUG_POSTEVAL  = 1<<5,
+    DEBUG_ERR       = 1<<6
+};
+
 int edict_eval(EDICT *edict)
 {
     int status=0;
@@ -408,6 +433,8 @@ int edict_eval(EDICT *edict)
         TOK *tok;
 
         int eval_tok(TOK *tok) {
+            static int debug=DEBUG_BAIL|DEBUG_ERR;
+
             int eval_atom(TOK *atom_tok) {
                 void *resolve_ref(TOK *ref_tok,int insert) {
                     void *resolve_stackframe(CLL *lnk) {
@@ -447,6 +474,8 @@ int edict_eval(EDICT *edict)
                                     }
                                     char *match=val_ltv?val_ltv->data:NULL;
                                     int matchlen=val_ltv?-1:0;
+                                    if (match)
+                                        acc_tok->ref->flags|=REF_MATCH;
                                     (*ltv)=LTV_get(&(*lti)->ltvs,KEEP,reverse,match,matchlen,&(*ltvr)); // lookup
 
                                     // check if add is required
@@ -525,10 +554,10 @@ int edict_eval(EDICT *edict)
                         TOK *rtok=NULL;
                         STRY(!tok,"validating tok");
                         rtok=(TOK *) (getnext?iterate_ref(tok):resolve_ref(tok,0));
-                        //if
-                            STRY((!rtok || !rtok->ref || !(ltv=(LTV *) LTV_peek(&rtok->ref->ltvs,HEAD))),"checking deref results");
-                          //  ltv=LTV_NIL;
-                        STRY(!LTV_enq(&context->anons,ltv,HEAD),"pushing ltv to anons");
+                        if (rtok && rtok->ref && (ltv=LTV_peek(&rtok->ref->ltvs,HEAD)))
+                            STRY(!LTV_enq(&context->anons,ltv,HEAD),"pushing ltv to anons");
+                        else
+                            status=CONDITIONAL_BAIL; //  ltv=LTV_NIL;
                         done:
                         return status;
                     }
@@ -540,18 +569,6 @@ int edict_eval(EDICT *edict)
                             case '$':
                                 STRY(deref(0),"resolving dereference");
                                 break;
-                            case '#': {
-                                if (tok) {
-                                    TOK *rtok=NULL;
-                                    STRY(!(rtok=(TOK *) resolve_ref(tok,0)),"looking up reference for '@'");
-                                    STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
-                                    print_ltvs(&rtok->ref->lti->ltvs,1);
-                                    graph_ltvs(&rtok->ref->lti->ltvs,0);
-                                } else {
-                                    edict_graph(edict);
-                                }
-                                break;
-                            }
                             case '@': { // resolve refs needs to not worry about last ltv, just the lti is important.
                                 STRY(!tok,"validating tok");
                                 LTV *ltv=NULL;
@@ -629,6 +646,42 @@ int edict_eval(EDICT *edict)
 
                                 break;
                             }
+                            case '#': {
+                                if (tok) {
+                                    LTV *ltv=NULL;
+                                    if ((ltv=LTV_peek(&tok->ltvs,HEAD))) {
+                                        if (!strnncmp(ltv->data,ltv->len,"import",-1)) {
+                                            LTV *ltv_ifilename=NULL;
+                                            STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping import filename");
+                                            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
+                                            TOK *file_tok=TOK_new(TOK_FILE,LTV_new((void *) fopen(ifilename,"r"),sizeof(FILE *),LT_IMM));
+                                            STRY(!CLL_put(&context->toks,&file_tok->lnk,HEAD),"pushing file");
+                                            myfree(ifilename,strlen(ifilename)+1);
+                                            LTV_release(ltv_ifilename);
+                                        } else if (!strnncmp(ltv->data,ltv->len,"dwarf2edict",-1)) {
+                                            LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
+                                            STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping dwarf import filename");
+                                            STRY(!(ltv_ofilename=LTV_peek(&context->anons,HEAD)),"peeking edict export filename");
+                                            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
+                                            char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
+                                            dwarf2edict(ifilename,ofilename);
+                                            myfree(ifilename,strlen(ifilename)+1);
+                                            myfree(ofilename,strlen(ofilename)+1);
+                                            LTV_release(ltv_ifilename);
+                                        } else {
+                                            TOK *rtok=NULL;
+                                            STRY(!(rtok=(TOK *) resolve_ref(tok,0)),"resolving tok for '#'");
+                                            STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
+                                            CLL *ltvs=(rtok->ref->flags&REF_MATCH)?&rtok->ref->ltvs:&rtok->ref->lti->ltvs;
+                                            graph_ltvs(ltvs,0);
+                                            print_ltvs("",ltvs,"\n",0);
+                                        }
+                                    }
+                                } else {
+                                    edict_graph(edict);
+                                }
+                                break;
+                            }
                             default:
                                 printf("skipping unrecognized OP %c (%d)",ops[i],ops[i]);
                                 break;
@@ -659,22 +712,17 @@ int edict_eval(EDICT *edict)
                     STRY(!LTV_enq(&context->anons,LTV_deq(&tos->ltvs,HEAD),HEAD),"pushing anon lit");
 
                 done:
-                if (status && status!=CONDITIONAL_BAIL) {
-                    show_toks("Atom evaluation exception:\n",&atom_tok->subtoks,"");
-                    status=0;
+                if (!status && !(atom_tok->flags&TOK_RERUN))
                     TOK_free(atom_tok);
-                } else if (!(atom_tok->flags&TOK_RERUN)) {
-                    TOK_free(atom_tok);
-                }
+
                 return status;
             }
 
 
             int eval_expr(TOK *tok) {
                 int status=0;
-                static int viewer=2;
 
-                if (viewer&1)
+                if (debug&DEBUG_PREEVAL)
                     edict_graph(edict);
 
                 if (CLL_EMPTY(&tok->subtoks)) {
@@ -690,24 +738,26 @@ int edict_eval(EDICT *edict)
                         TOK_free(tok); // for now
                     else if (parse(tok))
                         TOK_free(tok); // empty expr
+                } else { // evaluate
+                    STRY(eval_tok((TOK *) CLL_HEAD(&tok->subtoks)),"evaluating expr subtoks");
                 }
-                else { // evaluate
-                    TRY(eval_tok((TOK *) CLL_HEAD(&tok->subtoks)),"evaluating expr subtoks");
-                    CATCH(status==CONDITIONAL_BAIL,0,goto bail_out,"conditionally executing expr subtoks (not an error)");
-                    SCATCH("evaluating expr subtoks");
-                }
-
-                goto done; // success!
-
-                bail_out:
-                if (viewer&2)
-                    show_toks("Bailing on expression:\n",&tok->subtoks,"");
-                TOK *subtok;
-                while ((subtok=tokpop(&tok->subtoks))) TOK_free(subtok);
 
                 done:
-                if (viewer&4)
+                if (debug&DEBUG_POSTEVAL)
                     edict_graph(edict);
+
+                if (status) {
+                    if (status==CONDITIONAL_BAIL) {
+                        if (debug&DEBUG_BAIL)
+                            show_tok("Bailing on expression: [",tok,"]\n");
+                    } else if (debug&DEBUG_ERR) {
+                        show_tok("Error evaluating expression: [",tok,"]\n");
+                    }
+
+                    TOK *subtok;
+                    while ((subtok=tokpop(&tok->subtoks))) TOK_free(subtok);
+                    status=0;
+                }
 
                 if (CLL_EMPTY(&tok->subtoks))
                     TOK_free(tok); // evaluation done; Could add some kind of sentinel atom in here to let the expression repopulate itself and continue
@@ -720,20 +770,20 @@ int edict_eval(EDICT *edict)
                 int len;
                 TOK *expr=NULL;
                 LTV *tok_data;
-                int viewer=0;
 
                 STRY(!tok,"validating file tok");
                 STRY(!(tok_data=LTV_peek(&tok->ltvs,HEAD)),"validating file");
                 if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
-                if (viewer&1) edict_graph(edict);
-                TRYCATCH((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,TRY_ERR,close_file,"reading from file");
+                if (debug&DEBUG_FILE) edict_graph(edict);
+                TRYCATCH((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,0,close_file,"reading from file");
                 TRYCATCH(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
                 TRYCATCH(!tokpush(&context->toks,expr),TRY_ERR,free_expr,"enqueing expr token");
                 goto done; // success
 
                 free_expr:  TOK_free(expr);
                 free_line:  free(line);
-                close_file: fclose((FILE *) tok_data->data);
+                close_file:
+                fclose((FILE *) tok_data->data);
                 TOK_free(tok);
 
                 done:
@@ -787,12 +837,13 @@ int edict_init(EDICT *edict)
     STRY(!edict,"validating arg edict");
     BZERO(*edict);
     STRY(!LTV_enq(CLL_init(&edict->dict),root,HEAD),"pushing edict->dict root");
-    CLL_init(&edict->contexts);
+    STRY(!CLL_init(&tok_repo),"initializing tok_repo");
+    STRY(!CLL_init(&ref_repo),"initializing ref_repo");
+    STRY(!CLL_init(&edict->contexts),"initializing context list");
     CONTEXT *context=CONTEXT_new(TOK_new(TOK_FILE,LTV_new((void *) stdin,sizeof(FILE *),LT_IMM)));
     STRY(!LTV_enq(&context->dict,root,HEAD),"pushing context->dict root");
     STRY(!CLL_put(&edict->contexts,&context->lnk,HEAD),"pushing edict's initial context");
-    STRY(!CLL_init(&tok_repo),"initializing tok_repo");
-    STRY(!CLL_init(&ref_repo),"initializing ref_repo");
+    STRY(edict_eval(edict),"evaluating edict contexts");
 
  done:
     return status;

@@ -263,16 +263,18 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int exclen=exclude?strlen(exclude):0;
     int ballen=balance?strlen(balance)/2:0;
     int i=0,depth=0;
-    int checkbal() {
-        int minlen=MIN(len-i,ballen);
-        if      (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
-        else if (!strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen;
-        else i+=depth?1:0;
-        return depth;
+    int checkbal(int match) {
+        if (balance) {
+            int minlen=MIN(len-i,ballen);
+            if      (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
+            else if (!strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen;
+            else if (depth || !match)                       i++;
+        } else if (!match) i++;
+        return !depth && match;
     }
-    if (include) for (;i<len;i++) if (buf[i]=='\\') i++; else if (!memchr(include,buf[i],inclen)) break;
-    if (exclude) for (;i<len;i++) if (buf[i]=='\\') i++; else if (memchr(exclude,buf[i],exclen)) break;
-    if (balance) for (;i<len;)    if (buf[i]=='\\') i++; else if (checkbal()==0) break;
+    if (include) while (i<len) if (buf[i]=='\\') i++; else if (checkbal(!memchr(include,buf[i],inclen)?1:0)) break;
+    if (exclude) while (i<len) if (buf[i]=='\\') i++; else if (checkbal(memchr(exclude,buf[i],exclen)?1:0))  break;
+    if (balance) while (i<len) if (buf[i]=='\\') i++; else if (checkbal(1)) break;
     return i;
 }
 
@@ -322,6 +324,7 @@ char *balanced_readline(FILE *ifile,int *length) {
         }
         if (!depth)
             break;
+        //else printf(CODE_RED),fstrnprint(stdout,delimiter+1,depth),printf(CODE_RESET),fflush(stdout);
     }
 
 done:

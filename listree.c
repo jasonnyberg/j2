@@ -93,7 +93,6 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
         if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
         if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
         ltv->flags=flags;
-        print_ltv(ltv,1);
     }
     return ltv;
 }
@@ -321,7 +320,7 @@ LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put(ltvs,ltv,end,NULL); }
 LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,0,NULL); }
 LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,0,NULL); }
 
-void print_ltv(LTV *ltv,int maxdepth)
+void print_ltv(char *pre,LTV *ltv,char *post,int maxdepth)
 {
     char *indent="                                                                                                                ";
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
@@ -333,13 +332,15 @@ void print_ltv(LTV *ltv,int maxdepth)
 
         if (*ltv) {
             fstrnprint(stdout,indent,depth*4+2);
-            fprintf(stdout,"[");
+            if (pre) printf("%s",pre);
+            else fprintf(stdout,"[");
             if (((*ltv)->flags&LT_IMM)==LT_IMM) printf("0x%p (immediate)",&(*ltv)->data);
             else if ((*ltv)->flags&LT_NULL)     ; // nothing
             else if ((*ltv)->flags&LT_NIL)      printf("nil");
             else if ((*ltv)->flags&LT_BIN)      hexdump((*ltv)->data,(*ltv)->len);
             else                                fstrnprint(stdout,(*ltv)->data,(*ltv)->len);
-            fprintf(stdout,"]\n");
+            if (post) printf("%s",post);
+            else fprintf(stdout,"]\n");
         }
         return NULL;
     }
@@ -347,10 +348,12 @@ void print_ltv(LTV *ltv,int maxdepth)
     listree_traverse(ltv,preop,NULL);
 }
 
-void print_ltvs(CLL *ltvs,int maxdepth)
+void print_ltvs(char *pre,CLL *ltvs,char *post,int maxdepth)
 {
-    void *op(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; if (ltvr) print_ltv((LTV *) ltvr->ltv,maxdepth); return NULL; }
+    void *op(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; if (ltvr) print_ltv(pre,(LTV *) ltvr->ltv,post,maxdepth); return NULL; }
+    if (pre) printf("%s",pre);
     CLL_map(ltvs,FWD,op);
+    if (post) printf("%s",post);
 }
 
 
@@ -377,8 +380,6 @@ void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth) {
     }
 
     void ltv2dot(LTV *ltv,int depth,int *flags) {
-        if (ltv->flags&LT_AVIS && (*flags=LT_TRAVERSE_HALT)) return;
-
         if (ltv->len && !(ltv->flags&LT_NSTR)) {
             fprintf(dumpfile,"\"%x\" [style=filled shape=box label=\"",ltv);
             fstrnprint(dumpfile,ltv->data,ltv->len);
@@ -393,12 +394,10 @@ void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth) {
         else
             fprintf(dumpfile,"\"%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
 
-        fprintf(dumpfile,"subgraph cluster_%d {\nsubgraph { rank=same\n",i++);
-        for (LTI *lti=LTV_first(ltv);lti;lti=LTI_next(lti)) { // for some reason kgraphviewer puts them in reverse order
+        fprintf(dumpfile,"subgraph cluster_%d { subgraph { rank=same\n",i++);
+        for (LTI *lti=LTV_first(ltv);lti;lti=LTI_next(lti))
             fprintf(dumpfile,"\"%x\"\n",lti);
-            //    fprintf(dumpfile,"\"%x\" -> \"%x\" [color=grey]\n",ltv,lti);
-        }
-        fprintf(dumpfile,"}\n}\n");
+        fprintf(dumpfile,"}}\n");
 
         if (ltv->sub.ltis.rb_node)
             fprintf(dumpfile,"\"%1$x\" -> \"%2$x\" [color=blue weight=0]\n",ltv,ltv->sub.ltis.rb_node);

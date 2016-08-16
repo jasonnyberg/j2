@@ -27,6 +27,8 @@
 #include <fnmatch.h>
 #include "util.h"
 
+#include "trace.h" // lttng
+
 unsigned myid=1;
 ull *STRTOULL_PTR;
 char *STRTOULL_TAIL;
@@ -110,6 +112,7 @@ void *mymalloc(int size)
 {
     void *r=calloc(size,1);
     if (r) Gmymalloc+=1;
+    TALLOC(r,size,"");
     return r;
 }
 
@@ -117,6 +120,8 @@ void *myrealloc(void *buf, int newsize)
 {
     char *r=realloc(buf,newsize);
     if (r) Gmymalloc+=1;
+    TDEALLOC(buf,"");
+    TALLOC(r,newsize,"");
     return r;
 }
 
@@ -124,6 +129,7 @@ void myfree(void *p,int size)
 {
     if (p) Gmymalloc-=1;
     free(p);
+    TDEALLOC(p,"");
 }
 
 void *mybzero(void *buf,int size)
@@ -303,7 +309,7 @@ char *balanced_readline(FILE *ifile,int *length) {
         for (i=0; i<linelen; i++,(*length)++) {
             if (!comment) switch (expr[*length]) {
                 case '\\': i++; (*length)++; break; // don't interpret next char
-                case '#': comment++; break;
+                //case '#': comment++; break;
                 case '(': delimiter[++depth]=')'; break;
                 case '[': delimiter[++depth]=']'; break;
                 case '{': delimiter[++depth]='}'; break;

@@ -20,3 +20,24 @@
 
 
 #include "edict.h"
+
+
+LTV *reflection_member(LTV *val,char *name); // dereference member by name
+
+int reflection_dump(LTv *val); // dump binary data, metadata to stdout
+
+char *refelction_write(LTV *val); // to_string(s)
+int reflection_read(LTV *val,char *value); // from_string(s)
+
+int reflection_new(char *type); // expose through edict
+int reflection_delete(LTV *val); // expose through edict
+
+int reflection_pickle(); // TOS cvar to edict representation
+int reflection_unpickle(); // TOS edict representation to cvar
+
+
+
+LTV *reflection_member(LTV *val,char *name)
+{
+    return NULL;
+}

@@ -35,6 +35,7 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBN struct rb_node
 
 typedef enum {
+    LT_NONE=0x0,
     LT_DUP =1<<0x00, // bufdup'ed on LTV_new, not ref to existing buf
     LT_OWN =1<<0x01, // handed malloc'ed buffer, responsible for freeing
     LT_DEP =1<<0x02, // dependent upon another ltv's data

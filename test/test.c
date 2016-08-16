@@ -15,7 +15,9 @@ teststruct w;
 testarray testarrayvar;
 teststring teststringvar;
 
-static int testfunc(int arga, teststruct *argb, testenum argc)
+#define MYMACRO(X) (X)*(X)
+
+static int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
 {
     int localc = 5;
 
@@ -28,4 +30,6 @@ static int testfunc(int arga, teststruct *argb, testenum argc)
 
 int main(int argc,char *argv[])
 {
+    teststruct ts;
+    testfunc(1,&ts,a,ts);
 }

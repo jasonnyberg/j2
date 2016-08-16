@@ -26,6 +26,8 @@
 #include "util.h"
 #include "listree.h"
 
+#include "trace.h" // lttng
+
 CLL ltv_repo,ltvr_repo,lti_repo,ro_list;
 int ltv_count=0,ltvr_count=0,lti_count=0;
 
@@ -41,16 +43,20 @@ RBR *RBR_init(RBR *rbr)
 
 void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn))
 {
+    TSTART(0,"");
     rb_erase(rbn,rbr);
     if (rbn_release)
         rbn_release(rbn);
+    TFINISH(0,"");
 }
 
 void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
 {
+    TSTART(0,"");
     RBN *rbn;
     while (rbn=rbr->rb_node)
         RBN_release(rbr,rbn,rbn_release);
+    TFINISH(0,"");
 }
 
 // return node that owns "name", inserting if desired AND required
@@ -92,6 +98,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
         ltv->data=data;
         if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
         if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
+        if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
         ltv->flags=flags;
     }
     return ltv;

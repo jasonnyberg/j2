@@ -26,12 +26,13 @@
 
 #include "cll.h"
 
-
 #define _GNU_SOURCE
 #define _C99
 #include <stdlib.h>
 #include "util.h"
 #include "edict.h"
+
+#include "trace.h" // lttng
 
 extern int dwarf2edict(char *import,char *export);
 
@@ -57,7 +58,7 @@ typedef enum {
 typedef struct REF {
     CLL lnk;
     LTI *lti;
-    CLL ltvs; // hold ltv in list for refcount
+    CLL ltvs; // hold ltv in list for refcount, or cvar's descended type
     LTVR *ltvr;
     REF_FLAGS flags;
 } REF;
@@ -339,6 +340,7 @@ done:
 }
 
 
+#define SEP "."
 #define OPS "$@/!&|=<>(){}#"
 #define ATOM_END (WHITESPACE OPS "<>(){}\'\"")
 
@@ -378,7 +380,7 @@ int parse(TOK *tok)
             case '\'': tlen=series(data,len,NULL,NULL,"\'\'");          STRY(!append(tok,TOK_EXPR|TOK_REDUCE, data+1,tlen-2,tlen),"appending reduce");   break;
             case '\"': tlen=series(data,len,NULL,NULL,"\"\"");          STRY(!append(tok,TOK_EXPR|TOK_FLATTEN,data+1,tlen-2,tlen),"appending flatten");  break;
             case '<': case '>': case '(': case ')': case '{': case '}': STRY(!append(tok,TOK_ATOM,            data  ,     1,   1),"appending %c",*data); break; // special, non-ganging op, no balance!
-            default:   tlen=series(data,len,OPS,ATOM_END,"[]");         STRY(!append(tok,TOK_ATOM,            data  ,tlen  ,tlen),"appending atom");     break;
+            default:   tlen=series(data,len,SEP OPS,ATOM_END,"[]");     STRY(!append(tok,TOK_ATOM,            data  ,tlen  ,tlen),"appending atom");     break;
         }
     }
     else if (tok->flags&TOK_ATOM) while (len) {
@@ -388,7 +390,7 @@ int parse(TOK *tok)
             STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
 
         while (len) {
-            if ((tlen=series(data,len,NULL,".[",NULL))) {
+            if ((tlen=series(data,len,NULL,SEP "[",NULL))) {
                 int reverse=advance(data[0]=='-')?TOK_REV:0;
                 int wildcard=series(data,len,NULL,"*?",NULL)<tlen?TOK_WC:0;
                 if (reverse) tlen-=1;
@@ -396,7 +398,7 @@ int parse(TOK *tok)
             }
             while ((tlen=series(data,len,NULL,NULL,"[]")))
                 STRY(!(val=append(ref,TOK_VAL,data+1,tlen-2,tlen)),"appending val");
-            if ((tlen=series(data,len,".",NULL,NULL))) {
+            if ((tlen=series(data,len,SEP,NULL,NULL))) {
                 if (tlen==3)
                     STRY(!(ref=append(tok,TOK_ELL,NULL,0,0)),"appending ellipsis");
                 advance(tlen);
@@ -424,99 +426,128 @@ enum {
     DEBUG_ERR       = 1<<6
 };
 
+TOK *edict_expr(char *expr) {
+    return TOK_new(TOK_EXPR,LTV_new(expr,-1,LT_DUP));
+}
+
+
+void *edict_lookup(TOK *atom_tok,TOK *ref_tok,int insert,LTV *origin) {
+    int status=0;
+    TOK *acc_tok=ref_tok;
+
+    void *descend(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        int status=0;
+        TOK *next_tok=acc_tok; // a little finesse...
+
+        if (*ltv) {
+
+            // need to be able to descend from either TOS or a named node
+            if ((*ltv)->flags&LT_CVAR) {
+                // Iterate through cvar member hierarchy from here, overwriting ref per iteration
+                //STRY(edict_cvar_resolve(),"resolve cvar member");
+            }
+
+            if (acc_tok->ref && acc_tok->ref->lti) {
+                *lti=acc_tok->ref->lti;
+            } else {
+                LTV *ref_ltv=NULL;
+                STRY(!(ref_ltv=LTV_peek(&acc_tok->ltvs,HEAD)),"getting token name");
+                int inserted=insert && !((*ltv)->flags&LT_RO) && (!(*ltvr) || !((*ltvr)->flags&LT_RO)); // directive on way in, status on way out
+                if ((status=!((*lti)=RBR_find(&(*ltv)->sub.ltis,ref_ltv->data,ref_ltv->len,&inserted))))
+                    goto done;
+                if (acc_tok->ref)
+                    acc_tok->ref->lti=*lti;
+                else
+                    STRY(!(acc_tok->ref=REF_new(*lti)),"allocating ref");
+            }
+        }
+        else if (*lti) {
+            next_tok=(TOK *) CLL_next(&atom_tok->subtoks,&acc_tok->lnk,FWD); // we're iterating through atom_tok's subtok list
+            if (acc_tok->ref && acc_tok->ref->ltvr) { // ltv always accompanies ltvr so no need to check
+                *ltvr=acc_tok->ref->ltvr;
+                *ltv=(*ltvr)->ltv;
+            } else {
+                int reverse=acc_tok->flags&TOK_REV;
+                LTV *val_ltv=NULL;
+                TOK *subtok=(TOK *) CLL_get(&acc_tok->subtoks,KEEP,HEAD);
+                if (subtok) {
+                    STRY(!(val_ltv=LTV_peek(&subtok->ltvs,HEAD)),"getting ltvr w/val from token");
+                    reverse |= subtok->flags&TOK_REV;
+                }
+                char *match=val_ltv?val_ltv->data:NULL;
+                int matchlen=val_ltv?-1:0;
+                if (match)
+                    acc_tok->ref->flags|=REF_MATCH;
+                (*ltv)=LTV_get(&(*lti)->ltvs,KEEP,reverse,match,matchlen,&(*ltvr)); // lookup
+
+                // check if add is required
+                if (!(*ltv) && insert) {
+                    if (next_tok && !val_ltv) // insert a null ltv to build hierarchical ref
+                        val_ltv=LTV_NULL;
+                    if (val_ltv)
+                        (*ltv)=LTV_put(&(*lti)->ltvs,val_ltv,reverse,&(*ltvr));
+                }
+
+                if (*ltvr && *ltv) {
+                    LTV_enq(&acc_tok->ref->ltvs,(*ltv),HEAD); // ensure it's referenced
+                    acc_tok->ref->ltvr=*ltvr;
+                }
+            }
+        }
+        else if (*ltvr)
+            return NULL; // early exit in this case.
+
+        done:
+        if (status)
+            *flags=LT_TRAVERSE_HALT;
+
+        if (!next_tok) // only advanced by *lti path
+            return acc_tok;
+        // else
+        acc_tok=next_tok;
+        return NULL;
+    }
+
+    TOK_freerefs(ref_tok);
+    TOK *rtok=(TOK *) listree_traverse(origin,descend,NULL);
+    return status?NULL:rtok;
+}
+
+
+
 int edict_eval(EDICT *edict)
 {
     int status=0;
 
-    int eval_context(CONTEXT *context) {
+    int eval_context(CONTEXT *context) { /////////////////////////////////////////
         int status=0;
         TOK *tok;
 
-        int eval_tok(TOK *tok) {
+        int eval_tok(TOK *tok) { /////////////////////////////////////////
             static int debug=DEBUG_BAIL|DEBUG_ERR;
 
-            int eval_atom(TOK *atom_tok) {
-                void *resolve_ref(TOK *ref_tok,int insert) {
-                    void *resolve_stackframe(CLL *lnk) {
-                        int status=0;
-                        TOK *acc_tok=ref_tok;
-                        void *descend(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-                            int status=0;
-                            TOK *next_tok=acc_tok; // a little finesse...
+            int inject(char *edict_code) { /////////////////////////////////////////
+                int status=0;
+                TOK *expr=NULL;
+                STRY(!(expr=TOK_new(TOK_EXPR,LTV_new(edict_code,-1,LT_NONE))),"allocating injected expr tok");
+                STRY(eval_tok(expr),"evaluating injected expression");
+                done:
+                return status;
+            }
 
-                            if (*ltv) {
-                                if (acc_tok->ref && acc_tok->ref->lti) {
-                                    *lti=acc_tok->ref->lti;
-                                } else {
-                                    LTV *ref_ltv=NULL;
-                                    STRY(!(ref_ltv=LTV_peek(&acc_tok->ltvs,HEAD)),"getting token name");
-                                    int inserted=insert && !((*ltv)->flags&LT_RO) && (!(*ltvr) || !((*ltvr)->flags&LT_RO)); // directive on way in, status on way out
-                                    if ((status=!((*lti)=RBR_find(&(*ltv)->sub.ltis,ref_ltv->data,ref_ltv->len,&inserted))))
-                                        goto done;
-                                    if (acc_tok->ref)
-                                        acc_tok->ref->lti=*lti;
-                                    else
-                                        STRY(!(acc_tok->ref=REF_new(*lti)),"allocating ref");
-                                }
-                            }
-                            else if (*lti) {
-                                next_tok=(TOK *) CLL_next(&atom_tok->subtoks,&acc_tok->lnk,FWD);
-                                if (acc_tok->ref && acc_tok->ref->ltvr) { // ltv always accompanies ltvr so no need to check
-                                    *ltvr=acc_tok->ref->ltvr;
-                                    *ltv=(*ltvr)->ltv;
-                                } else {
-                                    int reverse=acc_tok->flags&TOK_REV;
-                                    LTV *val_ltv=NULL;
-                                    TOK *subtok=(TOK *) CLL_get(&acc_tok->subtoks,KEEP,HEAD);
-                                    if (subtok) {
-                                        STRY(!(val_ltv=LTV_peek(&subtok->ltvs,HEAD)),"getting ltvr w/val from token");
-                                        reverse |= subtok->flags&TOK_REV;
-                                    }
-                                    char *match=val_ltv?val_ltv->data:NULL;
-                                    int matchlen=val_ltv?-1:0;
-                                    if (match)
-                                        acc_tok->ref->flags|=REF_MATCH;
-                                    (*ltv)=LTV_get(&(*lti)->ltvs,KEEP,reverse,match,matchlen,&(*ltvr)); // lookup
-
-                                    // check if add is required
-                                    if (!(*ltv) && insert) {
-                                        if (next_tok && !val_ltv) // insert a null ltv to build hierarchical ref
-                                            val_ltv=LTV_NULL;
-                                        if (val_ltv)
-                                            (*ltv)=LTV_put(&(*lti)->ltvs,val_ltv,reverse,&(*ltvr));
-                                    }
-
-                                    if (*ltvr && *ltv) {
-                                        LTV_enq(&acc_tok->ref->ltvs,(*ltv),HEAD); // ensure it's referenced
-                                        acc_tok->ref->ltvr=*ltvr;
-                                    }
-                                }
-                            }
-                            else if (*ltvr)
-                                return NULL; // early exit in this case.
-
-                            done:
-                            if (status)
-                                *flags=LT_TRAVERSE_HALT;
-
-                            if (!next_tok) // only advanced by *lti path
-                                return acc_tok;
-                            // else
-                            acc_tok=next_tok;
-                            return NULL;
-                        }
-
+            int eval_atom(TOK *atom_tok) { /////////////////////////////////////////
+                void *resolve_ref(TOK *ref_tok,int insert) { /////////////////////////////////////////
+                    void *resolve_stackframe(CLL *lnk) { /////////////////////////////////////////
                         if (!lnk) return NULL;
                         LTVR *ltvr=(LTVR *) lnk;
-                        TOK *rtok=(TOK *) listree_traverse(ltvr->ltv,descend,NULL);
-                        return status?NULL:rtok;
+                        return edict_lookup(atom_tok,ref_tok,insert,ltvr->ltv);
                     }
 
                     //TOK_freerefs(ref_tok);
                     return CLL_map(&context->dict,FWD,resolve_stackframe);
                 }
 
-                void *iterate_ref(TOK *ref_tok) {
+                void *iterate_ref(TOK *ref_tok) { /////////////////////////////////////////
                     TOK *rtok=(TOK *) CLL_TAIL(&atom_tok->subtoks);
                     if (!rtok || !rtok->ref)
                         return resolve_ref(ref_tok,0);
@@ -545,10 +576,59 @@ int edict_eval(EDICT *edict)
                     }
                 }
 
-                int resolve_ops(TOK *tok,char *ops,int opslen) {
+                int lookup(TOK *expr,LTV **ltv) { /////////////////////////////////////////
                     int status=0;
 
-                    int deref(int getnext) {
+                    STRY(!((*ltv)=LTV_peek(&context->anons,HEAD)),"popping lookup result");
+                    done:
+                    return status;
+                }
+
+                int import()  { /////////////////////////////////////////
+                    int status=0;
+                    LTV *ltv_ifilename=NULL;
+                    STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping import filename");
+                    char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
+                    TOK *file_tok=TOK_new(TOK_FILE,LTV_new((void *) fopen(ifilename,"r"),sizeof(FILE *),LT_IMM));
+                    STRY(!CLL_put(&context->toks,&file_tok->lnk,HEAD),"pushing file");
+                    myfree(ifilename,strlen(ifilename)+1);
+                    LTV_release(ltv_ifilename);
+                    done:
+                    return status;
+                }
+
+                int d2e() { /////////////////////////////////////////
+                    int status=0;
+                    LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
+                    STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping dwarf import filename");
+                    STRY(!(ltv_ofilename=LTV_peek(&context->anons,HEAD)),"peeking edict export filename");
+                    char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
+                    char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
+                    dwarf2edict(ifilename,ofilename);
+                    myfree(ifilename,strlen(ifilename)+1);
+                    myfree(ofilename,strlen(ofilename)+1);
+                    LTV_release(ltv_ifilename);
+                    done:
+                    return status;
+                }
+
+                int cvar() { /////////////////////////////////////////
+                    int status=0;
+                    LTV *type, *cvar;
+                    STRY(!(type=LTV_deq(&context->anons,HEAD)),"popping type");
+                    int size = 100; // TODO: figure this out
+                    STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN | LT_BIN | LT_LIST)),"allocating cvar ltv"); // very special node!
+                    STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
+                    STRY(!LTV_enq(&context->anons,cvar,HEAD),"pushing cvar");
+                    STRY(inject("#"),"injecting #");
+                    done:
+                    return status;
+                }
+
+                int resolve_ops(TOK *tok,char *ops,int opslen) { /////////////////////////////////////////
+                    int status=0;
+
+                    int deref(int getnext) { /////////////////////////////////////////
                         int status=0;
                         LTV *ltv=NULL;
                         TOK *rtok=NULL;
@@ -562,13 +642,33 @@ int edict_eval(EDICT *edict)
                         return status;
                     }
 
+                    int hash() { /////////////////////////////////////////
+                        int status=0;
+                        TOK *rtok=NULL;
+                        STRY(!(rtok=(TOK *) resolve_ref(tok,0)),"resolving tok for '#'");
+                        STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
+                        CLL *ltvs=(rtok->ref->flags&REF_MATCH)?&rtok->ref->ltvs:&rtok->ref->lti->ltvs;
+                        graph_ltvs(ltvs,0);
+                        print_ltvs(CODE_BLUE,ltvs,CODE_RESET "\n",2);
+                        done:
+                        return status;
+                    }
+
+
                     atom_tok->flags&=~TOK_RERUN; // discard tok by default
 
                     for (int i=0;i<opslen;i++) {
                         switch (ops[i]) {
-                            case '$':
+                            case '.': { // deref from TOS (questionabie utilty right now)
+                                LTV *ltv=NULL;
+                                STRY(!(ltv=LTV_peek(&context->anons,HEAD)),"peeking anon");
+                                /// ???
+                                break;
+                            }
+                            case '$': {
                                 STRY(deref(0),"resolving dereference");
                                 break;
+                            }
                             case '@': { // resolve refs needs to not worry about last ltv, just the lti is important.
                                 STRY(!tok,"validating tok");
                                 LTV *ltv=NULL;
@@ -576,13 +676,13 @@ int edict_eval(EDICT *edict)
                                 STRY(!(ltv=LTV_deq(&context->anons,HEAD)),"popping anon");
                                 STRY(!(rtok=(TOK *) resolve_ref(tok,1)),"looking up reference for '@'");
                                 STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
-                                STRY(!LTV_put(&rtok->ref->lti->ltvs,ltv,rtok->flags&TOK_REV,NULL),"adding anon to lti");
+                                STRY(!LTV_enq(&rtok->ref->lti->ltvs,ltv,rtok->flags&TOK_REV),"adding anon to lti");
                                 break;
                             }
                             case '/': {
                                 TOK *rtok=NULL;
                                 if (tok) {
-                                    TRYCATCH(!(rtok=(TOK *) resolve_ref(tok,0)),0,nothing_to_release,"looking up reference for '/'");
+                                    TRYCATCH(!(rtok=(TOK *)  resolve_ref(tok,0)),0,nothing_to_release,"looking up reference for '/'");
                                     TRYCATCH(!(rtok->ref) || !(rtok->ref->ltvr),0,nothing_to_release,"getting rtok ref ltvr");
                                     LTVR_release(&rtok->ref->ltvr->lnk);
                                     TOK_freeref(rtok);
@@ -621,7 +721,7 @@ int edict_eval(EDICT *edict)
                                 TRYCATCH((ltv->flags&LT_NIL)==0,CONDITIONAL_BAIL,done,"testing for non-nil");
                                 break;
                             }
-                            case '=': // deep copy
+                            case '=': // compare either TOS/NOS, or TOS/name
                                 break;
                             case '!': { // limit wildcard dereferences to exec-with-name!!!
                                 LTV *lambda_ltv=NULL;
@@ -650,36 +750,14 @@ int edict_eval(EDICT *edict)
                                 if (tok) {
                                     LTV *ltv=NULL;
                                     if ((ltv=LTV_peek(&tok->ltvs,HEAD))) {
-                                        if (!strnncmp(ltv->data,ltv->len,"import",-1)) {
-                                            LTV *ltv_ifilename=NULL;
-                                            STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping import filename");
-                                            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
-                                            TOK *file_tok=TOK_new(TOK_FILE,LTV_new((void *) fopen(ifilename,"r"),sizeof(FILE *),LT_IMM));
-                                            STRY(!CLL_put(&context->toks,&file_tok->lnk,HEAD),"pushing file");
-                                            myfree(ifilename,strlen(ifilename)+1);
-                                            LTV_release(ltv_ifilename);
-                                        } else if (!strnncmp(ltv->data,ltv->len,"dwarf2edict",-1)) {
-                                            LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
-                                            STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping dwarf import filename");
-                                            STRY(!(ltv_ofilename=LTV_peek(&context->anons,HEAD)),"peeking edict export filename");
-                                            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
-                                            char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
-                                            dwarf2edict(ifilename,ofilename);
-                                            myfree(ifilename,strlen(ifilename)+1);
-                                            myfree(ofilename,strlen(ofilename)+1);
-                                            LTV_release(ltv_ifilename);
-                                        } else {
-                                            TOK *rtok=NULL;
-                                            STRY(!(rtok=(TOK *) resolve_ref(tok,0)),"resolving tok for '#'");
-                                            STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
-                                            CLL *ltvs=(rtok->ref->flags&REF_MATCH)?&rtok->ref->ltvs:&rtok->ref->lti->ltvs;
-                                            graph_ltvs(ltvs,0);
-                                            print_ltvs("",ltvs,"\n",2);
-                                        }
+                                        if      (!strnncmp(ltv->data,ltv->len,"import",-1)) STRY(import(),"importing edict");
+                                        else if (!strnncmp(ltv->data,ltv->len,"d2e",-1))    STRY(d2e(),"converting dwarf to edict");
+                                        else if (!strnncmp(ltv->data,ltv->len,"cvar",-1))   STRY(cvar(),"creating cvar");
+                                        else                                                STRY(hash(),"dumping named item");
                                     }
                                 } else {
                                     edict_graph(edict);
-                                    print_ltvs("Anons:\n",&context->anons,"\n",0);
+                                    print_ltvs(CODE_BLUE,&context->anons,CODE_RESET "\n",0);
                                 }
                                 break;
                             }
@@ -719,29 +797,27 @@ int edict_eval(EDICT *edict)
                 return status;
             }
 
-
-            int eval_expr(TOK *tok) {
+            int eval_expr(TOK *tok) { /////////////////////////////////////////
                 int status=0;
 
                 if (debug&DEBUG_PREEVAL)
                     edict_graph(edict);
 
                 if (CLL_EMPTY(&tok->subtoks)) {
-                    if (tok->flags&TOK_VAL) {
+                    if (tok->flags&TOK_VAL)
                         STRY(!LTV_enq(&context->anons,LTV_deq(&tok->ltvs,HEAD),HEAD),"pushing expr lit");
-                        TOK_free(tok); // for now
-                    }
                     else if (tok->flags&TOK_WS)
-                        TOK_free(tok); // for now
+                        ;
                     else if (tok->flags&TOK_REDUCE)
-                        TOK_free(tok); // for now
+                        ;
                     else if (tok->flags&TOK_FLATTEN)
-                        TOK_free(tok); // for now
-                    else if (parse(tok))
-                        TOK_free(tok); // empty expr
-                } else { // evaluate
-                    STRY(eval_tok((TOK *) CLL_HEAD(&tok->subtoks)),"evaluating expr subtoks");
+                        ;
+                    else
+                        STRY(parse(tok),"parsing expr");
                 }
+
+                if (!CLL_EMPTY(&tok->subtoks))
+                    STRY(eval_tok((TOK *) CLL_HEAD(&tok->subtoks)),"evaluating expr subtoks");
 
                 done:
                 if (debug&DEBUG_POSTEVAL)
@@ -765,7 +841,7 @@ int edict_eval(EDICT *edict)
                 return status;
             }
 
-            int eval_file(TOK *tok) {
+            int eval_file(TOK *tok) { /////////////////////////////////////////
                 int status=0;
                 char *line;
                 int len;
@@ -833,6 +909,7 @@ int edict_eval(EDICT *edict)
 int edict_init(EDICT *edict)
 {
     int status=0;
+    TSTART(0,"");
     LTV *root=LTV_new("ROOT",TRY_ERR,0);
     LT_init();
     STRY(!edict,"validating arg edict");
@@ -847,6 +924,7 @@ int edict_init(EDICT *edict)
     STRY(edict_eval(edict),"evaluating edict contexts");
 
  done:
+    TFINISH(0,"");
     return status;
 }
 

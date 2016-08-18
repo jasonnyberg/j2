@@ -278,7 +278,7 @@ int edict_graph(EDICT *edict) {
             fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",tok,lnk->lnk[0]);
             //fprintf(dumpfile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
             fprintf(dumpfile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
-            ltvs2dot(dumpfile,&tok->ltvs,0);
+            ltvs2dot(dumpfile,&tok->ltvs,0,NULL);
             if (CLL_HEAD(&tok->subtoks)) {
                 fprintf(dumpfile,"\"%x\" -> \"%x\"\n",tok,&tok->subtoks);
                 descend_toks(&tok->subtoks,"Subtoks");
@@ -294,9 +294,9 @@ int edict_graph(EDICT *edict) {
         int halt=0;
         fprintf(dumpfile,"\"Context %x\"\n",context);
         fprintf(dumpfile,"\"A%2$x\" [label=\"Anons\"]\n\"Context %1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->anons);
-        ltvs2dot(dumpfile,&context->anons,0);
+        ltvs2dot(dumpfile,&context->anons,0,NULL);
         fprintf(dumpfile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
-        ltvs2dot(dumpfile,&context->dict,0);
+        ltvs2dot(dumpfile,&context->dict,0,NULL);
         fprintf(dumpfile,"\"Context %x\" -> \"%x\"\n",context,&context->toks);
         descend_toks(&context->toks,"Toks");
     }
@@ -640,13 +640,13 @@ int edict_eval(EDICT *edict)
                     return status;
                 }
 
-                int hash() {
+                int dump(char *label) {
                     int status=0;
                     TOK *rtok=NULL;
                     STRY(!(rtok=(TOK *) resolve_ref(0)),"resolving tok for '#'");
                     STRY(!(rtok->ref && rtok->ref->lti),"validating rtok's ref, ref->lti");
                     CLL *ltvs=(rtok->ref->flags&REF_MATCH)?&rtok->ref->ltvs:&rtok->ref->lti->ltvs;
-                    graph_ltvs(ltvs,0);
+                    graph_ltvs(ltvs,0,label);
                     print_ltvs(CODE_BLUE,ltvs,CODE_RESET "\n",2);
                     done:
                     return status;
@@ -752,7 +752,7 @@ int edict_eval(EDICT *edict)
                                     if      (!strnncmp(ltv->data,ltv->len,"import",-1)) STRY(import(),"importing edict");
                                     else if (!strnncmp(ltv->data,ltv->len,"d2e",-1))    STRY(d2e(),"converting dwarf to edict");
                                     else if (!strnncmp(ltv->data,ltv->len,"cvar",-1))   STRY(cvar(),"creating cvar");
-                                    else                                                STRY(hash(),"dumping named item");
+                                    else STRY(dump((char *) ltv->data),"dumping named item");
                                 }
                             } else {
                                 edict_graph(edict);

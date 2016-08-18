@@ -364,11 +364,13 @@ void print_ltvs(char *pre,CLL *ltvs,char *post,int maxdepth)
 }
 
 
-void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth) {
+void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
     int halt=0;
 
-    void ltvs2dot(CLL *ltvs) {
+    void ltvs2dot(CLL *ltvs,char *label) {
+        if (label)
+            fprintf(dumpfile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse color=blue]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,ltvs);
         fprintf(dumpfile,"\"%x\" [label=\"\" shape=point color=red]\n",ltvs);
         fprintf(dumpfile,"\"%x\" -> \"%x\" [color=red]\n",ltvs,ltvs->lnk[0]);
     }
@@ -377,7 +379,7 @@ void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth) {
         fprintf(dumpfile,"\"%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
         if (rb_parent(&lti->rbn)) fprintf(dumpfile,"\"%x\" -> \"%x\" [color=blue weight=0]\n",rb_parent(&lti->rbn),&lti->rbn);
         fprintf(dumpfile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
-        ltvs2dot(&lti->ltvs);
+        ltvs2dot(&lti->ltvs,NULL);
     }
 
     void ltvr2dot(LTVR *ltvr,int depth,int *flags) {
@@ -432,16 +434,16 @@ void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth) {
     }
 
     void *op(CLL *lnk) { descend_ltvr((LTVR *) lnk); return NULL; }
-    ltvs2dot(ltvs);
+    ltvs2dot(ltvs,label);
     CLL_map(ltvs,FWD,op);
 }
 
-void graph_ltvs(CLL *ltvs,int maxdepth) {
+void graph_ltvs(CLL *ltvs,int maxdepth,char *label) {
     FILE *dumpfile;
 
     dumpfile=fopen("/tmp/jj.dot","w");
     fprintf(dumpfile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
-    ltvs2dot(dumpfile,ltvs,maxdepth);
+    ltvs2dot(dumpfile,ltvs,maxdepth,label);
     fprintf(dumpfile,"}\n");
     fclose(dumpfile);
 }

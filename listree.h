@@ -132,8 +132,8 @@ extern LTV *LTV_peek(CLL *ltvs,int end);
 extern void print_ltv(char *pre,LTV *ltv,char *post,int maxdepth);
 extern void print_ltvs(char *pre,CLL *ltvs,char *post,int maxdepth);
 
-extern void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth);
-extern void graph_ltvs(CLL *ltvs,int maxdepth);
+extern void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth,char *label);
+extern void graph_ltvs(CLL *ltvs,int maxdepth,char *label);
 
 extern void LT_init();
 

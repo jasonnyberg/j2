@@ -837,7 +837,7 @@ int edict_eval(EDICT *edict)
 
                 STRY(!tok,"validating file tok");
                 STRY(!(tok_data=LTV_peek(&tok->ltvs,HEAD)),"validating file");
-                if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
+                // use rlwrap if (stdin==(FILE *) tok_data->data) { printf(CODE_BLUE "j2> " CODE_RESET); fflush(stdout); }
                 if (debug&DEBUG_FILE) edict_graph(edict);
                 TRYCATCH((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,0,close_file,"reading from file");
                 TRYCATCH(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");

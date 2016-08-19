@@ -20,9 +20,10 @@
 
 #include "edict.h"
 
-int main()
+int main(int argc, char *argv[])
 {
-    EDICT edict;
-    edict_init(&edict);
-    edict_destroy(&edict);
+    switch(argc) {
+        case 2: return edict(argv[1]);
+        default: return edict("[stdin] #read");
+    }
 }

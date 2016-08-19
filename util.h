@@ -228,8 +228,8 @@ extern int fnmatch_len(char *pat,int plen,char *str,int slen);
 #define SHEXDUMP_OPT_REVERSE  0x2
 #define SHEXDUMP_OPT_NOSPACE  0x4
 
-extern int shexdump(char *buf,int size,int width,int opts);
-extern int hexdump(char *buf,int size);
+extern int shexdump(FILE *ofile,char *buf,int size,int width,int opts);
+extern int hexdump(FILE *ofile,char *buf,int size);
 
 extern int series(char *buf,int len,char *include,char *exclude,char *balance);
 extern char *balanced_readline(FILE *ifile,int *length);

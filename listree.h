@@ -100,13 +100,6 @@ extern LTI *LTI_new(char *name,int len);
 extern void LTI_free(LTI *lti);
 
 //////////////////////////////////////////////////
-// Combined pre-, in-, and post-fix LT traversal
-//////////////////////////////////////////////////
-enum { LT_TRAVERSE_HALT=1, LT_TRAVERSE_REVERSE=2 };
-typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
-void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
-
-//////////////////////////////////////////////////
 // Tag Team of release methods for LT elements
 //////////////////////////////////////////////////
 extern void LTV_release(LTV *ltv);
@@ -114,8 +107,18 @@ extern void LTVR_release(CLL *cll);
 extern void LTI_release(RBN *rbn);
 
 //////////////////////////////////////////////////
+// Combined pre-, in-, and post-fix LT traversal
+//////////////////////////////////////////////////
+enum { LT_TRAVERSE_HALT=1, LT_TRAVERSE_REVERSE=2 };
+typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
+void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
+
+//////////////////////////////////////////////////
 // Dictionary
 //////////////////////////////////////////////////
+
+#define LTV_NIL  LTV_new(NULL,0,LT_NIL)
+#define LTV_NULL LTV_new(NULL,0,LT_NULL)
 
 extern LTI *LTV_first(LTV *ltv);
 extern LTI *LTV_last(LTV *ltv);
@@ -129,13 +132,12 @@ extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvs,int end);
 extern LTV *LTV_peek(CLL *ltvs,int end);
 
-extern void print_ltv(char *pre,LTV *ltv,char *post,int maxdepth);
-extern void print_ltvs(char *pre,CLL *ltvs,char *post,int maxdepth);
+extern void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth);
+extern void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth);
 
-extern void ltvs2dot(FILE *dumpfile,CLL *ltvs,int maxdepth,char *label);
-extern void graph_ltvs(CLL *ltvs,int maxdepth,char *label);
-
-extern void LT_init();
+extern void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
+extern void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
+extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label);
 
 #endif
 

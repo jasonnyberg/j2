@@ -19,23 +19,11 @@
  */
 
 
-#include "listree.h"
-
-typedef struct EDICT
-{
-    CLL dict;
-    CLL contexts;
-} EDICT;
-
-
 //////////////////////////////////////////////////
 // Edict
 //////////////////////////////////////////////////
 
-//  vm
-extern int edict_init(EDICT *edict);
-extern int edict_eval(EDICT *edict);
-extern int edict_destroy(EDICT *edict);
+extern int edict(char *buf);
 
 /*
 extern LTV *edict_add(RBR *rbr,LTV *ltv);

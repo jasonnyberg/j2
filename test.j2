@@ -1,40 +1,40 @@
-[comment]/
-[10]                 [ anonymous LITERAL                             ]/
-?                    [ dump anons/dictionary                         ]/
-/                    [ delete anon                                   ]/
-?
-[10]/                [ CONCATENATION: create and delete anon         ]/
-?                    [ i.e. this is not REALLY a comment!            ]/
+[comment]#/
+[10]                 [ anonymous LITERAL                             ]#/
+#                    [ dump anons/dictionary                         ]#/
+/                    [ delete anon                                   ]#/
+#
+[10]/                [ CONCATENATION: create and delete anon         ]#/
+#                    [ i.e. this is not REALLY a comment!            ]#/
 [10]
-@a                   [ ASSIGN anon to dictionary entry               ]/
-?
-?a                   [ dump specific dict entry                      ]/
-[20]@a               [ more concatenation                            ]/
-?                    [ assignment is actually a stack push           ]/
-[30]@-a              [ assign (push) TO TAIL                         ]/
-?                    [ DICTIONARY ENTRIES ARE DOUBLE-ENDED STACKS    ]/
-[40]@b.c.d           [ dictionary is HIERARCHICAL                    ]/
+@a                   [ ASSIGN anon to dictionary entry               ]#/
+#
+#a                   [ dump specific dict entry                      ]#/
+[20]@a               [ more concatenation                            ]#/
+#                    [ assignment is actually a stack push           ]#/
+[30]@-a              [ assign (push) TO TAIL                         ]#/
+#                    [ DICTIONARY ENTRIES ARE DOUBLE-ENDED STACKS    ]#/
+[40]@b.c.d           [ dictionary is HIERARCHICAL                    ]#/
 [50]@b.c.d
-?
-?b.c.d               [ dump deeper dict entry                        ]/
-a                    [ DEREFERENCE                                   ]/
-?                    [ derefs are copied to the anonymous stack      ]/
--a                   [ deref FROM TAIL                               ]/
-?                    [ anons just stack, no access to tail           ]/
+#
+#b.c.d               [ dump deeper dict entry                        ]#/
+a                    [ DEREFERENCE                                   ]#/
+#                    [ derefs are copied to the anonymous stack      ]#/
+-a                   [ deref FROM TAIL                               ]#/
+#                    [ anons just stack, no access to tail           ]#/
 b.c.d                [ deep deref]/
-?
-b.c.-d               [ deep deref from tail                          ]/
-?
-b+[60].c+[70].d+[80] [ embed literals while (de)referencing a name   ]/
-?
-b.c.d                [ HEADS OF DICT ENTRIES "HIDE" REST OF STACK,   ]/
-?                    [ INCLUDING EACH ENTRY'S SUBORDINATES!          ]/
+#
+b.c.-d               [ deep deref from tail                          ]#/
+#
+[asdf]@b[60].c[70].d [ embed literals while (de)referencing a name   ]#/
+#
+b.c.d                [ HEADS OF DICT ENTRIES "HIDE" REST OF STACK,   ]#/
+#                    [ INCLUDING EACH ENTRY'S SUBORDINATES!          ]#/
 [[90]@e]@f           [ CODE IS DATA!]/
-?
-?e                   [ [50]@e has not been executed                  ]/
-f                    [ it is a literal assigned to dict entry "f"    ]/
-?
-!                    [ "EXEC" (it's so simple!)                      ]/
-?                    [ now there's an "e"                            ]/
-f!                   [ concatenated...                               ]/
-?
+#
+#e                   [ [50]@e has not been executed                  ]#/
+f                    [ it is a literal assigned to dict entry "f"    ]#/
+#
+!                    [ "EXEC" (it's so simple!)                      ]#/
+#                    [ now there's an "e"                            ]#/
+f!                   [ concatenated...                               ]#/
+#

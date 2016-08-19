@@ -39,7 +39,7 @@ char *STRTOLL_TAIL;
 int Gmymalloc=0;
 
 int try_depth=1;
-int try_loglev=1;
+int try_loglev=2;
 int try_infolev=1;
 int try_edepth=2;
 
@@ -80,8 +80,8 @@ void try_loginfo(const char *func,const char *cond)
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 
-    fprintf(stderr,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr); // prints to stdout!
-    fflush(stdout);
+    fprintf(stderr,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr);
+    fflush(stderr);
 }
 
 void try_logerror(const char *func,const char *cond,int status)
@@ -95,11 +95,11 @@ void try_logerror(const char *func,const char *cond,int status)
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 
-    fprintf(stderr,CODE_RED "%s" CODE_RESET NEWLINE,errstr); // prints to stdout!
-    fflush(stdout);
+    fprintf(stderr,CODE_RED "%s" CODE_RESET NEWLINE,errstr);
+    fflush(stderr);
 }
 
-void try_reset(int context)
+void try_reset()
 {
     try_context.eid=0;
     try_context.edepth=0;
@@ -247,21 +247,21 @@ int fnmatch_len(char *pat,int plen,char *str,int slen)
     return result;
 }
 
-int shexdump(char *buf,int size,int width,int opts)
+int shexdump(FILE *ofile,char *buf,int size,int width,int opts)
 {
     int i=0;
     int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
     int pad=!(opts&SHEXDUMP_OPT_UNPADDED);
     char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
-    int shexbyte(int c) { return printf(pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); }
-    void readable(int j) { for (;j && o(i-j)<size;j--) printf("%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); }
-    void hex(int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):printf("  %s",sep); }
+    int shexbyte(int c) { return fprintf(ofile,pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); }
+    void readable(int j) { for (;j && o(i-j)<size;j--) fprintf(ofile,"%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); }
+    void hex(int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):fprintf(ofile,"  %s",sep); }
 
-    while (i<size) printf("%8d: ",i),hex(width),readable(width),printf("\n");
+    while (i<size) fprintf(ofile,"%8d: ",i),hex(width),readable(width),fprintf(ofile,"\n");
     return size;
 }
 
-int hexdump(char *buf,int size) { return shexdump(buf,size,16,0); }
+int hexdump(FILE *ofile,char *buf,int size) { return shexdump(ofile,buf,size,16,0); }
 
 // sequence of include chars, then sequence of not-exclude chars, then terminate balanced sequence
 int series(char *buf,int len,char *include,char *exclude,char *balance) {
@@ -318,7 +318,7 @@ char *balanced_readline(FILE *ifile,int *length) {
                     if (depth) {
                         if (expr[*length]==delimiter[depth]) depth--;
                         else {
-                            printf("ERROR: Sequence unbalanced at \"%c\", offset %d\n",expr[*length],*length);
+                            fprintf(stderr,"ERROR: Sequence unbalanced at \"%c\", offset %d\n",expr[*length],*length);
                             free(expr); expr=NULL;
                             *length=depth=0;
                             goto done;
@@ -330,7 +330,7 @@ char *balanced_readline(FILE *ifile,int *length) {
         }
         if (!depth)
             break;
-        //else printf(CODE_RED),fstrnprint(stdout,delimiter+1,depth),printf(CODE_RESET),fflush(stdout);
+        //else fprintf(stderr,CODE_RED),fstrnprint(stdout,delimiter+1,depth),fprintf(stderr,CODE_RESET),fflush(stderr);
     }
 
 done:

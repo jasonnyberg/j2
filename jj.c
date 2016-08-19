@@ -24,6 +24,6 @@ int main(int argc, char *argv[])
 {
     switch(argc) {
         case 2: return edict(argv[1]);
-        default: return edict("[stdin] #read");
+        default: return edict("[bootstrap.edict] #read");
     }
 }

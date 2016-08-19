@@ -1,2 +1,2 @@
-rlwrap -S "j2> " build/jj
+rlwrap -S "j2> " build/jj ${*:+"$*"}
 

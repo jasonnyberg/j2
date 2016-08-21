@@ -460,3 +460,190 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
     fclose(ofile);
 }
 
+
+
+//////////////////////////////////////////////////
+// resolver
+//////////////////////////////////////////////////
+
+void *ref_get(TOK *ops_tok,int insert,LTV *origin)
+{
+    int status=0;
+    TOK *ref_head=(TOK *) CLL_HEAD(&ops_tok->subtoks);
+    TOK *acc_tok=ref_head;
+
+    void *descend(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        int status=0;
+        TOK *next_tok=acc_tok; // a little finesse...
+
+        if (*ltv) {
+            // need to be able to descend from either TOS or a named node
+            if ((*ltv)->flags&LT_CVAR) {
+                // Iterate through cvar member hierarchy from here, overwriting ref per iteration
+                //STRY(cvar_resolve(),"resolve cvar member");
+            }
+
+            if (acc_tok->ref && acc_tok->ref->lti) { // already resolved
+                *lti=acc_tok->ref->lti;
+            } else {
+                LTV *ref_ltv=NULL;
+                STRY(!(ref_ltv=LTV_peek(&acc_tok->ltvs,HEAD)),"getting token name");
+                int inserted=insert && !((*ltv)->flags&LT_RO) && (!(*ltvr) || !((*ltvr)->flags&LT_RO)); // directive on way in, status on way out
+                if ((status=!((*lti)=RBR_find(&(*ltv)->sub.ltis,ref_ltv->data,ref_ltv->len,&inserted))))
+                    goto done;
+                if (acc_tok->ref) {
+                    acc_tok->ref->lti=*lti;
+                    LTV_enq(&acc_tok->ref->lti_parent,(*ltv),HEAD); // record to be able to free lti if empty
+                }
+                else
+                    STRY(!(acc_tok->ref=REF_new(*lti)),"allocating ref");
+            }
+        }
+        else if (*lti) {
+            next_tok=(TOK *) CLL_next(&ops_tok->subtoks,&acc_tok->lnk,FWD); // we're iterating through atom_tok's subtok list
+            if (acc_tok->ref && acc_tok->ref->ltvr) { // already resolved? (ltv always accompanies ltvr so no need to check)
+                *ltvr=acc_tok->ref->ltvr;
+                *ltv=(*ltvr)->ltv;
+            } else {
+                int reverse=acc_tok->flags&TOK_REV;
+                LTV *val_ltv=NULL;
+                TOK *subtok=(TOK *) CLL_get(&acc_tok->subtoks,KEEP,HEAD);
+                if (subtok) {
+                    STRY(!(val_ltv=LTV_peek(&subtok->ltvs,HEAD)),"getting ltvr w/val from token");
+                    reverse |= subtok->flags&TOK_REV;
+                }
+                char *match=val_ltv?val_ltv->data:NULL;
+                int matchlen=val_ltv?-1:0;
+                if (match)
+                    acc_tok->ref->flags|=REF_MATCH;
+                (*ltv)=LTV_get(&(*lti)->ltvs,KEEP,reverse,match,matchlen,&(*ltvr)); // lookup
+
+                // check if add is required
+                if (!(*ltv) && insert) {
+                    if (next_tok && !val_ltv) // insert a null ltv to build hierarchical ref
+                        val_ltv=LTV_NULL;
+                    if (val_ltv)
+                        (*ltv)=LTV_put(&(*lti)->ltvs,val_ltv,reverse,&(*ltvr));
+                }
+
+                if (*ltvr && *ltv) {
+                    LTV_enq(&acc_tok->ref->ltvs,(*ltv),HEAD); // ensure it's referenced
+                    acc_tok->ref->ltvr=*ltvr;
+                }
+            }
+        }
+        else if (*ltvr)
+            return NULL; // early exit in this case.
+
+        done:
+        if (status)
+            *flags=LT_TRAVERSE_HALT;
+
+        if (!next_tok) // only advanced by *lti path
+            return acc_tok;
+        // else
+        acc_tok=next_tok;
+        return NULL;
+    }
+
+    TOK_freerefs(ref_head);
+    TOK *ref_tail=(TOK *) listree_traverse(origin,descend,NULL);
+    return status?NULL:ref_tail;
+}
+
+
+void *ref_getnext(TOK *ops_tok)
+{
+    // long version A) while no next-item, walk subtoks in reverse. B) re-resolve back to the end using (a cut-down version of) ref_eval()
+    // shortcut: iterate over just the tail of the stack, i.e. assume ref is fully resolved with no wildcards above (and no list of specific vals)
+    // shortcut2: if "name" is a wildcard name, iterate to the next matching name
+
+    TOK *ref_head=(TOK *) CLL_HEAD(&ops_tok->subtoks);
+    TOK *ref_tail=(TOK *) CLL_TAIL(&ops_tok->subtoks);
+
+    int reverse=ref_tail->flags&TOK_REV;
+    REF *ref=ref_tail->ref;
+    LTVR *ltvr=NULL;
+    if (ref->lti && ref_tail->flags&TOK_WC) {
+        LTV *ref_ltv=NULL;
+        LTI *lti=NULL;
+        ref_ltv=LTV_peek(&ref_head->ltvs,HEAD);
+        for (lti=LTI_next(ref->lti); lti && fnmatch_len(ref_ltv->data,ref_ltv->len,lti->name,-1); lti=LTI_next(lti)) {}
+        if (lti) {
+            TOK_freeref(ref_head);
+            ref=ref_head->ref=REF_new(lti);
+        }
+    }
+    if (!ref->lti || (ltvr=(LTVR *) CLL_next(&ref->lti->ltvs,ref->ltvr?&ref->ltvr->lnk:NULL,reverse))) {
+        LTV_release(LTV_deq(&ref->ltvs,HEAD));
+        LTV_enq(&ref->ltvs,ltvr->ltv,HEAD); // ensure that ltv is referenced by at least one thing so it won't disappear
+        ref->ltvr=ltvr;
+        return ref_tail;
+    }
+}
+
+
+
+enum REF_FLAGS { REF_INSERT=1, REF_GETNEXT=2 };
+
+
+
+int ref_name(char *buf,int len) { return series(data,len,NULL,".[",NULL); }
+int ref_lit(char *buf,int len)
+
+int ref_resolve(char *buf,int len,LTV *root,int flags,CLL *lineage)
+{
+    int name() { return series(data,len,NULL,".[",NULL);   }
+    int lit()  { return series(data,len,NULL,NULL,"[]");   }
+    int sep()  { return series(data,len,".",NULL,NULL)==1; }
+
+    void *ascend(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) { //
+        int status=0;
+        if (*ltv) {
+
+        }
+        if (*lti) {
+        }
+        if (*ltvr) {
+        }
+        done:
+        return NULL;
+    }
+
+    void *descend(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) { //
+        int status=0;
+        if (*ltv) {
+        }
+        if (*lti) {
+        }
+        if (*ltvr) {
+        }
+        done:
+        return NULL;
+    }
+
+    int status=0;
+
+
+    STRY(!(tlen=series(data,len,NULL,".[",NULL)),"testing for valid ref");
+    while (len) {
+        { // block for locals
+            TOK *ref;
+            STRY(!(ref=append(ops,TOK_REF,data,tlen,tlen)),"appending ref"); // refs under ops
+            while ((tlen=series(data,len,NULL,NULL,"[]"))) // optional ref-vals can only follow a valid name
+                STRY(!append(ref,TOK_LIT,data+1,tlen-2,tlen),"appending lit"); // ref-lits under refs
+        }
+        if (len) {
+            STRY(series(data,len,SEP,NULL,NULL)!=1,"reading separator"); // error if not single separator
+            advance(1);
+        }
+    }
+
+    done:
+    return status;
+}
+
+
+
+
+

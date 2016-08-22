@@ -63,33 +63,8 @@ int debug=DEBUG_BAIL|DEBUG_ERR;
 
 //////////////////////////////////////////////////
 
-struct REF;
 struct TOK;
 struct CONTEXT;
-
-//////////////////////////////////////////////////
-// REPL Refs
-//////////////////////////////////////////////////
-
-CLL ref_repo;
-int ref_count=0;
-
-typedef enum {
-    REF_NONE  = 0,
-    REF_MATCH = 1<<0
-} REF_FLAGS;
-
-typedef struct REF {
-    CLL lnk;
-    CLL lti_parent;
-    LTI *lti;
-    CLL ltvs; // hold ltv in list for refcount, or cvar's descended type
-    LTVR *ltvr;
-    REF_FLAGS flags;
-} REF;
-
-REF *REF_new(LTI *lti);
-void REF_free(REF *ref);
 
 //////////////////////////////////////////////////
 // REPL Tokens
@@ -139,41 +114,6 @@ CONTEXT *CONTEXT_new();
 TOK *CONTEXT_inject(CONTEXT *context,TOK *tok);
 void CONTEXT_free(CONTEXT *context);
 
-//////////////////////////////////////////////////
-// REPL Refs
-//////////////////////////////////////////////////
-
-REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
-REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
-REF *refpeep(CLL *cll)          { return (REF *) CLL_get(cll,KEEP,HEAD); }
-
-REF *REF_new(LTI *lti)
-{
-    static CLL *repo=NULL;
-    if (!repo) repo=CLL_init(&ref_repo);
-
-    REF *ref=NULL;
-    if ((ref=refpop(repo)) || ((ref=NEW(REF)) && CLL_init(&ref->lnk)))
-    {
-        CLL_init(&ref->ltvs);
-        CLL_init(&ref->lti_parent);
-        ref->lti=lti;
-        ref->ltvr=NULL;
-        ref->flags=REF_NONE;
-        ref_count++;
-    }
-    return ref;
-}
-
-void REF_free(REF *ref)
-{
-    if (!ref) return;
-    CLL_cut(&ref->lnk); // take it out of any list it's in
-    CLL_release(&ref->ltvs,LTVR_release);
-    ref->lti=NULL;
-    refpush(&ref_repo,ref);
-    ref_count--;
-}
 
 //////////////////////////////////////////////////
 // REPL Tokens
@@ -398,7 +338,7 @@ int parse_expr(TOK *tok)
     int len=0,tlen=0;
     LTV *tokval=NULL;
 
-    int advance(unsigned x) { x=MIN(x,len); data+=x; len-=x; return x; }
+    int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
     TOK *append(TOK *tok,int type,char *data,int len,int adv) {
         if (type==TOK_REF && series(data,len,NULL,"*?",NULL)<len)
@@ -406,7 +346,7 @@ int parse_expr(TOK *tok)
         TOK *subtok=TOK_new(type,LTV_new(data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
         if (!subtok) return NULL;
         advance(adv);
-        return (TOK *) CLL_splice(&tok->subtoks,&subtok->lnk,TAIL);
+        return (TOK *) CLL_put(&tok->subtoks,&subtok->lnk,TAIL);
     }
 
     STRY(!tok,"testing for null tok");

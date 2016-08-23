@@ -568,7 +568,7 @@ REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
 REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
 REF *reftail(CLL *cll)          { return (REF *) CLL_get(cll,KEEP,TAIL); }
 
-REF *REF_new(char *data,int len,int flags)
+REF *REF_new()
 {
     static CLL *repo=NULL;
     if (!repo) repo=CLL_init(&ref_repo);
@@ -576,9 +576,7 @@ REF *REF_new(char *data,int len,int flags)
     REF *ref=NULL;
     if (len && ((ref=refpop(repo)) || ((ref=NEW(REF)) && CLL_init(&ref->lnk))))
     {
-        ref->data=data;
-        ref->len=len;
-        ref->flags=flags;
+        CLL_init(&ref->keys);
         CLL_init(&ref->lti_parent);
         ref->lti=NULL;
         ref->ltvr=NULL;
@@ -593,13 +591,16 @@ void REF_free(REF *ref)
 {
     if (!ref) return;
     CLL_cut(&ref->lnk); // take it out of any list it's in
-    CLL_release(&ref->ltvs,LTVR_release);
-    if (ref->lti && CLL_EMPTY(&ref->lti_parent)) {
-        LTV *parent=LTV_peek(&ref->lti_parent,FWD);
-        RBN_release(&LTV->sub.ltis,&ref->lti.rbn,LTI_release);
-    }
+
+    CLL_release(&ref->keys,LTVR_release);
+    LTV *parent=LTV_peek(&ref->lti_parent,HEAD);
+    if (parent && ref->lti && CLL_EMPTY(&ref->lti.ltvs)) // if LTI empty and pruneable
+        RBN_release(&parent->sub.ltis,&ref->lti.rbn,LTI_release); // prune it
     CLL_release(&ref->lti_parent,LTVR_release);
     ref->lti=NULL;
+    ref->ltvr=NULL;
+    CLL_release(&ref->ltvs,LTVR_release);
+
     refpush(&ref_repo,ref);
     ref_count--;
 }
@@ -608,76 +609,73 @@ void REF_free(REF *ref)
 // API
 //////////////////////////////////////////////////
 
-int LT_freerefs(CLL *refs) {
-    void REF_release(CLL *lnk) { REF_free((REF *) lnk); }
-    CLL_release(refs,REF_release);
-}
-
-int LT_parse(char *data,int len,CLL *refs)
+int LT_resolve(char *data,int len,LTV *root,int insert,CLL *refs)
 {
-    int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
+    int wildcard(LTV *key) { series(key->data,key->len,NULL,"*?",NULL) < key->len; }
 
-    int rev()  { return advance(len && data[0]=='-');    }
-    int name() { return series(data,len,NULL,".[",NULL); }
-    int val()  { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
-    int sep()  { return series(data,len,".",NULL,NULL);  }
+    int parse()
+    {
+        int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
-    int wildcard(int len) { series(data,len,NULL,"*?",NULL) < len; }
-    int enq_adv(int len,int flags) { CLL_put(refs,REF_new(data,len,flags)) && advance(len); }
+        int name() { return series(data,len,NULL,".[",NULL); }
+        int val()  { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
+        int sep()  { return series(data,len,".",NULL,NULL);  }
 
-    int status=0;
-    unsigned flags,tlen;
 
-    while (len) {
-        // parse name (mandatory)
-        flags=REF_NAME;
-        if (rev()) flags|=REF_REV;
-        STRY(!(tlen=name()),"parsing ref name");
-        if (wildcard(tlen)) flags|=REF_WC;
-        STRY(!enq_adv(tlen,flags),"enqueing ref name");
+        int status=0;
+        unsigned flags,tlen;
+        REF *ref;
 
-        // parse val (optional)
-        if ((tlen=val()))
-            STRY(!enq_adv(tlen,REF_VAL),"enqueueing ref val");
+        while (len) {
+            ref=NULL;
 
-        // if there's anything left, it has to be a separator/ellipsis
-        if (len) {
-            STRY(!(tlen=sep()),"parsing ref sep/ell");
-            STRY(tlen==1 || tlen==3,"validating ref sep/ell");
-            if (tlen==3) // it's an ellipsis
-                STRY(!enq_adv(tlen,REF_ELL),"enqueueing ref ellipsis");
+            // parse name (mandatory)
+            STRY(!(tlen=name()),"parsing ref name");
+            STRY(!(ref=CLL_put(refs,REF_new(),HEAD)),"enqueing ref");
+            STRY(!LTV_enq(&ref->keys,LTV_new(data,tlen,0),TAIL),"enqueueing name key");
+            advance(tlen);
+
+            // parse vals (optional)
+            while ((tlen=val()))
+                STRY(!LTV_enq(&ref->keys,LTV_new(data+1,tlen-2,0),TAIL),"enqueueing val key");
+
+            // if there's anything left, it has to be a separator
+            if (len)
+                STRY(advance(sep())==1),"parsing ref sep");
         }
+
+        done:
+        return status;
     }
 
-    done:
-    return status;
-}
+    LTV *name,*val;
+    int reverse;
+    int resolve_keys(REF *ref) {
+        int status=0;
+        STRY(!ref,"validating ref");
+        STRY(!(name=LTV_peek(&ref->keys,HEAD)),"validating name key"); // name is first key
+        reverse=series(name->data,1,NULL,"-",NULL);
+        ltv_val=CLL_next(&ref->keys,&ltv->name.lnk,FWD); // val will be next key
+        done:
+        return status;
+    }
 
+    LTV *ref_resolve(REF *ref,LTV *root) { // create and/or fill in ref from scratch, return
+        int status=0;
+        STRY(!root,"validating root");
+        STRY(!resolve_keys(ref),"resolving ref keys");
 
-int LT_find(char *data,int len,LTV *root,int insert,CLL *refs)
-{
-    void *getnext(CLL *lnk)
-    {
+        done: return status;
+    }
+
+    void *getnext(CLL *lnk) {
         int status=0;
         REF *ref=(REF *) lnk;
-        int reverse=ref->flags&REF_REV;
-        int wildcard=ref->flags&REF_WC;
 
-        switch(ref->flags & (REF_NAME | REF_VAL | REF_ELL)) {
-            case REF_NAME:
-                if (wildcard)
-                else {
-                    ref->lti=NULL;
-                }
-                break;
-            case REF_VAL:
-                break;
-            case REF_ELL:
-                break;
-        }
+        STRY(resolve_keys(ref),"resolving ref keys");
 
         LTVR *ltvr=NULL;
-        if (ref->lti && ref->flags&REF_WC) {
+        if (ref->lti) {
             LTV *ref_ltv=NULL;
             LTI *lti=NULL;
             ref_ltv=LTV_peek(&ref_head->ltvs,HEAD);
@@ -698,30 +696,20 @@ int LT_find(char *data,int len,LTV *root,int insert,CLL *refs)
         return status?(REF_free(ref),NULL):ref;
     }
 
-    int ascend() { return  }
-
-    void *descend(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) { //
-
-
-
-        int status=0;
-        if (*ltv) {
-        }
-        if (*lti) {
-        }
-        if (*ltvr) {
-        }
-        done:
-        return NULL;
-    }
-
     if (CLL_EMPTY(refs))
-        STRY(LT_parse(data,len,refs),"parsing reference");
+        STRY(parse(),"parsing reference");
     else
-        TRYCATCH(!CLL_map(refs,getnext,REV),0,done,"performing getnext"); // if no next, refs will be empty
+        TRYCATCH(!CLL_map(refs,getnext,FWD),-1,done,"performing getnext"); // if no next, refs will be empty
 
-    STRY(!listree_traverse(root,descend,NULL),"resolving ref"
+    if (!CLL_EMPTY(refs))
+        TRYCATCH(!CLL_map(refs,get,REV),-1,done,"performing getnext"); // if no next, refs will be empty
 
     done:
     return status?NULL:ref_tail;
+}
+
+
+int LT_release(CLL *refs) {
+    void REF_release(CLL *lnk) { REF_free((REF *) lnk); }
+    CLL_release(refs,REF_release);
 }

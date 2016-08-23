@@ -50,7 +50,7 @@ typedef enum {
     LT_GC  =1<<0x0b, // garbage collect this node before deleting
     LT_NIL =1<<0x0c, // false
     LT_NULL=1<<0x0d, // empty (as opposed to false)
-    LT_TEMP=1<<0x0e, // temp repl artifact, gc immediately
+    LT_WC  =1<<0x0e, // contains a wildcard character (note to repl)
     LT_IMM =1<<0x0f|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
@@ -140,29 +140,19 @@ extern void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label);
 
 //////////////////////////////////////////////////
-// API
+// "CLI"
 //////////////////////////////////////////////////
-
-typedef enum {
-    REF_NAME = 1<<0,
-    REF_VAL  = 1<<1,
-    REF_ELL  = 1<<2,
-    REF_REV  = 1<<3,
-    REF_WC   = 1<<4
-} REF_FLAGS;
 
 typedef struct REF {
     CLL lnk;
-    char *data;
-    int len;
+    CLL keys;
     CLL lti_parent; // name (hold to remove lti if empty when freeing)
     LTI *lti; // name
     LTVR *ltvr; // ref
     CLL ltvs; // ref (hold ltv in list for refcount, or cvar's descended type)
-    unsigned flags;
 } REF;
 
-extern int LT_find(char *buf,int len,LTV *root,int insert,CLL *refs);
-
+extern int LT_resolve(char *ref,int len,LTV *root,int insert,CLL *refs);
+extern int LT_release(CLL *refs); // clears refs, prunes listree branch
 
 #endif

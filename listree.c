@@ -117,6 +117,16 @@ void LTV_free(LTV *ltv)
     }
 }
 
+LTV *LTV_dup(LTV *ltv)
+{
+    if (!ltv) return NULL;
+
+    int flags=ltv->flags & ~LT_FREE;
+    if (!(flags&LT_IMM))
+        flags |= LT_DUP;
+    return LTV_new(ltv->data,ltv->len,flags);
+}
+
 void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
 {
     RBN *rbn=NULL,*next;
@@ -337,18 +347,24 @@ LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put(ltvs,ltv,end,NULL); }
 LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,0,NULL); }
 LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,0,NULL); }
 
+int LTV_wildcard(LTV *ltv)
+{
+    int tlen=series(ltv->data,ltv->len,NULL,"*?",NULL);
+    return tlen < ltv->len;
+}
+
 void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 {
     char *indent="                                                                                                                ";
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
         if (*lti) {
             if (maxdepth && depth>=maxdepth) *flags|=LT_TRAVERSE_HALT;
-            fstrnprint(stdout,indent,depth*4);
+            fstrnprint(stdout,indent,MAX(0,depth*4-2));
             fprintf(ofile,"\"%s\"\n",(*lti)->name);
         }
 
         if (*ltv) {
-            fstrnprint(ofile,indent,depth*4+2);
+            fstrnprint(ofile,indent,depth*4);
             if (pre) fprintf(ofile,"%s",pre);
             else fprintf(ofile,"[");
             if (((*ltv)->flags&LT_IMM)==LT_IMM) fprintf(ofile,"0x%p (immediate)",&(*ltv)->data);
@@ -362,7 +378,10 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
         return NULL;
     }
 
-    listree_traverse(ltv,preop,NULL);
+    if (ltv)
+        listree_traverse(ltv,preop,NULL);
+    else
+        fprintf(ofile,"NULL");
 }
 
 void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
@@ -463,9 +482,171 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
 
 
 //////////////////////////////////////////////////
-// resolver
+// REF
+// special case; client creates ref, which acts as sentinel
 //////////////////////////////////////////////////
 
+
+CLL ref_repo;
+int ref_count=0;
+
+REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
+REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
+
+REF *REF_new(char *data,int len)
+{
+    static CLL *repo=NULL;
+    if (!repo) repo=CLL_init(&ref_repo);
+    int rev=data[0]=='-';
+    if (len-rev==0)
+        return NULL;
+
+    REF *ref=NULL;
+    if ((ref=refpop(repo)) || ((ref=NEW(REF)) && CLL_init(&ref->lnk)))
+    {
+        CLL_init(&ref->keys);
+        LTV_enq(&ref->keys,LTV_new(data+rev,len-rev,0),TAIL);
+        CLL_init(&ref->root);
+        ref->lti=NULL;
+        ref->ltvr=NULL;
+        ref->reverse=rev;
+        ref_count++;
+    }
+    return ref;
+}
+
+void *REF_reset(CLL *lnk) {
+    REF *ref=(REF *) lnk;
+    LTV *root=LTV_peek(&ref->root,HEAD);
+    if (root && ref->lti && CLL_EMPTY(&ref->lti->ltvs)) // if LTI empty and pruneable
+        RBN_release(&root->sub.ltis,&ref->lti->rbn,LTI_release); // prune it
+    CLL_release(&ref->root,LTVR_release);
+    ref->lti=NULL;
+    ref->ltvr=NULL;
+}
+
+void REF_free(CLL *lnk)
+{
+    if (!lnk) return;
+
+    REF *ref=(REF *) lnk;
+    CLL_cut(&ref->lnk); // take it out of any list it's in
+    CLL_release(&ref->keys,LTVR_release);
+    REF_reset(lnk);
+
+    refpush(&ref_repo,ref);
+    ref_count--;
+}
+
+///////////////////////////////////////////////////////
+
+int REF_create(LTV *ltv,CLL *refs) {
+    int status=0;
+    STRY(!ltv || !refs,"validating params");
+    STRY(REF_delete(refs),"clearing any refs");
+
+    char *data=ltv->data;
+    int len=ltv->len;
+
+    int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
+
+    int name() { return series(data,len,NULL,".[",NULL); }
+    int val()  { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
+    int sep()  { return series(data,len,".",NULL,NULL);  }
+
+    unsigned tlen;
+    REF *ref=NULL;
+
+    while (len) { // parse ref keys
+        // parse name (mandatory)
+        STRY(!(tlen=name()),"parsing ref name");
+        STRY(!(ref=REF_new(data,tlen)),"allocating name ref");
+        STRY(!CLL_put(refs,&ref->lnk,HEAD),"enqueing name ref");
+        advance(tlen);
+
+        // parse vals (optional)
+        while ((tlen=val()))
+            STRY(!LTV_enq(&ref->keys,LTV_new(data+1,tlen-2,0),TAIL),"enqueueing val key");
+
+        // if there's anything left, it has to be a separator
+        if (len)
+            STRY(advance(sep())==1,"parsing sep");
+    }
+
+    done:
+    return status;
+}
+
+
+int REF_delete(CLL *refs) {
+    void release(CLL *lnk) { REF_free(lnk); }
+    CLL_release(refs,release);
+}
+
+void REF_dump(FILE *ofile,CLL *refs)
+{
+    void *dump(CLL *lnk)
+    {
+        REF *ref=(REF *) lnk;
+        print_ltvs(ofile,"root(",&ref->root,") ",1);
+        print_ltvs(ofile,"keys(",&ref->keys,") ",1);
+        fprintf(ofile,"lti(%x) ",ref->lti);
+        print_ltv(ofile,"ltv(",ref->ltvr?ref->ltvr->ltv:NULL,")\n",1);
+    }
+
+    CLL_map(refs,REV,dump); // then the rest
+}
+
+
+int REF_resolve(CLL *refs,LTV *root,int insert)
+{
+    int status=0;
+
+    LTV *name,*val;
+    int reverse;
+    int resolve_keys(REF *ref) {
+        int status=0;
+        LTVR *ltvr=NULL;
+        STRY(!ref,"validating ref");
+        STRY(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,0,&ltvr)),"validating name key"); // name is first key (use get for ltvr)
+        reverse=series(name->data,1,NULL,"-",NULL);
+        val=(LTV *) CLL_next(&ref->keys,&ltvr->lnk,FWD); // val will be next key
+        done:
+        return status;
+    }
+
+#if 0
+    void *resolve(CLL *lnk) { // create and/or fill in ref from scratch, return
+        int status=0;
+        REF *ref=(REF *) lnk;
+        LTI *lti=NULL;
+        LTV *ltv;
+        LTVR *ltvr;
+        STRY(!root,"validating root");
+        STRY(!ref,"validating ref");
+        STRY(!resolve_keys(ref),"resolving ref keys");
+        if (CLL_EMPTY(&ref->root))
+            STRY(!LTV_enq(&ref->root,cur_root,HEAD),"enqueueing lti root");
+        if (root->flags&LT_CVAR) {
+            // process CVAR
+        }
+        else {
+            if (!ref->lti) {
+                for (lti=LTI_next(ref->lti); lti && fnmatch_len(name->data+reverse,name->len-reverse,lti->name,-1); lti=LTI_next(lti)) {}
+                ref->lti=lti;
+            }
+            if (ref->lti && CLL_EMPTY(&ref->ltvs)) {
+                char *match=/*val_ltv?val_ltv->data:*/NULL;
+                int matchlen=/*val_ltv?-1:*/0;
+                if ((ltv=LTV_get(&ref->lti->ltvs,KEEP,reverse,match,matchlen,&ref->ltvr)))
+                    LTV_enq(&ref->ltvs,ltv,HEAD);
+            }
+        }
+        done:
+        return cur_root=ltv; // stash for next go-around
+
+
+/*
 void *ref_get(TOK *ops_tok,int insert,LTV *origin)
 {
     int status=0;
@@ -493,7 +674,7 @@ void *ref_get(TOK *ops_tok,int insert,LTV *origin)
                     goto done;
                 if (acc_tok->ref) {
                     acc_tok->ref->lti=*lti;
-                    LTV_enq(&acc_tok->ref->lti_parent,(*ltv),HEAD); // record to be able to free lti if empty
+                    LTV_enq(&acc_tok->ref->root,(*ltv),HEAD); // record to be able to free lti if empty
                 }
                 else
                     STRY(!(acc_tok->ref=REF_new(*lti)),"allocating ref");
@@ -550,135 +731,23 @@ void *ref_get(TOK *ops_tok,int insert,LTV *origin)
     TOK *ref_tail=(TOK *) listree_traverse(origin,descend,NULL);
     return status?NULL:ref_tail;
 }
-
-
-
-
-//////////////////////////////////////////////////
-// REPL Refs
-//////////////////////////////////////////////////
-
-CLL ref_repo;
-int ref_count=0;
-
-REF *REF_new(LTI *lti);
-void REF_free(REF *ref);
-
-REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
-REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
-REF *reftail(CLL *cll)          { return (REF *) CLL_get(cll,KEEP,TAIL); }
-
-REF *REF_new()
-{
-    static CLL *repo=NULL;
-    if (!repo) repo=CLL_init(&ref_repo);
-
-    REF *ref=NULL;
-    if (len && ((ref=refpop(repo)) || ((ref=NEW(REF)) && CLL_init(&ref->lnk))))
-    {
-        CLL_init(&ref->keys);
-        CLL_init(&ref->lti_parent);
-        ref->lti=NULL;
-        ref->ltvr=NULL;
-        CLL_init(&ref->ltvs);
-
-        ref_count++;
-    }
-    return ref;
-}
-
-void REF_free(REF *ref)
-{
-    if (!ref) return;
-    CLL_cut(&ref->lnk); // take it out of any list it's in
-
-    CLL_release(&ref->keys,LTVR_release);
-    LTV *parent=LTV_peek(&ref->lti_parent,HEAD);
-    if (parent && ref->lti && CLL_EMPTY(&ref->lti.ltvs)) // if LTI empty and pruneable
-        RBN_release(&parent->sub.ltis,&ref->lti.rbn,LTI_release); // prune it
-    CLL_release(&ref->lti_parent,LTVR_release);
-    ref->lti=NULL;
-    ref->ltvr=NULL;
-    CLL_release(&ref->ltvs,LTVR_release);
-
-    refpush(&ref_repo,ref);
-    ref_count--;
-}
-
-//////////////////////////////////////////////////
-// API
-//////////////////////////////////////////////////
-
-int LT_resolve(char *data,int len,LTV *root,int insert,CLL *refs)
-{
-    int wildcard(LTV *key) { series(key->data,key->len,NULL,"*?",NULL) < key->len; }
-
-    int parse()
-    {
-        int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
-
-        int name() { return series(data,len,NULL,".[",NULL); }
-        int val()  { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
-        int sep()  { return series(data,len,".",NULL,NULL);  }
-
-
-        int status=0;
-        unsigned flags,tlen;
-        REF *ref;
-
-        while (len) {
-            ref=NULL;
-
-            // parse name (mandatory)
-            STRY(!(tlen=name()),"parsing ref name");
-            STRY(!(ref=CLL_put(refs,REF_new(),HEAD)),"enqueing ref");
-            STRY(!LTV_enq(&ref->keys,LTV_new(data,tlen,0),TAIL),"enqueueing name key");
-            advance(tlen);
-
-            // parse vals (optional)
-            while ((tlen=val()))
-                STRY(!LTV_enq(&ref->keys,LTV_new(data+1,tlen-2,0),TAIL),"enqueueing val key");
-
-            // if there's anything left, it has to be a separator
-            if (len)
-                STRY(advance(sep())==1),"parsing ref sep");
-        }
-
-        done:
-        return status;
-    }
-
-    LTV *name,*val;
-    int reverse;
-    int resolve_keys(REF *ref) {
-        int status=0;
-        STRY(!ref,"validating ref");
-        STRY(!(name=LTV_peek(&ref->keys,HEAD)),"validating name key"); // name is first key
-        reverse=series(name->data,1,NULL,"-",NULL);
-        ltv_val=CLL_next(&ref->keys,&ltv->name.lnk,FWD); // val will be next key
-        done:
-        return status;
-    }
-
-    LTV *ref_resolve(REF *ref,LTV *root) { // create and/or fill in ref from scratch, return
-        int status=0;
-        STRY(!root,"validating root");
-        STRY(!resolve_keys(ref),"resolving ref keys");
-
-        done: return status;
+*/
     }
 
     void *getnext(CLL *lnk) {
         int status=0;
         REF *ref=(REF *) lnk;
 
-        STRY(resolve_keys(ref),"resolving ref keys");
+        // FIXME
+        return NULL;
 
+        // start from head and reset refs that don't have nexts... return the ref that DOES have a next.
+/*
         LTVR *ltvr=NULL;
         if (ref->lti) {
             LTV *ref_ltv=NULL;
             LTI *lti=NULL;
-            ref_ltv=LTV_peek(&ref_head->ltvs,HEAD);
+            ref_ltv=LTV_peek(&ref->ltvs,HEAD);
             for (lti=LTI_next(ref->lti); lti && fnmatch_len(ref_ltv->data,ref_ltv->len,lti->name,-1); lti=LTI_next(lti)) {}
             if (lti) {
                 TOK_freeref(ref_head);
@@ -691,25 +760,41 @@ int LT_resolve(char *data,int len,LTV *root,int insert,CLL *refs)
             ref->ltvr=ltvr;
             return ref_tail;
         }
+*/
+        STRY(!get(ref),"resolving any unresolved refs");
 
         done:
-        return status?(REF_free(ref),NULL):ref;
+        return ref->lti?ref:NULL; // NULL means keep looking
+    }
+#endif
+
+    int ascend() { return 0; }
+    int descend() { return 0; }
+
+    STRY (!refs || !root,"validating arguments");
+    REF_dump(stdout,refs);
+
+    REF *ref=NULL;
+    STRY(!(ref=REF_HEAD(refs)),"peeking into refs");
+
+    // reset if starting from a new root
+    if (root && LTV_peek(&ref->root,HEAD)!=root) {
+        CLL_map(refs,FWD,REF_reset);
+        LTV_enq(&ref->root,root,HEAD);
     }
 
-    if (CLL_EMPTY(refs))
-        STRY(parse(),"parsing reference");
-    else
-        TRYCATCH(!CLL_map(refs,getnext,FWD),-1,done,"performing getnext"); // if no next, refs will be empty
-
-    if (!CLL_EMPTY(refs))
-        TRYCATCH(!CLL_map(refs,get,REV),-1,done,"performing getnext"); // if no next, refs will be empty
+    STRY(ascend(),"ascending refs");
+    STRY(descend(),"descending refs");
+    REF_dump(stdout,refs);
 
     done:
-    return status?NULL:ref_tail;
+    return status;
 }
 
 
-int LT_release(CLL *refs) {
-    void REF_release(CLL *lnk) { REF_free((REF *) lnk); }
-    CLL_release(refs,REF_release);
+int REF_iterate(CLL *refs)
+{
+    int status=-1;
+    done:
+    return status;
 }

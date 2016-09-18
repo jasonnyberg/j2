@@ -520,9 +520,9 @@ void *REF_reset(CLL *lnk) {
     LTV *root=LTV_peek(&ref->root,HEAD);
     if (root && ref->lti && CLL_EMPTY(&ref->lti->ltvs)) // if LTI empty and pruneable
         RBN_release(&root->sub.ltis,&ref->lti->rbn,LTI_release); // prune it
-    CLL_release(&ref->root,LTVR_release);
     ref->lti=NULL;
     ref->ltvr=NULL;
+    CLL_release(&ref->root,LTVR_release);
 }
 
 void REF_free(CLL *lnk)
@@ -588,7 +588,7 @@ void REF_dump(FILE *ofile,CLL *refs)
     void *dump(CLL *lnk)
     {
         REF *ref=(REF *) lnk;
-        print_ltvs(ofile,"root(",&ref->root,") ",1);
+        print_ltvs(ofile,"root(",&ref->root,")\n",1);
         print_ltvs(ofile,"keys(",&ref->keys,") ",1);
         fprintf(ofile,"lti(%x) ",ref->lti);
         print_ltv(ofile,"ltv(",ref->ltvr?ref->ltvr->ltv:NULL,")\n",1);
@@ -602,12 +602,11 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
 {
     int status=0;
 
-    LTV *name,*val;
-    int reverse;
-    int resolve_keys(REF *ref) {
+    int resolve_key(REF *ref,LTV *root) {
         int status=0;
+        LTV *name=NULL;
         LTVR *ltvr=NULL;
-        STRY(!ref,"validating ref");
+        STRY(!ref || !root,"validating args");
         STRY(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,0,&ltvr)),"validating name key"); // name is first key (use get for ltvr)
         reverse=series(name->data,1,NULL,"-",NULL);
         val=(LTV *) CLL_next(&ref->keys,&ltvr->lnk,FWD); // val will be next key
@@ -772,20 +771,19 @@ void *ref_get(TOK *ops_tok,int insert,LTV *origin)
     int descend() { return 0; }
 
     STRY (!refs || !root,"validating arguments");
+
     REF_dump(stdout,refs);
 
     REF *ref=NULL;
     STRY(!(ref=REF_HEAD(refs)),"peeking into refs");
 
-    // reset if starting from a new root
+    // if root changes, reset refs
     if (root && LTV_peek(&ref->root,HEAD)!=root) {
         CLL_map(refs,FWD,REF_reset);
         LTV_enq(&ref->root,root,HEAD);
     }
 
-    STRY(ascend(),"ascending refs");
-    STRY(descend(),"descending refs");
-    REF_dump(stdout,refs);
+    // descend refs
 
     done:
     return status;
@@ -794,7 +792,12 @@ void *ref_get(TOK *ops_tok,int insert,LTV *origin)
 
 int REF_iterate(CLL *refs)
 {
-    int status=-1;
+    int status=0;
+
+    // ascend refs
+
+    STRY(REF_resolve(refs,NULL),"resolving iterated refs");
+
     done:
     return status;
 }

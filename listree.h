@@ -91,7 +91,7 @@ extern LTI *RBR_find(RBR *rbr,char *name,int len,int *insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
-extern LTV *LTV_dup(LTV *ltv);
+extern LTI *LTV_lookup(LTV *root,LTV *name); // find lti matching "name" in root
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
 extern LTVR *LTVR_new(LTV *ltv);
@@ -127,7 +127,9 @@ extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
-extern LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
+extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); // 
+
+extern LTV *LTV_dup(LTV *ltv);
 
 extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvs,int end);
@@ -160,6 +162,7 @@ extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 extern void REF_dump(FILE *ofile,CLL *refs);
 extern int REF_resolve(CLL *refs,LTV *root,int insert);
 extern int REF_iterate(CLL *refs);
+extern int REF_assign(CLL *refs,LTV *ltv);
 
 #define REF_HEAD(cll) ((REF *) CLL_HEAD(cll))
 #define REF_TAIL(cll) ((REF *) CLL_TAIL(cll))

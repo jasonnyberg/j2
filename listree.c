@@ -117,16 +117,6 @@ void LTV_free(LTV *ltv)
     }
 }
 
-LTV *LTV_dup(LTV *ltv)
-{
-    if (!ltv) return NULL;
-
-    int flags=ltv->flags & ~LT_FREE;
-    if (!(flags&LT_IMM))
-        flags |= LT_DUP;
-    return LTV_new(ltv->data,ltv->len,flags);
-}
-
 void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
 {
     RBN *rbn=NULL,*next;
@@ -321,18 +311,17 @@ LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
     return NULL;
 }
 
-LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
+LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
 {
     void *ltv_match(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
-        if (!ltvr || !ltvr->ltv || ltvr->ltv->flags&LT_IMM || ltvr->ltv->len!=matchlen || memcmp(ltvr->ltv->data,match,matchlen)) return NULL;
+        if (!ltvr || !ltvr->ltv || ltvr->ltv->flags&LT_IMM || fnmatch_len(ltvr->ltv->data,ltvr->ltv->len,match->data,match->len)) return NULL;
         else return pop?CLL_cut(lnk):lnk;
     }
 
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
-    if (match && matchlen<0) matchlen=strlen(match);
-    if (!(ltvr=(LTVR *) match?CLL_map(ltvs,end,ltv_match):CLL_get(ltvs,pop,end)))
+    if (!(ltvr=(LTVR *) match?CLL_mapfrom(ltvs,ltvr_ret?*ltvr_ret:NULL,dir,ltv_match):CLL_get(ltvs,pop,dir)))
         return NULL;
     ltv=ltvr->ltv;
     if (pop) {
@@ -343,9 +332,19 @@ LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr_ret)
     return ltv;
 }
 
+LTV *LTV_dup(LTV *ltv)
+{
+    if (!ltv) return NULL;
+
+    int flags=ltv->flags & ~LT_FREE;
+    if (!(flags&LT_IMM))
+        flags |= LT_DUP;
+    return LTV_new(ltv->data,ltv->len,flags);
+}
+
 LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put(ltvs,ltv,end,NULL); }
-LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,0,NULL); }
-LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,0,NULL); }
+LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,NULL); }
+LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,NULL); }
 
 int LTV_wildcard(LTV *ltv)
 {
@@ -597,21 +596,50 @@ void REF_dump(FILE *ofile,CLL *refs)
     CLL_map(refs,REV,dump); // then the rest
 }
 
+LTI *LTV_lookup(LTV *root,LTV *name,int *insert)
+{
+    int status=0;
+    LTI *lti=NULL;
+    STRY(!root || !name,"validating arguments");
+
+    if (LTV_wildcard(name)) {
+        for (lti=LTI_first(ref->lti); lti && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti)) {}
+        ref->lti=lti;
+    } else {
+        STRY(!(lti=(*lti)=RBR_find(&root->sub.ltis,name->data,name->len,insert)),"looking up lti");
+    }
+    done:
+    return status?NULL:lti;
+}
 
 int REF_resolve(CLL *refs,LTV *root,int insert)
 {
     int status=0;
+    LTV *cur_root=root;
 
     int resolve_key(REF *ref,LTV *root) {
         int status=0;
         LTV *name=NULL;
         LTVR *ltvr=NULL;
         STRY(!ref || !root,"validating args");
-        STRY(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,0,&ltvr)),"validating name key"); // name is first key (use get for ltvr)
-        reverse=series(name->data,1,NULL,"-",NULL);
+        STRY(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&ltvr)),"validating name key"); // name is first key (use get for ltvr)
         val=(LTV *) CLL_next(&ref->keys,&ltvr->lnk,FWD); // val will be next key
+
+        if (root->flags&LT_CVAR) {
+            // process CVAR
+        } else {
+            if (!ref->lti) {
+                int inserted=insert;
+                STRY(!(ref->lti=LTV_lookup(root,name,&inserted)),"looking up lti");
+            }
+            if (ref->lti && !ref->ltvr) {
+                char *match=val?val->data:NULL;
+                int matchlen=val?val->len:0;
+                STRY(!(LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,match,matchlen,&ref->ltvr),"retrieving ltvr");
+            }
+        }
         done:
-        return status;
+        return !(cur_root=ltv); // stash for next go-around
     }
 
 #if 0
@@ -626,24 +654,6 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
         STRY(!resolve_keys(ref),"resolving ref keys");
         if (CLL_EMPTY(&ref->root))
             STRY(!LTV_enq(&ref->root,cur_root,HEAD),"enqueueing lti root");
-        if (root->flags&LT_CVAR) {
-            // process CVAR
-        }
-        else {
-            if (!ref->lti) {
-                for (lti=LTI_next(ref->lti); lti && fnmatch_len(name->data+reverse,name->len-reverse,lti->name,-1); lti=LTI_next(lti)) {}
-                ref->lti=lti;
-            }
-            if (ref->lti && CLL_EMPTY(&ref->ltvs)) {
-                char *match=/*val_ltv?val_ltv->data:*/NULL;
-                int matchlen=/*val_ltv?-1:*/0;
-                if ((ltv=LTV_get(&ref->lti->ltvs,KEEP,reverse,match,matchlen,&ref->ltvr)))
-                    LTV_enq(&ref->ltvs,ltv,HEAD);
-            }
-        }
-        done:
-        return cur_root=ltv; // stash for next go-around
-
 
 /*
 void *ref_get(TOK *ops_tok,int insert,LTV *origin)
@@ -798,6 +808,18 @@ int REF_iterate(CLL *refs)
 
     STRY(REF_resolve(refs,NULL),"resolving iterated refs");
 
+    done:
+    return status;
+}
+
+int REF_assign(CLL *refs,LTV *ltv)
+{
+    int status=0;
+    REF *head=NULL;
+    STRY(!refs || !ltv,"validating parameters");
+    STRY(!(head=REF_HEAD(refs)),"getting refs head");
+    STRY(!head->lti,"validating ref lti");
+    STRY(!LTV_put(&head->lti->ltvs,tos,head->reverse,&head->ltvr),"adding ltv to ref");
     done:
     return status;
 }

@@ -487,9 +487,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *tos=NULL;
         STRY(resolve(1),"resolving ref for assign");
-        STRY(!(ref_head && ref_head->lti),"validating ref_head, ref_head->lti");
-        STRY(!(tos=LTV_deq(&context->stack,TAIL)),"popping anon");
-        STRY(!LTV_enq(&ref_head->lti->ltvs,tos,ref_head->reverse),"adding anon to lti");
+        STRY(!(tos=LTV_peek(&context->stack,TAIL)),"peeking anon");
+        STRY(!REF_assign(&ref_head,tos),"assigning anon to ref");
+        LTV_deq(&context->stack,TAIL); // succeeded, detach anon from stack
         done:
         return status;
     }

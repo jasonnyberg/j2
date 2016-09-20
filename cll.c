@@ -44,4 +44,4 @@ void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,void *(*op)(CLL *lnk)) { // map 
         sib=next);
     return rval;
 }
-void *CLL_map(CLL *sentinel,CLL *ff,int dir,void *(*op)(CLL *lnk)) { return CLL_mapfrom(sentinel,NULL,dir,op); }
+void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk)) { return CLL_mapfrom(sentinel,NULL,dir,op); }

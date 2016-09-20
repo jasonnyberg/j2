@@ -87,11 +87,11 @@ typedef void *(*RB_OP)(RBN *rbn);
 extern RBR *RBR_init(RBR *rbr);
 extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern LTI *RBR_find(RBR *rbr,char *name,int len,int *insert);
+extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
-extern LTI *LTV_lookup(LTV *root,LTV *name); // find lti matching "name" in root
+extern LTI *LTV_lookup(LTV *root,LTV *name,int insert); // find lti matching "name" in root
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
 extern LTVR *LTVR_new(LTV *ltv);
@@ -121,13 +121,13 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 #define LTV_NIL  LTV_new(NULL,0,LT_NIL)
 #define LTV_NULL LTV_new(NULL,0,LT_NULL)
 
-extern LTI *LTV_first(LTV *ltv);
-extern LTI *LTV_last(LTV *ltv);
+extern LTI *LTI_first(LTV *ltv);
+extern LTI *LTI_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
-extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); // 
+extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); //
 
 extern LTV *LTV_dup(LTV *ltv);
 

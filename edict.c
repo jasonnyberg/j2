@@ -488,7 +488,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         LTV *tos=NULL;
         STRY(resolve(1),"resolving ref for assign");
         STRY(!(tos=LTV_peek(&context->stack,TAIL)),"peeking anon");
-        STRY(!REF_assign(&ref_head,tos),"assigning anon to ref");
+        STRY(REF_assign(&ref_head,tos),"assigning anon to ref");
         LTV_deq(&context->stack,TAIL); // succeeded, detach anon from stack
         done:
         return status;
@@ -619,7 +619,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         }
     }
 
-    if (!REF_iterate(&ref_tok->children))
+    if (wildcard && REF_iterate(&ref_tok->children))
         goto iterate;
 
     if (!rerun)

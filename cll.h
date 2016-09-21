@@ -42,6 +42,7 @@ extern CLL *CLL_next(CLL *lst,CLL *lnk,int end); // return next (or prev) lnk in
 
 // calls op(lnk,data) for each lnk in lst until op returns non-zero; returns what last op returns
 typedef void *(*CLL_OP)(CLL *lnk);
+extern void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,CLL_OP op); // map with fast-forward
 extern void *CLL_map(CLL *sentinel,int dir,CLL_OP op);
 
 #define CLL_SIB(x,end) ((x)->lnk[(end)!=0])

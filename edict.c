@@ -80,15 +80,12 @@ typedef enum {
     TOK_LIT      =1<<0x02,
     TOK_OPS      =1<<0x03,
     TOK_REF      =1<<0x04,
-    TOK_REV      =1<<0x05, // reverse
-    TOK_WC       =1<<0x06  // wildcard
 } TOK_FLAGS;
 
 typedef struct TOK {
     CLL lnk;
     CLL ltvs;
-    REF *ref;
-    CLL subtoks;
+    CLL children;
     TOK_FLAGS flags;
 } TOK;
 
@@ -106,7 +103,7 @@ typedef struct CONTEXT {
     CLL lnk;
     EDICT *edict;
     CLL dict;  // cll of ltvr
-    CLL anons; // cll of ltvr
+    CLL stack; // cll of ltvr (grows at tail)
     CLL toks;  // cll of tok
 } CONTEXT;
 
@@ -121,7 +118,7 @@ void CONTEXT_free(CONTEXT *context);
 
 TOK *tokpush(CLL *cll,TOK *tok) { return (TOK *) CLL_put(cll,&tok->lnk,HEAD); }
 TOK *tokpop(CLL *cll)           { return (TOK *) CLL_get(cll,POP,HEAD); }
-TOK *tokpeep(CLL *cll)          { return (TOK *) CLL_get(cll,KEEP,HEAD); }
+TOK *tokpeek(CLL *cll)          { return (TOK *) CLL_get(cll,KEEP,HEAD); }
 
 TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
 {
@@ -132,8 +129,7 @@ TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
     if (ltv && (tok=tokpop(repo)) || ((tok=NEW(TOK)) && CLL_init(&tok->lnk)))
     {
         CLL_init(&tok->ltvs);
-        CLL_init(&tok->subtoks);
-        tok->ref=NULL;
+        CLL_init(&tok->children);
         tok->flags=flags;
         LTV_enq(&tok->ltvs,ltv,HEAD);
         tok_count++;
@@ -141,27 +137,17 @@ TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
     return tok;
 }
 
-void *TOK_freeref(TOK *tok)
-{
-    REF_free(tok->ref);
-    return tok->ref=NULL;
-}
-
-void TOK_freerefs(TOK *tok)
-{
-    if (!tok) return;
-    void *op(CLL *lnk) { return TOK_freeref((TOK *) lnk); }
-    CLL_map(&tok->subtoks,FWD,op); // see descend!
-}
-
 void TOK_free(TOK *tok)
 {
     if (!tok) return;
+    void release(CLL *lnk) { TOK_free((TOK *) lnk); }
     CLL_cut(&tok->lnk); // take it out of any list it's in
-    TOK *subtok;
-    while ((subtok=tokpop(&tok->subtoks))) TOK_free(subtok);
-    if (tok->ref) REF_free(tok->ref);
     CLL_release(&tok->ltvs,LTVR_release);
+    if (tok->flags&TOK_REF) // ref tok children are LT REFs
+        REF_delete(&tok->children);
+    else
+        CLL_release(&tok->children,release);
+
     tokpush(&tok_repo,tok);
     tok_count--;
 }
@@ -170,34 +156,34 @@ TOK *TOK_expr(char *buf,int len) { return TOK_new(TOK_EXPR,LTV_new(buf,len,LT_NO
 
 void show_tok_flags(FILE *ofile,TOK *tok)
 {
-    if (tok->flags&TOK_REV)     fprintf(ofile,"REV ");
-    if (tok->flags&TOK_WC)      fprintf(ofile,"WC ");
     if (tok->flags&TOK_FILE)    fprintf(ofile,"FILE ");
     if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
-    if (tok->flags&TOK_ATOM)    fprintf(ofile,"ATOM ");
-    if (tok->flags&TOK_OPS)     fprintf(ofile,"OPS ");
     if (tok->flags&TOK_LIT)     fprintf(ofile,"LIT ");
+    if (tok->flags&TOK_OPS)     fprintf(ofile,"OPS ");
     if (tok->flags&TOK_REF)     fprintf(ofile,"REF ");
-    if (tok->flags==TOK_NONE)   fprintf(ofile,"_ ");
 }
 
 void show_tok(FILE *ofile,char *pre,TOK *tok,char *post) {
     if (pre) fprintf(ofile,"%s",pre);
     show_tok_flags(ofile,tok);
     print_ltvs(ofile,"",&tok->ltvs,"",1);
-    show_toks(ofile,"(",&tok->subtoks,")");
+    if (tok->flags&TOK_REF)
+        REF_dump(ofile,&tok->children);
+    else
+        show_toks(ofile," (",&tok->children,")");
     if (post) fprintf(ofile,"%s",post);
     fflush(ofile);
 }
 
 void show_toks(FILE *ofile,char *pre,CLL *toks,char *post)
 {
-    void *op(CLL *lnk) { show_tok(ofile,NULL,(TOK *) lnk,NULL); return NULL; }
+    void *op(CLL *lnk) { show_tok(ofile,"",(TOK *) lnk,""); return NULL; }
     if (toks) {
         if (pre) fprintf(ofile,"%s",pre);
         CLL_map(toks,FWD,op);
         if (post) fprintf(ofile,"%s",post);
     }
+    fflush(ofile);
 }
 
 //////////////////////////////////////////////////
@@ -219,7 +205,7 @@ CONTEXT *CONTEXT_new(EDICT *edict)
     STRY(!(context=NEW(CONTEXT)),"allocating context");
     TRYCATCH(!(context->edict=edict),-1,release_context,"assigning context's edict");
     CLL_init(&context->dict);
-    CLL_init(&context->anons);
+    CLL_init(&context->stack);
     CLL_init(&context->toks);
 
     TRYCATCH(!LTV_enq(&context->dict,edict->root,HEAD),-1,release_context,"pushing context->dict root");
@@ -240,7 +226,7 @@ void CONTEXT_free(CONTEXT *context)
     if (!context) return;
     CLL_cut(&context->lnk); // remove from any list it's in
     void tok_free(CLL *lnk) { TOK_free((TOK *) lnk); }
-    CLL_release(&context->anons,LTVR_release);
+    CLL_release(&context->stack,LTVR_release);
     CLL_release(&context->toks,tok_free);
     DELETE(context);
 }
@@ -264,9 +250,9 @@ int edict_graph(FILE *ofile,EDICT *edict)
             //fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
             fprintf(ofile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
             ltvs2dot(ofile,&tok->ltvs,0,NULL);
-            if (CLL_HEAD(&tok->subtoks)) {
-                fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->subtoks);
-                descend_toks(&tok->subtoks,"Subtoks");
+            if (CLL_HEAD(&tok->children)) {
+                fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->children);
+                descend_toks(&tok->children,"Subtoks");
             }
         }
 
@@ -278,8 +264,8 @@ int edict_graph(FILE *ofile,EDICT *edict)
     void show_context(CONTEXT *context) {
         int halt=0;
         fprintf(ofile,"\"Context %x\"\n",context);
-        fprintf(ofile,"\"A%2$x\" [label=\"Anons\"]\n\"Context %1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->anons);
-        ltvs2dot(ofile,&context->anons,0,NULL);
+        fprintf(ofile,"\"A%2$x\" [label=\"Stack\"]\n\"Context %1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->stack);
+        ltvs2dot(ofile,&context->stack,0,NULL);
         fprintf(ofile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
         ltvs2dot(ofile,&context->dict,0,NULL);
         fprintf(ofile,"\"Context %x\" -> \"%x\"\n",context,&context->toks);
@@ -327,9 +313,8 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 // parser
 //////////////////////////////////////////////////
 
-#define OPS "#@/!&|="
+#define OPS "#$@/!&|="
 #define CTX "<>{}()"
-#define ATOM_END (WHITESPACE OPS CTX)
 
 int parse_expr(TOK *tok)
 {
@@ -341,12 +326,10 @@ int parse_expr(TOK *tok)
     int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
     TOK *append(TOK *tok,int type,char *data,int len,int adv) {
-        if (type==TOK_REF && series(data,len,NULL,"*?",NULL)<len)
-            type|=TOK_WC; // wildcard test
         TOK *subtok=TOK_new(type,LTV_new(data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
         if (!subtok) return NULL;
         advance(adv);
-        return (TOK *) CLL_put(&tok->subtoks,&subtok->lnk,TAIL);
+        return (TOK *) CLL_put(&tok->children,&subtok->lnk,TAIL);
     }
 
     STRY(!tok,"testing for null tok");
@@ -358,20 +341,18 @@ int parse_expr(TOK *tok)
     len=tokval->len;
 
     while (len) {
-        if (*data=='\\') // escape
-            advance(1);
-        else if (tlen=series(data,len,WHITESPACE,NULL,NULL))
-            advance(tlen);
+        if (tlen=series(data,len,WHITESPACE,NULL,NULL)) // whitespace
+            advance(tlen); // TODO: A) embed WS tokens, B) stash tail WS token at start of ops (discard intermediates), C) reinsert WS when ops done
         else if (tlen=series(data,len,NULL,NULL,"[]")) // lit
             STRY(!append(tok,TOK_LIT, data+1,tlen-2,tlen),"appending lit");
-        else if (tlen=series(data,len,CTX,NULL,NULL)) // special, non-ganging op, no balance!
+        else if (tlen=series(data,len,CTX,NULL,NULL)) // special, non-ganging op
             STRY(!append(tok,TOK_OPS,data,1,1),"appending %c",*data);
-        else {
+        else { // ANYTHING else is ops and/or ref
             TOK *ops=NULL;
-            if (tlen=series(data,len,OPS,NULL,NULL))
-                STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
-            if (tlen=series(data,len,NULL,ATOM_END,"[]"))
-                STRY(!append(ops?ops:tok,TOK_REF,data,tlen,tlen)),"appending ref");
+            tlen=series(data,len,OPS ".",NULL,NULL); // ops
+            STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
+            tlen=series(data,len,NULL,WHITESPACE OPS CTX,"[]"); // ref
+            STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
         }
     }
 
@@ -385,165 +366,142 @@ int parse_expr(TOK *tok)
 
 int tok_eval(CONTEXT *context,TOK *tok);
 
-void *ref_eval(CONTEXT *context,TOK *ops_tok,int insert)
-{
-    void *stack_resolve(CLL *lnk) {
-        if (!lnk) return NULL;
-        LTVR *ltvr=(LTVR *) lnk;
-        return ref_get(ops_tok,insert,ltvr->ltv);
-    }
 
-    return CLL_map(&context->dict,FWD,stack_resolve);
-}
-
-int ref_eval(CONTEXT *context,TOK *ref_tok)
-{
-
-}
-
-int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
+int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 {
     int status=0;
     int rerun=0; // discard ops by default
 
     LTV *ltv=NULL; // optok's data
+
     STRY(!(ltv=LTV_peek(&ops_tok->ltvs,HEAD)),"getting optok data");
     char *ops=(char *) ltv->data;
     int opslen=ltv->len;
 
-    TOK *ref_head=(TOK *) CLL_HEAD(&ops_tok->subtoks);
-    TOK *ref_tail=(TOK *) CLL_TAIL(&ops_tok->subtoks);
+    int relative=series(ops,opslen,NULL,".",NULL)<opslen; // ops contains ".", i.e. relative deref
+    int assignment=series(ops,opslen,NULL,"@",NULL)<opslen; // ops contains "@", i.e. assignment
+    int wildcard=0;
 
-    int deref(int getnext) {
-        void *ref_iterate() { return (ref_tail && ref_tail->ref)?ref_getnext(ops_tok):ref_eval(context,ops_tok,0); }
+    TOK *ref_tok=NULL;
+    REF *ref_head=NULL;
+    REF *ref_tail=NULL;
 
+    int resolve(int insert) { // may need to insert after a failed resolve!
         int status=0;
-        LTV *ltv=NULL;
-        STRY(!ref_head,"validating ref present");
-        TOK *ref_tail=(TOK *) (getnext?ref_iterate():ref_eval(context,ops_tok,0));
-        if (ref_tail && ref_tail->ref && (ltv=LTV_peek(&ref_tail->ref->ltvs,HEAD)))
-            STRY(!LTV_enq(&context->anons,ltv,HEAD),"pushing ltv to anons");
-        else
-            status=CONDITIONAL_BAIL; //  ltv=LTV_NIL;
-        done:
-        return status;
-    }
-
-
-    int readfrom()  {
-        int status=0;
-        LTV *ltv_ifilename=NULL;
-        STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping import filename");
-        char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
-        FILE *ifile=strncmp("stdin",ifilename,5)?fopen(ifilename,"r"):stdin;
-        if (ifile) {
-            TOK *file_tok=TOK_new(TOK_FILE,LTV_new((void *) ifile,sizeof(FILE *),LT_IMM));
-            STRY(!tokpush(&context->toks,file_tok),"pushing file");
+        STRY(!ref_tok || !ref_head,"validating ref tok");
+        if (relative)
+            STRY(REF_resolve(&ref_tok->children,LTV_peek(&context->stack,TAIL),insert),"performing relative resolve");
+        else {
+            void *dict_resolve(CLL *lnk) { return !REF_resolve(&ref_tok->children,((LTVR *) lnk)->ltv,insert)?lnk:NULL; }
+            STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
         }
-        myfree(ifilename,strlen(ifilename)+1);
-        LTV_release(ltv_ifilename);
         done:
         return status;
     }
-
-    int d2e() {
-        int status=0;
-        LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
-        STRY(!(ltv_ifilename=LTV_deq(&context->anons,HEAD)),"popping dwarf import filename");
-        STRY(!(ltv_ofilename=LTV_peek(&context->anons,HEAD)),"peeking edict export filename");
-        char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
-        char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
-        dwarf2edict(ifilename,ofilename);
-        myfree(ifilename,strlen(ifilename)+1);
-        myfree(ofilename,strlen(ofilename)+1);
-        LTV_release(ltv_ifilename);
-        done:
-        return status;
-    }
-
-    int cvar() {
-        int status=0;
-        LTV *type, *cvar;
-        STRY(!(type=LTV_deq(&context->anons,HEAD)),"popping type");
-        int size = 100; // TODO: figure this out
-        STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN | LT_BIN | LT_LIST)),"allocating cvar ltv"); // very special node!
-        STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
-        STRY(!LTV_enq(&context->anons,cvar,HEAD),"pushing cvar");
-        done:
-        return status;
-    }
-
-    int dump(char *label) {
-        int status=0;
-        TOK *ref_tail=NULL;
-        STRY(!(ref_tail=(TOK *) ref_eval(context,ops_tok,0)),"resolving tok for '#'");
-        STRY(!(ref_tail->ref && ref_tail->ref->lti),"validating ref_tail's ref, ref->lti");
-        CLL *ltvs=(ref_tail->ref->flags&REF_MATCH)?&ref_tail->ref->ltvs:&ref_tail->ref->lti->ltvs;
-        graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
-        print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
-        done:
-        return status;
-    }
-
 
     int special() { // handle special operations
+        int readfrom()  {
+            int status=0;
+            LTV *ltv_ifilename=NULL;
+            STRY(!(ltv_ifilename=LTV_deq(&context->stack,TAIL)),"popping import filename");
+            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
+            FILE *ifile=strncmp("stdin",ifilename,5)?fopen(ifilename,"r"):stdin;
+            if (ifile) {
+                TOK *file_tok=TOK_new(TOK_FILE,LTV_new((void *) ifile,sizeof(FILE *),LT_IMM));
+                STRY(!tokpush(&context->toks,file_tok),"pushing file");
+            }
+            myfree(ifilename,strlen(ifilename)+1);
+            LTV_release(ltv_ifilename);
+            done:
+            return status;
+        }
+
+        int d2e() {
+            int status=0;
+            LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
+            STRY(!(ltv_ifilename=LTV_deq(&context->stack,TAIL)),"popping dwarf import filename");
+            STRY(!(ltv_ofilename=LTV_peek(&context->stack,TAIL)),"peeking edict export filename");
+            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
+            char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
+            dwarf2edict(ifilename,ofilename);
+            myfree(ifilename,strlen(ifilename)+1);
+            myfree(ofilename,strlen(ofilename)+1);
+            LTV_release(ltv_ifilename);
+            done:
+            return status;
+        }
+
+        int cvar() {
+            int status=0;
+            LTV *type, *cvar;
+            STRY(!(type=LTV_deq(&context->stack,TAIL)),"popping type");
+            int size = 100; // TODO: figure this out
+            STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN | LT_BIN | LT_LIST)),"allocating cvar ltv"); // very special node!
+            STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
+            STRY(!LTV_enq(&context->stack,cvar,TAIL),"pushing cvar");
+            done:
+            return status;
+        }
+
+        int dump(char *label) {
+            int status=0;
+            resolve(0);
+            STRY(!(ref_head && ref_head->lti),"validating ref_head, ref_head->lti");
+            //CLL *ltvs=(ref_head->ref->flags&REF_MATCH)?&ref_head->ltvs:&ref_head->lti->ltvs;
+            CLL *ltvs=&ref_head->lti->ltvs;
+            graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
+            print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
+            done:
+            return status;
+        }
+
         int status=0;
         if (ref_head) {
-            LTV *ltv=NULL;
-            if ((ltv=LTV_peek(&ref_head->ltvs,HEAD))) {
-                if      (!strnncmp(ltv->data,ltv->len,"read",-1))   STRY(readfrom(),"starting input stream");
-                else if (!strnncmp(ltv->data,ltv->len,"d2e",-1))    STRY(d2e(),"converting dwarf to edict");
-                else if (!strnncmp(ltv->data,ltv->len,"cvar",-1))   STRY(cvar(),"creating cvar");
-                else STRY(dump((char *) ltv->data),"dumping named item");
+            LTV *key=NULL;
+            if ((key=LTV_peek(&ref_head->keys,HEAD))) {
+                if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
+                else if (!strnncmp(key->data,key->len,"d2e",-1))    STRY(d2e(),"converting dwarf to edict");
+                else if (!strnncmp(key->data,key->len,"cvar",-1))   STRY(cvar(),"creating cvar");
+                else STRY(dump((char *) key->data),"dumping named item");
             }
         } else {
             edict_graph_to_file("/tmp/jj.dot",context->edict);
-            print_ltvs(stdout,CODE_BLUE,&context->anons,CODE_RESET "\n",0);
+            print_ltvs(stdout,CODE_BLUE,&context->stack,CODE_RESET "\n",0);
         }
         done:
         return status;
     }
 
-    int deref_relative() { // deref from TOS (questionabie utilty right now)
+    int deref() {
         int status=0;
-        LTV *ltv=NULL;
-        STRY(!(ltv=LTV_peek(&context->anons,HEAD)),"peeking anon");
-        /// ???
-        done:
-        return status;
-    }
-
-    int deref_local() {
-        int status=0;
-        STRY(!ref_head,"validating ref present");
-        STRY(deref(0),"resolving dereference");
+        STRY(resolve(0),"resolving ref for deref");
+        if (ref_head->ltvr)
+            STRY(!LTV_enq(&context->stack,ref_head->ltvr->ltv,TAIL),"pushing resolved ref to stack");
+        else
+            STRY(!LTV_enq(&context->stack,LTV_dup(LTV_peek(&ref_tok->ltvs,HEAD)),TAIL),"pushing unresolved ref to stack");
         done:
         return status;
     }
 
     int assign() { // resolve refs needs to not worry about last ltv, just the lti is important.
         int status=0;
-        STRY(!ref_head,"validating ref present");
-        LTV *ltv=NULL;
-        TOK *ref_tail=NULL;
-        STRY(!(ltv=LTV_deq(&context->anons,HEAD)),"popping anon");
-        STRY(!(ref_tail=(TOK *) ref_eval(context,ops_tok,1)),"looking up reference for '@'");
-        STRY(!(ref_tail->ref && ref_tail->ref->lti),"validating ref_tail's ref, ref->lti");
-        STRY(!LTV_enq(&ref_tail->ref->lti->ltvs,ltv,ref_tail->flags&TOK_REV),"adding anon to lti");
+        LTV *tos=NULL;
+        STRY(resolve(1),"resolving ref for assign");
+        STRY(!(tos=LTV_peek(&context->stack,TAIL)),"peeking anon");
+        STRY(REF_assign(&ref_head,tos),"assigning anon to ref");
+        LTV_deq(&context->stack,TAIL); // succeeded, detach anon from stack
         done:
         return status;
     }
 
     int remove() {
         int status=0;
-        TOK *ref_tail=NULL;
         if (ref_head) {
-            TRYCATCH(!(ref_tail=(TOK *)  ref_eval(context,ops_tok,0)),0,done,"looking up reference for '/'");
-            TRYCATCH(!(ref_tail->ref) || !(ref_tail->ref->ltvr),0,done,"getting ref_tail ref ltvr");
-            LTVR_release(&ref_tail->ref->ltvr->lnk);
-            TOK_freeref(ref_tail);
+            STRY(resolve(0),"resolving ref for deref");
+            TRYCATCH(!(ref_head->ltvr),0,done,"getting ref_tail ref ltvr");
+            LTVR_release(&ref_head->ltvr->lnk);
         } else {
-            LTV_release(LTV_deq(&context->anons,HEAD));
+            LTV_release(LTV_deq(&context->stack,TAIL));
         }
         done:
         return status;
@@ -551,14 +509,14 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
 
     int stack_open() { // push anon onto the scope stack
         int status=0;
-        STRY(!LTV_enq(&context->dict,LTV_deq(&context->anons,HEAD),HEAD),"pushing anon scope");
+        STRY(!LTV_enq(&context->dict,LTV_deq(&context->stack,TAIL),HEAD),"pushing anon scope");
         done:
         return status;
     }
 
-    int scope_close() { // pop scope and push back onto anons
+    int scope_close() { // pop scope and push back onto stack
         int status=0;
-        STRY(!LTV_enq(&context->anons,LTV_deq(&context->dict,HEAD),HEAD),"popping anon scope");
+        STRY(!LTV_enq(&context->stack,LTV_deq(&context->dict,HEAD),TAIL),"popping anon scope");
         done:
         return status;
     }
@@ -574,7 +532,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
     int and() {
         int status=0;
         LTV *ltv=NULL;
-        STRY(!(ltv=LTV_peek(&context->anons,HEAD)),"peeking anon");
+        STRY(!(ltv=LTV_peek(&context->stack,TAIL)),"peeking at TOS");
         TRYCATCH(0!=(ltv->flags&LT_NIL),CONDITIONAL_BAIL,done,"testing for nil");
         done:
         return status;
@@ -583,7 +541,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
     int or() {
         int status=0;
         LTV *ltv=NULL;
-        STRY(!(ltv=LTV_peek(&context->anons,HEAD)),"peeking anon");
+        STRY(!(ltv=LTV_peek(&context->stack,TAIL)),"peeking anon");
         TRYCATCH(0==(ltv->flags&LT_NIL),CONDITIONAL_BAIL,done,"testing for non-nil");
         done:
         return status;
@@ -593,13 +551,12 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
         int status=0;
         LTV *lambda_ltv=NULL;
 
-        STRY(!(lambda_ltv=LTV_deq(&context->anons,HEAD)),"popping lambda"); // pop lambda
+        STRY(!(lambda_ltv=LTV_deq(&context->stack,TAIL)),"popping lambda"); // pop lambda
 
         if (!ref_head) {
             TOK *lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
             STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda");
-        }
-        else if (!deref(1)) { //something going on here, the last iteration fails to pop the lambda!!!!!
+        } /*  else if (!deref(1)) { //something going on here, the last iteration fails to pop the lambda!!!!!
             rerun=true;
 
             TOK *lambda_tok=TOK_new(TOK_LIT,lambda_ltv);
@@ -607,7 +564,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
 
             lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
             STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda"); // to exec now
-        }
+        } */
         else
             LTV_release(lambda_ltv);
         done:
@@ -625,12 +582,27 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
     // iterate over ops
     ////////////////////////////////////////////////////////////////////////////
 
-    for (int i=0;i<opslen;i++) {
+
+    ref_tok=tokpeek(&ops_tok->children);
+    if (ref_tok) {
+        LTV *ref_ltv=LTV_peek(&ref_tok->ltvs,HEAD);
+        wildcard=LTV_wildcard(ref_ltv);
+        STRY(assignment && wildcard,"testing for assignment-to-wildcard");
+        STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
+        ref_head=REF_HEAD(&ref_tok->children);
+        ref_tail=REF_TAIL(&ref_tok->children);
+    }
+
+    iterate:
+    if (!opslen && ref_head) // implied deref
+        STRY(deref(),"performing implied deref");
+    else for (int i=0;i<opslen;i++) {
         switch (ops[i]) {
             case '#': STRY(special(),       "evaluating special");        break;
+            case '$': STRY(deref(),         "evaluating deref");          break;
             case '@': STRY(assign(),        "evaluating assign");         break;
             case '/': STRY(remove(),        "evaluating remove");         break;
-            case '.': STRY(deref_relative(),"evaluating deref_relative"); break;
+            case '.': /*STRY(deref_relative(),"evaluating deref_relative");*/ break;
             case '<': TRY(stack_open(),     "evaluating stack_open (<)"); break;
             case '(': STRY(stack_open(),    "evaluating stack_open (()"); break;
             case '>': STRY(scope_close(),   "evaluating scope_close");    break;
@@ -647,6 +619,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
         }
     }
 
+    if (wildcard && REF_iterate(&ref_tok->children))
+        goto iterate;
+
     if (!rerun)
         TOK_free(ops_tok);
 
@@ -654,29 +629,12 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in subtoks
     return status;
 }
 
-int atom_eval(CONTEXT *context,TOK *atom_tok)
+int lit_eval(CONTEXT *context,TOK *tok)
 {
     int status=0;
-
-    if (!CLL_HEAD(&atom_tok->subtoks))
-        STRY(parse(atom_tok),"parsing");
-
-    TOK *ops=(TOK *) CLL_HEAD(&atom_tok->subtoks);
-    STRY(!(ops->flags&TOK_OPS),"testing atom TOS for ops");
-    TRYCATCH(ops_eval(context,ops),status,done,"resolving op/ref"); // pass status thru
-
+    STRY(!LTV_enq(&context->stack,LTV_deq(&tok->ltvs,HEAD),TAIL),"pushing expr lit");
     done:
-    if (!status && CLL_EMPTY(&atom_tok->subtoks))
-        TOK_free(atom_tok);
-
-    return status;
-}
-
-int val_eval(CONTEXT *context,TOK *tok)
-{
-    int status=0;
-    STRY(!LTV_enq(&context->anons,LTV_deq(&tok->ltvs,HEAD),HEAD),"pushing expr lit");
-    done:
+    TOK_free(tok);
     return status;
 }
 
@@ -685,27 +643,27 @@ int expr_eval(CONTEXT *context,TOK *tok)
 {
     int status=0;
 
-    if (CLL_EMPTY(&tok->subtoks))
-        STRY(parse(tok),"parsing expr");
+    if (CLL_EMPTY(&tok->children))
+        STRY(parse_expr(tok),"parsing expr");
 
-    if (!CLL_EMPTY(&tok->subtoks))
-        STRY(tok_eval(context,(TOK *) CLL_HEAD(&tok->subtoks)),"evaluating expr subtoks");
+    if (!CLL_EMPTY(&tok->children))
+        STRY(tok_eval(context,(TOK *) CLL_HEAD(&tok->children)),"evaluating expr children");
 
     done:
     if (status) {
         if (status==CONDITIONAL_BAIL) {
             if (debug&DEBUG_BAIL)
-                show_tok(stderr,"Bailing on expression: [",tok,"]\n");
+                show_tok(stderr,"Bailing on expression: ",tok,"\n");
         } else if (debug&DEBUG_ERR) {
-            show_tok(stderr,"Error evaluating expression: [",tok,"]\n");
+            show_tok(stderr,"Error evaluating expression: ",tok,"\n");
         }
 
         TOK *subtok;
-        while ((subtok=tokpop(&tok->subtoks))) TOK_free(subtok);
+        while ((subtok=tokpop(&tok->children))) TOK_free(subtok);
         status=0;
     }
 
-    if (CLL_EMPTY(&tok->subtoks))
+    if (CLL_EMPTY(&tok->children))
         TOK_free(tok); // evaluation done; Could add some kind of sentinel atom in here to let the expression repopulate itself and continue
     return status;
 }
@@ -747,7 +705,6 @@ int tok_eval(CONTEXT *context,TOK *tok)
         case TOK_EXPR: STRY(expr_eval(context,tok),"evaluating expr"); break;
         case TOK_LIT : STRY(lit_eval(context,tok), "evaluating lit");  break;
         case TOK_OPS : STRY(ops_eval(context,tok), "evaluating ops");  break;
-        case TOK_REF : STRY(ref_eval(context,tok), "evaluating ref");  break;
         default: TOK_free(tok); break;
     }
 
@@ -760,7 +717,7 @@ int context_eval(CONTEXT *context)
     int status=0;
     STRY(!context,"testing for null context");
 
-    TOK *tok=tokpeep(&context->toks);
+    TOK *tok=tokpeek(&context->toks);
     if (tok)
         STRY(tok_eval(context,tok),"evaluating tok");
     else

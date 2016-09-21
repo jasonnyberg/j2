@@ -37,10 +37,11 @@ CLL *CLL_cut(CLL *lnk) { return lnk?CLL_splice(lnk,lnk,FWD):NULL; }
 CLL *CLL_get(CLL *sentinel,int pop,int end) { CLL *lnk; return sentinel && (lnk=CLL_SIB(sentinel,end))!=sentinel? (pop?CLL_cut(lnk):lnk):NULL; }
 CLL *CLL_put(CLL *sentinel,CLL *lnk,int end) { return CLL_splice(sentinel,CLL_init(lnk),end); }
 CLL *CLL_next(CLL *sentinel,CLL *lnk,int dir) { CLL *rlnk=lnk?CLL_SIB(lnk,dir):CLL_get(sentinel,KEEP,dir); return rlnk==sentinel?NULL:rlnk; }
-void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk)) {
+void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,void *(*op)(CLL *lnk)) { // map with fast-forward
     CLL *rval,*sib,*next;
-    for(rval=NULL,sib=CLL_SIB(sentinel,dir);
-        sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib));
+    for(rval=NULL,sib=CLL_SIB(ff?ff:sentinel,dir); // init
+        sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib)); // next saved, op can cut
         sib=next);
     return rval;
 }
+void *CLL_map(CLL *sentinel,int dir,void *(*op)(CLL *lnk)) { return CLL_mapfrom(sentinel,NULL,dir,op); }

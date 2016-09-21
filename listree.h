@@ -50,7 +50,7 @@ typedef enum {
     LT_GC  =1<<0x0b, // garbage collect this node before deleting
     LT_NIL =1<<0x0c, // false
     LT_NULL=1<<0x0d, // empty (as opposed to false)
-    LT_TEMP=1<<0x0e, // temp repl artifact, gc immediately
+    LT_WC  =1<<0x0e, // contains a wildcard character (note to repl)
     LT_IMM =1<<0x0f|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
@@ -87,10 +87,11 @@ typedef void *(*RB_OP)(RBN *rbn);
 extern RBR *RBR_init(RBR *rbr);
 extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern LTI *RBR_find(RBR *rbr,char *name,int len,int *insert);
+extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
+extern LTI *LTV_lookup(LTV *root,LTV *name,int insert); // find lti matching "name" in root
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
 extern LTVR *LTVR_new(LTV *ltv);
@@ -120,17 +121,21 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 #define LTV_NIL  LTV_new(NULL,0,LT_NIL)
 #define LTV_NULL LTV_new(NULL,0,LT_NULL)
 
-extern LTI *LTV_first(LTV *ltv);
-extern LTI *LTV_last(LTV *ltv);
+extern LTI *LTI_first(LTV *ltv);
+extern LTI *LTI_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
-extern LTV *LTV_get(CLL *ltvs,int pop,int end,void *match,int matchlen,LTVR **ltvr);
+extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); //
+
+extern LTV *LTV_dup(LTV *ltv);
 
 extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
 extern LTV *LTV_deq(CLL *ltvs,int end);
 extern LTV *LTV_peek(CLL *ltvs,int end);
+
+extern int LTV_wildcard(LTV *ltv);
 
 extern void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth);
 extern void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth);
@@ -140,29 +145,26 @@ extern void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label);
 
 //////////////////////////////////////////////////
-// API
+// REF (Listree's "cli")
 //////////////////////////////////////////////////
-
-typedef enum {
-    REF_NAME = 1<<0,
-    REF_VAL  = 1<<1,
-    REF_ELL  = 1<<2,
-    REF_REV  = 1<<3,
-    REF_WC   = 1<<4
-} REF_FLAGS;
-
 typedef struct REF {
     CLL lnk;
-    char *data;
-    int len;
-    CLL lti_parent; // name (hold to remove lti if empty when freeing)
-    LTI *lti; // name
-    LTVR *ltvr; // ref
-    CLL ltvs; // ref (hold ltv in list for refcount, or cvar's descended type)
-    unsigned flags;
+    CLL root;   // LTV being queried
+    CLL keys;   // name(/value) lookup key(s)
+    LTI *lti;   // name lookup result
+    LTVR *ltvr; // value lookup result
+    int reverse;
 } REF;
 
-extern int LT_find(char *buf,int len,LTV *root,int insert,CLL *refs);
+extern int REF_create(LTV *ltv,CLL *refs);
+extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 
+extern void REF_dump(FILE *ofile,CLL *refs);
+extern int REF_resolve(CLL *refs,LTV *root,int insert);
+extern int REF_iterate(CLL *refs);
+extern int REF_assign(CLL *refs,LTV *ltv);
+
+#define REF_HEAD(cll) ((REF *) CLL_HEAD(cll))
+#define REF_TAIL(cll) ((REF *) CLL_TAIL(cll))
 
 #endif

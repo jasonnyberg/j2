@@ -512,14 +512,17 @@ REF *REF_new(char *data,int len)
     return ref;
 }
 
-void *REF_reset(CLL *lnk) {
-    REF *ref=(REF *) lnk;
+int REF_reset(REF *ref,LTV *newroot)
+{
+    int status=0;
     LTV *root=LTV_peek(&ref->root,HEAD);
     if (root && ref->lti && CLL_EMPTY(&ref->lti->ltvs)) // if LTI empty and pruneable
         RBN_release(&root->sub.ltis,&ref->lti->rbn,LTI_release); // prune it
     ref->lti=NULL;
     ref->ltvr=NULL;
     CLL_release(&ref->root,LTVR_release);
+    if (newroot)
+        LTV_enq(&ref->root,newroot,HEAD);
 }
 
 void REF_free(CLL *lnk)
@@ -528,8 +531,8 @@ void REF_free(CLL *lnk)
 
     REF *ref=(REF *) lnk;
     CLL_cut(&ref->lnk); // take it out of any list it's in
+    REF_reset(ref,NULL);
     CLL_release(&ref->keys,LTVR_release);
-    REF_reset(lnk);
 
     refpush(&ref_repo,ref);
     ref_count--;
@@ -608,6 +611,11 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
         STRY(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&ltvr)),"validating name key"); // name is first key (use get for ltvr)
         LTVR *val=(LTVR *) CLL_next(&ref->keys,&ltvr->lnk,FWD); // val will be next key
 
+        STRY(!root,"validating root");
+
+        if (LTV_peek(&ref->root,HEAD)!=root)
+            REF_reset(ref,root);
+
         if (root->flags&LT_CVAR) {
             // process CVAR
         } else {
@@ -627,12 +635,6 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
     }
 
     STRY (!refs || !root,"validating arguments");
-
-    ref=REF_TAIL(refs);
-    if (LTV_peek(&ref->root,HEAD)!=root) {
-        CLL_map(refs,REV,REF_reset);
-        LTV_enq(&ref->root,root,HEAD);
-    }
 
     CLL_map(refs,REV,resolve);
     if (placeholder) {
@@ -660,6 +662,7 @@ int REF_iterate(CLL *refs)
         TRYCATCH(LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)!=NULL,FOUND,done,"iterating ltvr");
         for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti));
         TRYCATCH(ref->lti!=NULL,FOUND,done,"iterating lti");
+        REF_reset(ref,NULL); // not found
 
         done:
         return status?ref:NULL;
@@ -677,6 +680,16 @@ int REF_assign(REF *ref,LTV *ltv)
     int status=0;
     STRY(!ref->lti,"validating ref lti");
     STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
+    done:
+    return status;
+}
+
+int REF_remove(REF *ref)
+{
+    int status=0;
+    STRY(!ref->lti || !ref->ltvr,"validating ref lti, ltvr");
+    LTVR_release(&ref->ltvr->lnk);
+    ref->ltvr=NULL;
     done:
     return status;
 }

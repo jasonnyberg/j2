@@ -163,7 +163,9 @@ extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 
 extern int REF_resolve(CLL *refs,LTV *root,int insert);
 extern int REF_iterate(CLL *refs);
+
 extern int REF_assign(REF *ref,LTV *ltv);
+extern int REF_remove(REF *ref);
 
 extern void print_ref(FILE *ofile,REF *ref,char *label);
 extern void print_refs(FILE *ofile,CLL *refs,char *label);

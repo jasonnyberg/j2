@@ -336,5 +336,3 @@ char *balanced_readline(FILE *ifile,int *length) {
 done:
     return (*length && !depth)?expr:(free(expr),NULL);
 }
-
-

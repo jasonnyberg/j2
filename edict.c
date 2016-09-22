@@ -401,7 +401,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int readfrom()  {
             int status=0;
             LTV *ltv_ifilename=NULL;
-            STRY(!(ltv_ifilename=LTV_deq(&context->stack,TAIL)),"popping import filename");
+            STRY(!(ltv_ifilename=LTV_deq(&context->stack,HEAD)),"popping import filename");
             char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
             FILE *ifile=strncmp("stdin",ifilename,5)?fopen(ifilename,"r"):stdin;
             if (ifile) {
@@ -417,8 +417,8 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int d2e() {
             int status=0;
             LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
-            STRY(!(ltv_ifilename=LTV_deq(&context->stack,TAIL)),"popping dwarf import filename");
-            STRY(!(ltv_ofilename=LTV_peek(&context->stack,TAIL)),"peeking edict export filename");
+            STRY(!(ltv_ifilename=LTV_deq(&context->stack,HEAD)),"popping dwarf import filename");
+            STRY(!(ltv_ofilename=LTV_peek(&context->stack,HEAD)),"peeking edict export filename");
             char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
             char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
             dwarf2edict(ifilename,ofilename);
@@ -432,11 +432,11 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int cvar() {
             int status=0;
             LTV *type, *cvar;
-            STRY(!(type=LTV_deq(&context->stack,TAIL)),"popping type");
+            STRY(!(type=LTV_deq(&context->stack,HEAD)),"popping type");
             int size = 100; // TODO: figure this out
             STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN | LT_BIN | LT_LIST)),"allocating cvar ltv"); // very special node!
             STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
-            STRY(!LTV_enq(&context->stack,cvar,TAIL),"pushing cvar");
+            STRY(!LTV_enq(&context->stack,cvar,HEAD),"pushing cvar");
             done:
             return status;
         }
@@ -474,10 +474,10 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         STRY(resolve(0),"resolving ref for deref");
         if (ref_head->ltvr)
-            STRY(!LTV_enq(&context->stack,ref_head->ltvr->ltv,TAIL),"pushing resolved ref to stack");
+            STRY(!LTV_enq(&context->stack,ref_head->ltvr->ltv,HEAD),"pushing resolved ref to stack");
         else {
             STRY(strict,"enforcing strict deref");
-            STRY(!LTV_enq(&context->stack,LTV_dup(LTV_peek(&ref_tok->ltvs,HEAD)),TAIL),"pushing unresolved ref to stack");
+            STRY(!LTV_enq(&context->stack,LTV_dup(LTV_peek(&ref_tok->ltvs,HEAD)),HEAD),"pushing unresolved ref to stack");
         }
         done:
         return status;
@@ -487,9 +487,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *tos=NULL;
         STRY(resolve(1),"resolving ref for assign");
-        STRY(!(tos=LTV_peek(&context->stack,TAIL)),"peeking anon");
+        STRY(!(tos=LTV_peek(&context->stack,HEAD)),"peeking anon");
         STRY(REF_assign(ref_head,tos),"assigning anon to ref");
-        LTV_deq(&context->stack,TAIL); // succeeded, detach anon from stack
+        LTV_deq(&context->stack,HEAD); // succeeded, detach anon from stack
         done:
         return status;
     }
@@ -498,10 +498,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         if (ref_head) {
             STRY(resolve(0),"resolving ref for remove");
-            TRYCATCH(!(ref_head->ltvr),0,done,"getting ref_tail ref ltvr");
-            LTVR_release(&ref_head->ltvr->lnk);
+            STRY(REF_remove(ref_head),"performing ref remove");
         } else {
-            LTV_release(LTV_deq(&context->stack,TAIL));
+            LTV_release(LTV_deq(&context->stack,HEAD));
         }
         done:
         return status;
@@ -509,14 +508,14 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
     int stack_open() { // push anon onto the scope stack
         int status=0;
-        STRY(!LTV_enq(&context->dict,LTV_deq(&context->stack,TAIL),HEAD),"pushing anon scope");
+        STRY(!LTV_enq(&context->dict,LTV_deq(&context->stack,HEAD),HEAD),"pushing anon scope");
         done:
         return status;
     }
 
     int scope_close() { // pop scope and push back onto stack
         int status=0;
-        STRY(!LTV_enq(&context->stack,LTV_deq(&context->dict,HEAD),TAIL),"popping anon scope");
+        STRY(!LTV_enq(&context->stack,LTV_deq(&context->dict,HEAD),HEAD),"popping anon scope");
         done:
         return status;
     }
@@ -532,7 +531,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int and() {
         int status=0;
         LTV *ltv=NULL;
-        STRY(!(ltv=LTV_peek(&context->stack,TAIL)),"peeking at TOS");
+        STRY(!(ltv=LTV_peek(&context->stack,HEAD)),"peeking at TOS");
         TRYCATCH(0!=(ltv->flags&LT_NIL),CONDITIONAL_BAIL,done,"testing for nil");
         done:
         return status;
@@ -541,7 +540,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int or() {
         int status=0;
         LTV *ltv=NULL;
-        STRY(!(ltv=LTV_peek(&context->stack,TAIL)),"peeking anon");
+        STRY(!(ltv=LTV_peek(&context->stack,HEAD)),"peeking anon");
         TRYCATCH(0==(ltv->flags&LT_NIL),CONDITIONAL_BAIL,done,"testing for non-nil");
         done:
         return status;
@@ -551,7 +550,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *lambda_ltv=NULL;
 
-        STRY(!(lambda_ltv=LTV_deq(&context->stack,TAIL)),"popping lambda"); // pop lambda
+        STRY(!(lambda_ltv=LTV_deq(&context->stack,HEAD)),"popping lambda"); // pop lambda
 
         if (!ref_head) {
             TOK *lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
@@ -630,7 +629,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 int lit_eval(CONTEXT *context,TOK *tok)
 {
     int status=0;
-    STRY(!LTV_enq(&context->stack,LTV_deq(&tok->ltvs,HEAD),TAIL),"pushing expr lit");
+    STRY(!LTV_enq(&context->stack,LTV_deq(&tok->ltvs,HEAD),HEAD),"pushing expr lit");
     done:
     TOK_free(tok);
     return status;

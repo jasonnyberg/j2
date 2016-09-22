@@ -26,8 +26,9 @@
 #define CLL_H
 
 // head=lnk[0],tail=lnk[1]
-struct CLL { struct CLL *lnk[2]; } __attribute__((aligned(sizeof(long))));
+struct CLL;
 typedef struct CLL CLL;
+struct CLL { CLL *lnk[2]; };
 
 enum { HEAD=0,TAIL=1,FWD=0,REV=1,KEEP=0,POP=1 };
 

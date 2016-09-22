@@ -47,11 +47,10 @@ typedef enum {
     LT_RVIS=1<<0x08, // recursive traversal visitation flag
     LT_LIST=1<<0x09, // hold children in unlabeled list, rather than default rbtree
     LT_ROOT=1<<0x0a, // root of a dict rather than a namespace
-    LT_GC  =1<<0x0b, // garbage collect this node before deleting
-    LT_NIL =1<<0x0c, // false
-    LT_NULL=1<<0x0d, // empty (as opposed to false)
-    LT_WC  =1<<0x0e, // contains a wildcard character (note to repl)
-    LT_IMM =1<<0x0f|LT_NIL|LT_NULL, // immediate value, not a pointer
+    LT_NIL =1<<0x0b, // false
+    LT_NULL=1<<0x0c, // empty (as opposed to false)
+    LT_WC  =1<<0x0d, // contains a wildcard character (note to repl)
+    LT_IMM =1<<0x0e|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
 } LTV_FLAGS;
@@ -149,22 +148,25 @@ extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label
 //////////////////////////////////////////////////
 typedef struct REF {
     CLL lnk;
-    CLL root;   // LTV being queried
     CLL keys;   // name(/value) lookup key(s)
+    CLL root;   // LTV being queried
     LTI *lti;   // name lookup result
     LTVR *ltvr; // value lookup result
     int reverse;
 } REF;
 
+#define REF_HEAD(cll) ((REF *) CLL_HEAD(cll))
+#define REF_TAIL(cll) ((REF *) CLL_TAIL(cll))
+
 extern int REF_create(LTV *ltv,CLL *refs);
 extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 
-extern void REF_dump(FILE *ofile,CLL *refs);
 extern int REF_resolve(CLL *refs,LTV *root,int insert);
 extern int REF_iterate(CLL *refs);
-extern int REF_assign(CLL *refs,LTV *ltv);
+extern int REF_assign(REF *ref,LTV *ltv);
 
-#define REF_HEAD(cll) ((REF *) CLL_HEAD(cll))
-#define REF_TAIL(cll) ((REF *) CLL_TAIL(cll))
+extern void print_ref(FILE *ofile,REF *ref,char *label);
+extern void print_refs(FILE *ofile,CLL *refs,char *label);
+extern void refs2dot(FILE *ofile,CLL *refs,char *label);
 
 #endif

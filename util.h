@@ -114,27 +114,26 @@ extern void try_logerror(const char *func,const char *cond,int status);
 
 /** run sequential steps without nesting, with error reporting, and with support for unrolling */
 #pragma GCC diagnostic ignored "-Wformat-zero-length"
-#define TRY(_cond_,_args_...)                                           \
+#define TRY(_cond_,_msg_...)                                            \
     do {                                                                \
         if (try_context.depth<try_depth)                                \
         {                                                               \
-            snprintf(try_context.msgstr,TRY_STRLEN,_args_);             \
+            snprintf(try_context.msgstr,TRY_STRLEN,_msg_);              \
             try_loginfo(__func__,#_cond_);                              \
         }                                                               \
-                                                                        \
         try_context.depth++;                                            \
         status=(_cond_);                                                \
         try_context.depth--;                                            \
     } while (0)
 
-#define CATCH(_cond_,_fail_status_,_todo_,_args_...)                    \
+#define CATCH(_cond_,_fail_status_,_todo_,_msg_...)                     \
     do {                                                                \
         if (_cond_)                                                     \
         {                                                               \
             status=(_fail_status_);                                     \
             if (status)                                                 \
             {                                                           \
-                snprintf(try_context.msgstr,TRY_STRLEN,_args_);         \
+                snprintf(try_context.msgstr,TRY_STRLEN,_msg_);          \
                 try_seterr((int) status,try_context.msgstr);            \
                 try_logerror((__func__),#_cond_,(int) status);          \
             }                                                           \
@@ -142,15 +141,14 @@ extern void try_logerror(const char *func,const char *cond,int status);
             {                                                           \
                 try_reset();                                            \
             }                                                           \
-                                                                        \
             _todo_;                                                     \
         }                                                               \
     } while (0)
 
-#define SCATCH(_args_...) CATCH(status!=0,TRY_ERR,goto done,_args_);
+#define SCATCH(_msg_...) CATCH(status!=0,TRY_ERR,goto done,_msg_);
 
-#define TRYCATCH(_cond_,_fail_status_,_exit_,_args_...) do { TRY(_cond_,_args_); CATCH(status!=0,_fail_status_,goto _exit_,_args_); } while (0)
-#define STRY(_cond_,_args_...) TRYCATCH(_cond_,TRY_ERR,done,_args_)
+#define TRYCATCH(_cond_,_fail_status_,_exit_,_msg_...) do { TRY(_cond_,_msg_); CATCH(status!=0,_fail_status_,goto _exit_,_msg_); } while (0)
+#define STRY(_cond_,_msg_...) TRYCATCH(_cond_,TRY_ERR,done,_msg_)
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 
@@ -248,4 +246,3 @@ extern char *balanced_readline(FILE *ifile,int *length);
 //}
 
 #endif
-

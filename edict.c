@@ -168,7 +168,7 @@ void show_tok(FILE *ofile,char *pre,TOK *tok,char *post) {
     show_tok_flags(ofile,tok);
     print_ltvs(ofile,"",&tok->ltvs,"",1);
     if (tok->flags&TOK_REF)
-        REF_dump(ofile,&tok->children);
+        print_refs(ofile,&tok->children,"Refs: ");
     else
         show_toks(ofile," (",&tok->children,")");
     if (post) fprintf(ofile,"%s",post);
@@ -252,7 +252,10 @@ int edict_graph(FILE *ofile,EDICT *edict)
             ltvs2dot(ofile,&tok->ltvs,0,NULL);
             if (CLL_HEAD(&tok->children)) {
                 fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->children);
-                descend_toks(&tok->children,"Subtoks");
+                if (tok->flags&TOK_REF)
+                    refs2dot(ofile,&tok->children,"Refs");
+                else
+                    descend_toks(&tok->children,"Subtoks");
             }
         }
 
@@ -349,7 +352,7 @@ int parse_expr(TOK *tok)
             STRY(!append(tok,TOK_OPS,data,1,1),"appending %c",*data);
         else { // ANYTHING else is ops and/or ref
             TOK *ops=NULL;
-            tlen=series(data,len,OPS ".",NULL,NULL); // ops
+            tlen=series(data,len,OPS,NULL,NULL); // ops
             STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
             tlen=series(data,len,NULL,WHITESPACE OPS CTX,"[]"); // ref
             STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
@@ -378,7 +381,6 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     char *ops=(char *) ltv->data;
     int opslen=ltv->len;
 
-    int relative=series(ops,opslen,NULL,".",NULL)<opslen; // ops contains ".", i.e. relative deref
     int assignment=series(ops,opslen,NULL,"@",NULL)<opslen; // ops contains "@", i.e. assignment
     int wildcard=0;
 
@@ -389,12 +391,8 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int resolve(int insert) { // may need to insert after a failed resolve!
         int status=0;
         STRY(!ref_tok || !ref_head,"validating ref tok");
-        if (relative)
-            STRY(REF_resolve(&ref_tok->children,LTV_peek(&context->stack,TAIL),insert),"performing relative resolve");
-        else {
-            void *dict_resolve(CLL *lnk) { return !REF_resolve(&ref_tok->children,((LTVR *) lnk)->ltv,insert)?lnk:NULL; }
-            STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
-        }
+        void *dict_resolve(CLL *lnk) { return !REF_resolve(&ref_tok->children,((LTVR *) lnk)->ltv,insert)?lnk:NULL; }
+        STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
         done:
         return status;
     }
@@ -472,13 +470,15 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int deref() {
+    int deref(int strict) {
         int status=0;
         STRY(resolve(0),"resolving ref for deref");
         if (ref_head->ltvr)
             STRY(!LTV_enq(&context->stack,ref_head->ltvr->ltv,TAIL),"pushing resolved ref to stack");
-        else
+        else {
+            STRY(strict,"enforcing strict deref");
             STRY(!LTV_enq(&context->stack,LTV_dup(LTV_peek(&ref_tok->ltvs,HEAD)),TAIL),"pushing unresolved ref to stack");
+        }
         done:
         return status;
     }
@@ -488,7 +488,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         LTV *tos=NULL;
         STRY(resolve(1),"resolving ref for assign");
         STRY(!(tos=LTV_peek(&context->stack,TAIL)),"peeking anon");
-        STRY(REF_assign(&ref_head,tos),"assigning anon to ref");
+        STRY(REF_assign(ref_head,tos),"assigning anon to ref");
         LTV_deq(&context->stack,TAIL); // succeeded, detach anon from stack
         done:
         return status;
@@ -497,7 +497,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int remove() {
         int status=0;
         if (ref_head) {
-            STRY(resolve(0),"resolving ref for deref");
+            STRY(resolve(0),"resolving ref for remove");
             TRYCATCH(!(ref_head->ltvr),0,done,"getting ref_tail ref ltvr");
             LTVR_release(&ref_head->ltvr->lnk);
         } else {
@@ -547,7 +547,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int eval() { // limit wildcard dereferences to exec-with-name!!!
+    int eval() {
         int status=0;
         LTV *lambda_ltv=NULL;
 
@@ -556,18 +556,17 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         if (!ref_head) {
             TOK *lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
             STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda");
-        } /*  else if (!deref(1)) { //something going on here, the last iteration fails to pop the lambda!!!!!
+        } else {
+            STRY(deref(1),"performing strict deref for map");
             rerun=true;
-
             TOK *lambda_tok=TOK_new(TOK_LIT,lambda_ltv);
             STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda"); // enq anon for eval later...
-
             lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
             STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda"); // to exec now
-        } */
-        else
-            LTV_release(lambda_ltv);
+        }
         done:
+        if (status)
+            LTV_release(lambda_ltv);
         return status;
     }
 
@@ -595,14 +594,13 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
     iterate:
     if (!opslen && ref_head) // implied deref
-        STRY(deref(),"performing implied deref");
+        STRY(deref(0),"performing implied deref");
     else for (int i=0;i<opslen;i++) {
         switch (ops[i]) {
             case '#': STRY(special(),       "evaluating special");        break;
-            case '$': STRY(deref(),         "evaluating deref");          break;
+            case '$': STRY(deref(0),        "evaluating explicit deref"); break;
             case '@': STRY(assign(),        "evaluating assign");         break;
             case '/': STRY(remove(),        "evaluating remove");         break;
-            case '.': /*STRY(deref_relative(),"evaluating deref_relative");*/ break;
             case '<': TRY(stack_open(),     "evaluating stack_open (<)"); break;
             case '(': STRY(stack_open(),    "evaluating stack_open (()"); break;
             case '>': STRY(scope_close(),   "evaluating scope_close");    break;
@@ -619,7 +617,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         }
     }
 
-    if (wildcard && REF_iterate(&ref_tok->children))
+    if (wildcard && !REF_iterate(&ref_tok->children))
         goto iterate;
 
     if (!rerun)

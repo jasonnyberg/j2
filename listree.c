@@ -287,11 +287,18 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-extern LTI *LTI_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_first((RBR *) &ltv->sub.ltis); }
-extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_last((RBR *)  &ltv->sub.ltis); }
+extern LTI *LTI_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_first(&ltv->sub.ltis); }
+extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_last(&ltv->sub.ltis); }
 
 extern LTI *LTI_next(LTI *lti) { return lti? (LTI *) rb_next((RBN *) lti):NULL; }
 extern LTI *LTI_prev(LTI *lti) { return lti? (LTI *) rb_prev((RBN *) lti):NULL; }
+
+int LTV_empty(LTV *ltv)
+{
+    if (!ltv) return true;
+    else if (ltv->flags&LT_LIST) return CLL_EMPTY(&ltv->sub.ltvs);
+    else return !LTI_first(ltv)!=NULL;
+}
 
 LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
 {
@@ -366,8 +373,9 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
             if (pre) fprintf(ofile,"%s",pre);
             else fprintf(ofile,"[");
             if (((*ltv)->flags&LT_IMM)==LT_IMM) fprintf(ofile,"0x%p (immediate)",&(*ltv)->data);
-            else if ((*ltv)->flags&LT_NULL)     ; // nothing
-            else if ((*ltv)->flags&LT_NIL)      fprintf(ofile,"nil");
+            else if ((*ltv)->flags==LT_VOID)    fprintf(ofile,"<void>");
+            else if ((*ltv)->flags&LT_NULL)     fprintf(ofile,"<null>");
+            else if ((*ltv)->flags&LT_NIL)      fprintf(ofile,"<nil>");
             else if ((*ltv)->flags&LT_BIN)      hexdump(ofile,(*ltv)->data,(*ltv)->len);
             else                                fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
             if (post) fprintf(ofile,"%s",post);
@@ -403,7 +411,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     }
 
     void lti2dot(LTI *lti,int depth,int *flags) {
-        fprintf(ofile,"\"%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
+        fprintf(ofile,"\"%x\" [label=\"%s\" shape=ellipse color=blue]\n",lti,lti->name);
         if (rb_parent(&lti->rbn)) fprintf(ofile,"\"%x\" -> \"%x\" [color=blue weight=0]\n",rb_parent(&lti->rbn),&lti->rbn);
         fprintf(ofile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
         ltvs2dot(&lti->ltvs,NULL);
@@ -417,14 +425,16 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
     void ltv2dot(LTV *ltv,int depth,int *flags) {
         if (ltv->len && !(ltv->flags&LT_NSTR)) {
-            fprintf(ofile,"\"%x\" [style=filled shape=box label=\"",ltv);
+            fprintf(ofile,"\"%x\" [style=filled shape=box color=orange label=\"",ltv);
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
         }
         else if ((ltv->flags&LT_IMM)==LT_IMM)
             fprintf(ofile,"\"%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
+        else if (ltv->flags==LT_VOID)
+            fprintf(ofile,"\"%x\" [label=\"\" shape=point style=filled color=purple]\n",ltv);
         else if (ltv->flags&LT_NULL)
-            fprintf(ofile,"\"%x\" [label=\"\" shape=box style=filled]\n",ltv);
+            fprintf(ofile,"\"%x\" [label=\"NULL\" shape=box style=filled]\n",ltv);
         else if (ltv->flags&LT_NIL)
             fprintf(ofile,"\"%x\" [label=\"NIL\" shape=box style=filled]\n",ltv);
         else
@@ -512,17 +522,29 @@ REF *REF_new(char *data,int len)
     return ref;
 }
 
-int REF_reset(REF *ref,LTV *newroot)
+LTV *REF_reset(REF *ref,LTV *newroot)
 {
     int status=0;
     LTV *root=LTV_peek(&ref->root,HEAD);
-    if (root && ref->lti && CLL_EMPTY(&ref->lti->ltvs)) // if LTI empty and pruneable
-        RBN_release(&root->sub.ltis,&ref->lti->rbn,LTI_release); // prune it
+    if (root==newroot)
+        goto done;
+    if (root && ref->lti) {
+        void *prune_placeholders(CLL *lnk) {
+            LTVR *ltvr=(LTVR *) lnk;
+            if (ltvr->ltv->flags==LT_VOID && LTV_empty(ltvr->ltv))
+                LTVR_release(lnk);
+        }
+        CLL_map(&ref->lti->ltvs,FWD,prune_placeholders);
+        if (CLL_EMPTY(&ref->lti->ltvs)) // if LTI is pruneable
+            RBN_release(&root->sub.ltis,&ref->lti->rbn,LTI_release); // prune it
+    }
     ref->lti=NULL;
     ref->ltvr=NULL;
     CLL_release(&ref->root,LTVR_release);
     if (newroot)
         LTV_enq(&ref->root,newroot,HEAD);
+    done:
+    return newroot;
 }
 
 void REF_free(CLL *lnk)
@@ -583,16 +605,13 @@ int REF_delete(CLL *refs) {
 
 LTI *LTI_lookup(LTV *root,LTV *name,int insert)
 {
-    int status=0;
     LTI *lti=NULL;
-    STRY(!root || !name,"validating arguments");
-
     if (LTV_wildcard(name))
         for (lti=LTI_first(root); lti && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti));
     else
-        STRY(!(lti=RBR_find(&root->sub.ltis,name->data,name->len,insert)),"looking up lti");
+        lti=RBR_find(&root->sub.ltis,name->data,name->len,insert);
     done:
-    return status?NULL:lti;
+    return lti;
 }
 
 int REF_resolve(CLL *refs,LTV *root,int insert)
@@ -612,32 +631,31 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
         LTVR *val=(LTVR *) CLL_next(&ref->keys,&ltvr->lnk,FWD); // val will be next key
 
         STRY(!root,"validating root");
-
-        if (LTV_peek(&ref->root,HEAD)!=root)
-            REF_reset(ref,root);
+        root=REF_reset(ref,root); // clean up ref if root changed
 
         if (root->flags&LT_CVAR) {
             // process CVAR
         } else {
             if (!ref->lti) // resolve lti
                 STRY(!(ref->lti=LTI_lookup(root,name,insert)),"looking up lti");
-            if (!ref->ltvr) // resolve ltv(r)
-                TRYCATCH(!(root=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)),!insert,ltv_lookup_failed,"retrieving ltvr");
+            if (!ref->ltvr) { // resolve ltv(r)
+                TRY(!(root=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)),"retrieving ltvr");
+                CATCH(!root && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
+            }
         }
         goto done; // success!
 
-        ltv_lookup_failed:
-        if (insert)
-            STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_NULL:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
+        install_placeholder:
+            STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_VOID:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
 
         done:
         return status?NON_NULL:NULL;
     }
 
-    STRY (!refs || !root,"validating arguments");
+    STRY (!refs,"validating refs");
 
     CLL_map(refs,REV,resolve);
-    if (placeholder) {
+    if (placeholder) { // remove terminal placeholder
         LTVR_release(&ref->ltvr->lnk);
         ref->ltvr=NULL;
     }

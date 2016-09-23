@@ -53,6 +53,7 @@ typedef enum {
     LT_IMM =1<<0x0e|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
+    LT_VOID=LT_NIL|LT_NULL, // a placeholder node, internal use only!
 } LTV_FLAGS;
 
 typedef struct {
@@ -119,12 +120,14 @@ void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 
 #define LTV_NIL  LTV_new(NULL,0,LT_NIL)
 #define LTV_NULL LTV_new(NULL,0,LT_NULL)
+#define LTV_VOID LTV_new(NULL,0,LT_VOID)
 
 extern LTI *LTI_first(LTV *ltv);
 extern LTI *LTI_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 
+extern int LTV_empty(LTV *ltv);
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
 extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); //
 

@@ -580,13 +580,15 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     // iterate over ops
     ////////////////////////////////////////////////////////////////////////////
 
-
     ref_tok=tokpeek(&ops_tok->children);
     if (ref_tok) {
         LTV *ref_ltv=LTV_peek(&ref_tok->ltvs,HEAD);
         wildcard=LTV_wildcard(ref_ltv);
         STRY(assignment && wildcard,"testing for assignment-to-wildcard");
-        STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
+        if (!REF_HEAD(&ref_tok->children))
+            STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
+        else
+            STRY(REF_iterate(&ref_tok->children),"iterating ref");
         ref_head=REF_HEAD(&ref_tok->children);
         ref_tail=REF_TAIL(&ref_tok->children);
     }
@@ -615,9 +617,6 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
                 break;
         }
     }
-
-    if (wildcard && !REF_iterate(&ref_tok->children))
-        goto iterate;
 
     if (!rerun)
         TOK_free(ops_tok);

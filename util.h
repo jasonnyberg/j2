@@ -145,10 +145,10 @@ extern void try_logerror(const char *func,const char *cond,int status);
         }                                                               \
     } while (0)
 
-#define SCATCH(_msg_...) CATCH(status!=0,TRY_ERR,goto done,_msg_);
+#define SCATCH(_msg_...) CATCH(status!=0,status,goto done,_msg_);
 
 #define TRYCATCH(_cond_,_fail_status_,_exit_,_msg_...) do { TRY(_cond_,_msg_); CATCH(status!=0,_fail_status_,goto _exit_,_msg_); } while (0)
-#define STRY(_cond_,_msg_...) TRYCATCH(_cond_,TRY_ERR,done,_msg_)
+#define STRY(_cond_,_msg_...) TRYCATCH(_cond_,status,done,_msg_)
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 

@@ -373,7 +373,8 @@ int tok_eval(CONTEXT *context,TOK *tok);
 int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 {
     int status=0;
-    int rerun=0; // discard ops by default
+    int rerun=0; // don't rerun by default
+    int iterate=1; // true unless iteration failed
 
     LTV *ltv=NULL; // optok's data
 
@@ -384,7 +385,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int assignment=series(ops,opslen,NULL,"@",NULL)<opslen; // ops contains "@", i.e. assignment
     int wildcard=0;
 
-    TOK *ref_tok=NULL;
+    TOK *ref_tok=tokpeek(&ops_tok->children);
     REF *ref_head=NULL;
     REF *ref_tail=NULL;
 
@@ -546,26 +547,30 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int eval() {
+    int eval() { // map too!
         int status=0;
         LTV *lambda_ltv=NULL;
 
         STRY(!(lambda_ltv=LTV_deq(&context->stack,HEAD)),"popping lambda"); // pop lambda
 
-        if (!ref_head) {
+        if (!ref_head) { // non-map case; eval lambda ltv
             TOK *lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
-            STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda");
+            TRYCATCH(!tokpush(&context->toks,lambda_tok),status,release_lambda,"pushing lambda");
         } else {
-            STRY(deref(1),"performing strict deref for map");
-            rerun=true;
+            CATCH(!(rerun=iterate),0,goto release_lambda,"terminating map iteration");
+            TRYCATCH(deref(1),status,release_lambda,"validating strict map deref");
             TOK *lambda_tok=TOK_new(TOK_LIT,lambda_ltv);
-            STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda"); // enq anon for eval later...
+            TRYCATCH(!tokpush(&context->toks,lambda_tok),status,release_lambda,"pushing lambda"); // enq anon for eval later...
             lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
-            STRY(!tokpush(&context->toks,lambda_tok),"pushing lambda"); // to exec now
+            TRYCATCH(!tokpush(&context->toks,lambda_tok),status,release_lambda,"pushing lambda"); // to exec now
         }
-        done:
+        goto done; // success!
+
+        release_lambda:
         if (status)
             LTV_release(lambda_ltv);
+
+        done:
         return status;
     }
 
@@ -580,7 +585,6 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     // iterate over ops
     ////////////////////////////////////////////////////////////////////////////
 
-    ref_tok=tokpeek(&ops_tok->children);
     if (ref_tok) {
         LTV *ref_ltv=LTV_peek(&ref_tok->ltvs,HEAD);
         wildcard=LTV_wildcard(ref_ltv);
@@ -588,12 +592,13 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         if (!REF_HEAD(&ref_tok->children))
             STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
         else
-            STRY(REF_iterate(&ref_tok->children),"iterating ref");
+            iterate=!REF_iterate(&ref_tok->children);
         ref_head=REF_HEAD(&ref_tok->children);
         ref_tail=REF_TAIL(&ref_tok->children);
     }
 
-    iterate:
+    edict_graph_to_file("/tmp/jj.dot",context->edict);
+
     if (!opslen && ref_head) // implied deref
         STRY(deref(0),"performing implied deref");
     else for (int i=0;i<opslen;i++) {
@@ -620,6 +625,8 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
     if (!rerun)
         TOK_free(ops_tok);
+
+    edict_graph_to_file("/tmp/jj.dot",context->edict);
 
     done:
     return status;

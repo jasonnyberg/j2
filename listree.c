@@ -297,7 +297,7 @@ int LTV_empty(LTV *ltv)
 {
     if (!ltv) return true;
     else if (ltv->flags&LT_LIST) return CLL_EMPTY(&ltv->sub.ltvs);
-    else return !LTI_first(ltv)!=NULL;
+    else return LTI_first(ltv)==NULL;
 }
 
 LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
@@ -325,8 +325,8 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
     LTVR *ltvr=NULL;
     LTV *ltv=NULL;
     if (!(ltvr=(LTVR *) match?
-            CLL_mapfrom(ltvs,(ltvr_ret?&(*ltvr_ret)->lnk:NULL),dir,ltv_match):
-            CLL_next(ltvs,ltvr_ret?&(*ltvr_ret)->lnk:NULL,dir)))
+            CLL_mapfrom(ltvs,((ltvr_ret && (*ltvr_ret))?&(*ltvr_ret)->lnk:NULL),dir,ltv_match):
+            CLL_next(ltvs,(ltvr_ret && (*ltvr_ret))?&(*ltvr_ret)->lnk:NULL,dir)))
         return NULL;
     ltv=ltvr->ltv;
     if (pop) {
@@ -636,8 +636,10 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
         if (root->flags&LT_CVAR) {
             // process CVAR
         } else {
-            if (!ref->lti) // resolve lti
-                STRY(!(ref->lti=LTI_lookup(root,name,insert)),"looking up lti");
+            if (!ref->lti) { // resolve lti
+                TRY(!(ref->lti=LTI_lookup(root,name,insert)),"looking up lti");
+                CATCH(status,0,goto done,"lti lookup failed");
+            }
             if (!ref->ltvr) { // resolve ltv(r)
                 TRY(!(root=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)),"retrieving ltvr");
                 CATCH(!root && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
@@ -712,8 +714,11 @@ int REF_remove(REF *ref)
     return status;
 }
 
+LTI *REF_lti(REF *ref) { return ref?ref->lti:NULL; }
+LTV *REF_ltv(REF *ref) { return ref && ref->ltvr?ref->ltvr->ltv:NULL; }
+LTV *REF_key(REF *ref) { return LTV_peek(&ref->keys,HEAD); }
 
-void print_ref(FILE *ofile,REF *ref,char *label)
+void REF_print(FILE *ofile,REF *ref,char *label)
 {
     fprintf(ofile,label);
     print_ltvs(ofile,"root(",&ref->root,")",1);
@@ -723,14 +728,14 @@ void print_ref(FILE *ofile,REF *ref,char *label)
     fprintf(ofile,"\n");
 }
 
-void print_refs(FILE *ofile,CLL *refs,char *label)
+void REF_printall(FILE *ofile,CLL *refs,char *label)
 {
-    void *dump(CLL *lnk) { print_ref(ofile,(REF *) lnk,""); return NULL; }
+    void *dump(CLL *lnk) { REF_print(ofile,(REF *) lnk,""); return NULL; }
     fprintf(ofile,label);
     CLL_map(refs,REV,dump);
 }
 
-void refs2dot(FILE *ofile,CLL *refs,char *label)
+void REF_dot(FILE *ofile,CLL *refs,char *label)
 {
     void *op(CLL *lnk) {
         REF *ref=(REF *) lnk;

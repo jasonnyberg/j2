@@ -170,8 +170,12 @@ extern int REF_iterate(CLL *refs);
 extern int REF_assign(REF *ref,LTV *ltv);
 extern int REF_remove(REF *ref);
 
-extern void print_ref(FILE *ofile,REF *ref,char *label);
-extern void print_refs(FILE *ofile,CLL *refs,char *label);
-extern void refs2dot(FILE *ofile,CLL *refs,char *label);
+extern LTI *REF_lti(REF *ref);
+extern LTV *REF_ltv(REF *ref);
+extern LTV *REF_key(REF *ref);
+
+extern void REF_print(FILE *ofile,REF *ref,char *label);
+extern void REF_printall(FILE *ofile,CLL *refs,char *label);
+extern void REF_dot(FILE *ofile,CLL *refs,char *label);
 
 #endif

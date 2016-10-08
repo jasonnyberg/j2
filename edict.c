@@ -639,11 +639,12 @@ int expr_eval(CONTEXT *context,TOK *tok)
         STRY(parse_expr(tok),"parsing expr");
 
     TRY(tok_eval(context,tok->child),"evaluating expr child");
-    CATCH(status==EVAL_ITER,0,goto iterate,"iterating expression");
+    CATCH(status==EVAL_ITER,0,goto iterate,"caught expr iterate");
     CATCH(status,status,goto failed,"evaluating expr (failed)");
     goto done; // success!
 
     iterate:
+    STRY(!TOK_iter(tok),"iterating expr");
     goto done;
 
     failed:

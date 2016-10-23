@@ -346,7 +346,8 @@ int parse_expr(TOK *tok)
     int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
     TOK *append(TOK *tok,int type,char *data,int len,int adv) {
-        TOK *subtok=TOK_new(type,LTV_new(data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
+        //TOK *subtok=TOK_new(type,LTV_new(data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
+        TOK *subtok=TOK_new(type,LTV_new(data,len,LT_DUP)); // only LITs need to be duped
         if (!subtok) return NULL;
         advance(adv);
         return (TOK *) CLL_put(&tok->children,&subtok->lnk,TAIL);
@@ -431,7 +432,6 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         LTV *ref_ltv=tok_peek(ref_tok);
         wildcard=LTV_wildcard(ref_ltv);
         STRY((assignment && wildcard),"testing for assignment-to-wildcard");
-        STRY(REF_HEAD(&ref_tok->children)==NULL,"testing for non-virgin ref");
         STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
         ref_head=REF_HEAD(&ref_tok->children);
     }
@@ -633,6 +633,7 @@ int lit_eval(CONTEXT *context,TOK *tok)
 {
     int status=0;
     STRY(!stack_push(context,tok_pop(tok)),"pushing expr lit");
+    TOK_free(tok);
     done:
     return status;
 }

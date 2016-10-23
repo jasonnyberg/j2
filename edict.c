@@ -88,8 +88,8 @@ typedef struct TOK TOK;
 typedef struct TOK {
     CLL lnk;
     CLL ltvs;
+    CLL lambdas;
     CLL children;
-    TOK *child;
     TOK_FLAGS flags;
 } TOK;
 
@@ -136,8 +136,8 @@ TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
     if (ltv && (tok=toks_pop(repo)) || ((tok=NEW(TOK)) && CLL_init(&tok->lnk)))
     {
         CLL_init(&tok->ltvs);
+        CLL_init(&tok->lambdas);
         CLL_init(&tok->children);
-        tok->child=NULL;
         tok->flags=flags;
         tok_push(tok,ltv);
         tok_count++;
@@ -145,26 +145,26 @@ TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
     return tok;
 }
 
+TOK *TOK_cut(TOK *tok) { return tok?(TOK *)CLL_cut(&tok->lnk):NULL; } // take it out of any list it's in
+
 void TOK_release(CLL *lnk) { TOK_free((TOK *) lnk); }
 
 void TOK_free(TOK *tok)
 {
     if (!tok) return;
-    CLL_cut(&tok->lnk); // take it out of any list it's in
+    TOK_cut(tok);
     CLL_release(&tok->ltvs,LTVR_release);
+    CLL_release(&tok->lambdas,LTVR_release);
     if (tok->flags&TOK_REF) // ref tok children are LT REFs
         REF_delete(&tok->children);
     else
         CLL_release(&tok->children,TOK_release);
-    tok->child=NULL;
 
     toks_push(&tok_repo,tok);
     tok_count--;
 }
 
 TOK *TOK_expr(char *buf,int len) { return TOK_new(TOK_EXPR,LTV_new(buf,len,LT_NONE)); } // ownership of buf is external
-TOK *TOK_iter(TOK *tok) { return tok->child=(TOK *) CLL_next(&tok->children,&tok->child->lnk,FWD); }
-void TOK_reset(TOK *tok) { tok->child=NULL; }
 
 void show_tok_flags(FILE *ofile,TOK *tok)
 {
@@ -178,9 +178,8 @@ void show_tok_flags(FILE *ofile,TOK *tok)
 void show_tok(FILE *ofile,char *pre,TOK *tok,char *post) {
     if (pre) fprintf(ofile,"%s",pre);
     show_tok_flags(ofile,tok);
-    if (tok->child)
-        show_tok(ofile,"child(",tok->child,")");
     print_ltvs(ofile,"",&tok->ltvs,"",1);
+    print_ltvs(ofile,"",&tok->lambdas,"",1);
     if (tok->flags&TOK_REF)
         REF_printall(ofile,&tok->children,"Refs: ");
     else
@@ -266,16 +265,14 @@ int edict_graph(FILE *ofile,EDICT *edict)
             //fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
             fprintf(ofile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
             ltvs2dot(ofile,&tok->ltvs,0,NULL);
+            fprintf(ofile,"\"%2$x\" [label=\"lambdas\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->lambdas);
+            ltvs2dot(ofile,&tok->lambdas,0,NULL);
             if (CLL_HEAD(&tok->children)) {
                 fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->children);
                 if (tok->flags&TOK_REF)
                     REF_dot(ofile,&tok->children,"Refs");
                 else
                     descend_toks(&tok->children,"Subtoks");
-            }
-            if (tok->child) {
-                fprintf(ofile,"\"%x\" [shape=box label=\"child\"]",&tok->child);
-                fprintf(ofile,"\"%x\" -> \"%x\"",&tok->child,tok->child);
             }
         }
 
@@ -336,8 +333,8 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 // parser
 //////////////////////////////////////////////////
 
-#define OPS "#$@/!|="
-#define CTX ";()<>{}"
+#define OPS "#$@/*|="
+#define MONO_OPS "!()<>{}"
 
 int parse_expr(TOK *tok)
 {
@@ -368,18 +365,16 @@ int parse_expr(TOK *tok)
             advance(tlen); // TODO: A) embed WS tokens, B) stash tail WS token at start of ops (discard intermediates), C) reinsert WS when ops done
         else if (tlen=series(data,len,NULL,NULL,"[]")) // lit
             STRY(!append(tok,TOK_LIT, data+1,tlen-2,tlen),"appending lit");
-        else if (tlen=series(data,len,CTX,NULL,NULL)) // special, non-ganging op
+        else if (tlen=series(data,len,MONO_OPS,NULL,NULL)) // special, non-ganging op
             STRY(!append(tok,TOK_OPS,data,1,1),"appending %c",*data);
         else { // ANYTHING else is ops and/or ref
             TOK *ops=NULL;
             tlen=series(data,len,OPS,NULL,NULL); // ops
             STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
-            tlen=series(data,len,NULL,WHITESPACE OPS CTX,"[]"); // ref
+            tlen=series(data,len,NULL,WHITESPACE OPS MONO_OPS,"[]"); // ref
             STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
         }
     }
-
-    TOK_iter(tok);
 
     done:
     return status;
@@ -389,14 +384,37 @@ int parse_expr(TOK *tok)
 // eval engine
 //////////////////////////////////////////////////
 
-int tok_eval(CONTEXT *context,TOK *tok);
+int edict_resolve(CONTEXT *context,TOK *ref_tok,int insert) { // may need to insert after a failed resolve!
+    int status=0;
+    STRY(!ref_tok,"validating ref tok");
+    void *dict_resolve(CLL *lnk) { return !REF_resolve(&ref_tok->children,((LTVR *) lnk)->ltv,insert)?lnk:NULL; }
+    STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
+    done:
+    return status;
+}
+
+int ref_eval(CONTEXT *context,TOK *ref_tok)
+{
+    int status=0;
+    REF *ref_head=NULL;
+    LTV *ref_ltv=NULL,*lambda_ltv=NULL;
+
+    STRY(!(lambda_ltv=LTV_peek(&ref_tok->lambdas,HEAD)),"validating ref lambda");
+    STRY(!(ref_head=REF_HEAD(&ref_tok->children)),"validating ref head");
+    STRY(!(ref_ltv=REF_ltv(ref_head)),"validating deref result");
+    STRY(!stack_push(context,ref_ltv),"pushing resolved ref to stack");
+    STRY(!eval_push(context,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
+    TRYCATCH(REF_iterate(&ref_tok->children),0,terminate,"iterating ref");
+    goto done; // success!
+    terminate:
+    TOK_free(ref_tok);
+    done:
+    return status;
+}
 
 int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 {
     int status=0;
-    int rerun=0; // don't rerun by default
-    int iterate=1; // true unless iteration failed
-
     LTV *ltv=NULL; // optok's data
 
     STRY(!(ltv=tok_peek(ops_tok)),"getting optok data");
@@ -409,13 +427,13 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     TOK *ref_tok=toks_peek(&ops_tok->children);
     REF *ref_head=NULL;
 
-    int resolve(int insert) { // may need to insert after a failed resolve!
-        int status=0;
-        STRY(!ref_tok || !ref_head,"validating ref tok");
-        void *dict_resolve(CLL *lnk) { return !REF_resolve(&ref_tok->children,((LTVR *) lnk)->ltv,insert)?lnk:NULL; }
-        STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
-        done:
-        return status;
+    if (ref_tok) {
+        LTV *ref_ltv=tok_peek(ref_tok);
+        wildcard=LTV_wildcard(ref_ltv);
+        STRY((assignment && wildcard),"testing for assignment-to-wildcard");
+        STRY(REF_HEAD(&ref_tok->children)==NULL,"testing for non-virgin ref");
+        STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
+        ref_head=REF_HEAD(&ref_tok->children);
     }
 
     int special() { // handle special operations
@@ -464,7 +482,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
         int dump(char *label) {
             int status=0;
-            resolve(0);
+            edict_resolve(context,ref_tok,0);
             LTI *lti=REF_lti(ref_head);
             STRY(!lti,"validating ref_head->lti");
             CLL *ltvs=&lti->ltvs;
@@ -491,15 +509,13 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int deref(int strict) {
+    int deref() {
         int status=0;
-        STRY(resolve(0),"resolving ref for deref");
+        STRY(edict_resolve(context,ref_tok,0),"resolving ref for deref");
         if (REF_ltv(ref_head))
             STRY(!stack_push(context,REF_ltv(ref_head)),"pushing resolved ref to stack");
-        else {
-            STRY(strict,"enforcing strict deref");
-            STRY(!stack_push(context,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref to stack");
-        }
+        else
+            STRY(!stack_push(context,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
         done:
         return status;
     }
@@ -507,7 +523,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int assign() { // resolve refs needs to not worry about last ltv, just the lti is important.
         int status=0;
         LTV *tos=NULL;
-        STRY(resolve(1),"resolving ref for assign");
+        STRY(edict_resolve(context,ref_tok,1),"resolving ref for assign");
         STRY(!(tos=stack_peek(context)),"peeking anon");
         STRY(REF_assign(ref_head,tos),"assigning anon to ref");
         stack_pop(context); // succeeded, detach anon from stack
@@ -518,7 +534,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int remove() {
         int status=0;
         if (ref_head) {
-            STRY(resolve(0),"resolving ref for remove");
+            STRY(edict_resolve(context,ref_tok,0),"resolving ref for remove");
             STRY(REF_remove(ref_head),"performing ref remove");
         } else {
             LTV_release(stack_pop(context));
@@ -527,32 +543,33 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int stack_open() { return !dict_push(context,stack_pop(context)); }
-    int scope_close() { return !stack_push(context,dict_pop(context)); return 0; }
-    int function_map() { return !eval_push(context,TOK_new(TOK_EXPR,dict_peek(context))); }
+    int stack_open()     { return !dict_push(context,stack_pop(context)); }
+    int scope_close()    { return !stack_push(context,dict_pop(context)); }
+    int function_map()   { return !eval_push(context,TOK_new(TOK_EXPR,dict_peek(context))); }
     int function_close() { return !eval_push(context,TOK_expr(")",1)) && function_map(); }
 
     int eval() { // map too!
         int status=0;
-        LTV *lambda_ltv=NULL;
+        STRY(!eval_push(context,TOK_new(TOK_EXPR,stack_pop(context))),"pushing lambda");
+        done:
+        return status;
+    }
 
-        STRY(!(lambda_ltv=stack_pop(context)),"popping lambda"); // pop lambda
+    int map() {
+        int status=0;
+        LTV *expr_ltv=NULL,*lambda_ltv=NULL;
+        TOK *map_tok=NULL;
 
-        if (!ref_head) { // non-map case; eval lambda ltv
-            TRYCATCH(!eval_push(context,TOK_new(TOK_EXPR,lambda_ltv)),status,release_lambda,"pushing lambda");
-        } else {
-            CATCH(!(rerun=iterate),0,goto release_lambda,"terminating map iteration");
-            TRYCATCH(deref(1),status,release_lambda,"validating strict map deref");
-            TOK *lambda_tok=TOK_new(TOK_LIT,lambda_ltv);
-            TRYCATCH(!eval_push(context,lambda_tok),status,release_lambda,"pushing lambda"); // enq anon for eval later...
-            lambda_tok=TOK_new(TOK_EXPR,lambda_ltv);
-            TRYCATCH(!eval_push(context,lambda_tok),status,release_lambda,"pushing lambda"); // to exec now
+        if (ref_tok) { // prep ref for iteration
+            STRY(edict_resolve(context,ref_tok,0),"resolving ref for deref");
+            STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
         }
-        goto done; // success!
-
-        release_lambda:
-        if (status)
-            LTV_release(lambda_ltv);
+        else { // pop/prep expression for iteration
+            STRY(!(map_tok=TOK_new(TOK_EXPR,stack_pop(context))),"allocating map expr");
+        }
+        STRY(!(lambda_ltv=stack_pop(context)),"popping lambda");
+        STRY(!(LTV_enq(&map_tok->lambdas,lambda_ltv,HEAD)),"pushing lambda into map tok");
+        STRY(!eval_push(context,map_tok),"pushing map tok");
 
         done:
         return status;
@@ -578,25 +595,14 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     // iterate over ops
     ////////////////////////////////////////////////////////////////////////////
 
-    if (ref_tok) {
-        LTV *ref_ltv=tok_peek(ref_tok);
-        wildcard=LTV_wildcard(ref_ltv);
-        STRY(assignment && wildcard,"testing for assignment-to-wildcard");
-        if (!REF_HEAD(&ref_tok->children))
-            STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
-        else
-            iterate=!REF_iterate(&ref_tok->children);
-        ref_head=REF_HEAD(&ref_tok->children);
-    }
-
     edict_graph_to_file("/tmp/jj.dot",context->edict);
 
     if (!opslen && ref_head) // implied deref
-        STRY(deref(0),"performing implied deref");
+        STRY(deref(),"performing implied deref");
     else for (int i=0;i<opslen;i++) {
         switch (ops[i]) {
             case '#': STRY(special(),       "evaluating special");        break;
-            case '$': STRY(deref(0),        "evaluating explicit deref"); break;
+            case '$': STRY(deref(),         "evaluating explicit deref"); break;
             case '@': STRY(assign(),        "evaluating assign");         break;
             case '/': STRY(remove(),        "evaluating remove");         break;
             case '<': STRY(stack_open(),    "evaluating scope_open");     break;
@@ -607,6 +613,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             case '|': STRY(or(),            "evaluating or");             break;
             case '=': STRY(compare(),       "evaluating compare");        break;
             case '!': STRY(eval(),          "evaluating eval");           break;
+            case '*': STRY(map(),           "evaluating map");            break;
             case '{': break; // placeholder
             case '}': break; // placeholder
             default:
@@ -615,12 +622,10 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         }
     }
 
-    if (rerun)
-        status=EVAL_ITER;
-
     edict_graph_to_file("/tmp/jj.dot",context->edict);
 
     done:
+    TOK_free(ops_tok);
     return status;
 }
 
@@ -635,22 +640,22 @@ int lit_eval(CONTEXT *context,TOK *tok)
 int expr_eval(CONTEXT *context,TOK *tok)
 {
     int status=0;
+
     if (CLL_EMPTY(&tok->children))
         STRY(parse_expr(tok),"parsing expr");
 
-    TRY(tok_eval(context,tok->child),"evaluating expr child");
-    CATCH(status==EVAL_ITER,0,goto iterate,"caught expr iterate");
-    CATCH(status,status,goto failed,"evaluating expr (failed)");
-    goto done; // success!
+    TOK *child=toks_pop(&tok->children);
+    LTV *lambda_ltv=LTV_peek(&tok->lambdas,HEAD);
 
-    iterate:
-    STRY(!TOK_iter(tok),"iterating expr");
-    goto done;
-
-    failed:
-    goto done;
+    if (child) {
+        if (lambda_ltv) // iterative... for each child: push lambda, child.
+            STRY(!eval_push(context,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
+        STRY(!eval_push(context,child),"pushing child");
+    }
 
     done:
+    if (CLL_EMPTY(&tok->children))
+        TOK_free(tok);
     return status;
 }
 
@@ -690,6 +695,7 @@ int tok_eval(CONTEXT *context,TOK *tok)
         case TOK_FILE: STRY(file_eval(context,tok),"evaluating file"); break;
         case TOK_LIT : STRY(lit_eval(context,tok), "evaluating lit");  break;
         case TOK_OPS : STRY(ops_eval(context,tok), "evaluating ops");  break;
+        case TOK_REF : STRY(ref_eval(context,tok), "evaluating ref");  break;
         case TOK_EXPR: STRY(expr_eval(context,tok),"evaluating expr"); break;
         default: TOK_free(tok); break;
     }

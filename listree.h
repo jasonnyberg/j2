@@ -50,7 +50,7 @@ typedef enum {
     LT_NIL =1<<0x0b, // false
     LT_NULL=1<<0x0c, // empty (as opposed to false)
     LT_WC  =1<<0x0d, // contains a wildcard character (note to repl)
-    LT_IMM =1<<0x0e|LT_NIL|LT_NULL, // immediate value, not a pointer
+    LT_IMM =1<<0x0f|LT_NIL|LT_NULL, // immediate value, not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_IMM|LT_BIN, // not a string
     LT_VOID=LT_NIL|LT_NULL, // a placeholder node, internal use only!

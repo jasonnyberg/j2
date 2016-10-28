@@ -38,3 +38,16 @@ f                    [ it is a literal assigned to dict entry "f"    ]#/
 #e                   [ now there's an "e"                            ]#/
 f!                   [ concatenated...                               ]#/
 #e
+[1 2 3 4 5] [@acc] % [ map(1) (run 2nd for each element of 1st)      ]#/
+[@acc2] %acc         [ map(2) (run lambda for each element of ref    ]#/
+hello world +        [ concatenate (w/new naked lits!)               ]#/
+[] [a b c] [+]%      [ map concatenate over set (start w/accumulator ]#/
+
+1@z.a.z
+2@z.b.z
+3@z.c.z
+[#/] %z.*.z          [ map(1) with wildcard                          ]#/
+[#/] %z.?.z          [ map(2) with wildcard                          ]#/
+
+[#/](args)           [ lambda function call w/scope                  ]#/
+z<#>                 [ deref w/scope                                 ]#/

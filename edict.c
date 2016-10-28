@@ -332,7 +332,7 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 //////////////////////////////////////////////////
 
 #define OPS "#$@/%|="
-#define MONO_OPS "!()<>{}"
+#define MONO_OPS "!+()<>{}"
 
 int parse_expr(TOK *tok)
 {
@@ -563,6 +563,20 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
+    int append() {
+        int status=0;
+        LTV *a=NULL,*b=NULL;
+        char *buf;
+        STRY(!(b=stack_pop(context)),"popping append b");
+        STRY(!(a=stack_pop(context)),"popping append a");
+        STRY(!(buf=mymalloc(a->len+b->len)),"allocating merge buf");
+        strncpy(buf,a->data,a->len);
+        strncpy(buf+a->len,b->data,b->len);
+        STRY(!stack_push(context,LTV_new(buf,a->len+b->len,LT_OWN)),"pushing merged LTV");
+        done:
+        return status;
+    }
+
     int map() {
         int status=0;
         LTV *expr_ltv=NULL,*lambda_ltv=NULL;
@@ -619,6 +633,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             case '>': STRY(scope_close(),   "evaluating scope_close");    break;
             case ')': STRY(function_close(),"evaluating function_close"); break;
             case '!': STRY(eval(),          "evaluating eval");           break;
+            case '+': STRY(append(),        "evaluating append");         break;
             case '%': STRY(map(),           "evaluating map");            break;
             case '|': STRY(or(),            "evaluating or");             break;
             case '=': STRY(compare(),       "evaluating compare");        break;

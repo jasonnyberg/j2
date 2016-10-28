@@ -327,13 +327,14 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
     if (!(ltvr=(LTVR *) match?
             CLL_mapfrom(ltvs,((ltvr_ret && (*ltvr_ret))?&(*ltvr_ret)->lnk:NULL),dir,ltv_match):
             CLL_next(ltvs,(ltvr_ret && (*ltvr_ret))?&(*ltvr_ret)->lnk:NULL,dir)))
-        return NULL;
+        goto done;
     ltv=ltvr->ltv;
     if (pop) {
         CLL_cut(&ltvr->lnk);
         LTVR_free(ltvr);
         ltvr=NULL;
     }
+    done:
     if (ltvr_ret) (*ltvr_ret)=ltvr;
     return ltv;
 }
@@ -500,6 +501,8 @@ int ref_count=0;
 REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
 REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
 
+LTV *REF_root(REF *ref) { return ref?LTV_peek(&ref->root,HEAD):NULL; }
+
 REF *REF_new(char *data,int len)
 {
     static CLL *repo=NULL;
@@ -525,7 +528,7 @@ REF *REF_new(char *data,int len)
 LTV *REF_reset(REF *ref,LTV *newroot)
 {
     int status=0;
-    LTV *root=LTV_peek(&ref->root,HEAD);
+    LTV *root=REF_root(ref);
     if (root==newroot)
         goto done;
     if (root && ref->lti) {
@@ -562,7 +565,8 @@ void REF_free(CLL *lnk)
 
 ///////////////////////////////////////////////////////
 
-int REF_create(LTV *ltv,CLL *refs) {
+int REF_create(LTV *ltv,CLL *refs)
+{
     int status=0;
     STRY(!ltv || !refs,"validating params");
     STRY(REF_delete(refs),"clearing any refs");
@@ -598,7 +602,8 @@ int REF_create(LTV *ltv,CLL *refs) {
     return status;
 }
 
-int REF_delete(CLL *refs) {
+int REF_delete(CLL *refs)
+{
     void release(CLL *lnk) { REF_free(lnk); }
     CLL_release(refs,release);
 }
@@ -614,11 +619,12 @@ LTI *LTI_lookup(LTV *root,LTV *name,int insert)
     return lti;
 }
 
-int REF_resolve(CLL *refs,LTV *root,int insert)
+int REF_resolve(CLL *refs,int insert)
 {
     int status=0;
     REF *ref=NULL;
     int placeholder=0;
+    LTV *root=NULL;
 
     void *resolve(CLL *lnk) {
         int status=0;
@@ -641,9 +647,10 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
                 CATCH(status,0,goto done,"lti lookup failed");
             }
             if (!ref->ltvr) { // resolve ltv(r)
-                TRY(!(root=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)),"retrieving ltvr");
-                CATCH(!root && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
+                TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
+                CATCH(!ref->ltvr && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
             }
+            root=ref->ltvr->ltv;
         }
         goto done; // success!
 
@@ -654,8 +661,8 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
         return status?NON_NULL:NULL;
     }
 
-    STRY (!refs,"validating refs");
-
+    STRY(!refs,"validating refs");
+    STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
     CLL_map(refs,REV,resolve);
     if (placeholder) { // remove terminal placeholder
         LTVR_release(&ref->ltvr->lnk);
@@ -667,29 +674,34 @@ int REF_resolve(CLL *refs,LTV *root,int insert)
 
 int REF_iterate(CLL *refs)
 {
-    enum { NOT_FOUND=0, FOUND=1, ERROR=-1 };
-    int status=NOT_FOUND;
+    int status=0;
 
     void *iterate(CLL *lnk) { // return null if there is no next
+        int status=0;
         REF *ref=(REF *) lnk;
-        TRYCATCH(!ref->lti || !ref->ltvr,ERROR,done,"checking if ref was resolved");
+        if (!ref->lti || !ref->ltvr)
+            goto done;
 
-        LTV *name=NULL;
         LTVR *name_ltvr=NULL;
-        TRYCATCH(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&name_ltvr)),ERROR,done,"validating name key"); // name is first key (use get for ltvr)
+        LTV *name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&name_ltvr);
         LTVR *val=(LTVR *) CLL_next(&ref->keys,&name_ltvr->lnk,FWD); // val will be next key
 
-        TRYCATCH(LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)!=NULL,FOUND,done,"iterating ltvr");
+        if (LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)!=NULL)
+            return ref;
         for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti));
-        TRYCATCH(ref->lti!=NULL,FOUND,done,"iterating lti");
-        REF_reset(ref,NULL); // not found
+        if (ref->lti!=NULL)
+            return ref;
 
         done:
-        return status?ref:NULL;
+        return status?NON_NULL:NULL; // returning non-null terminates cll map
     }
 
     STRY(!refs,"validating arguments");
-    STRY(!CLL_map(refs,FWD,iterate),"iterating refs"); // will return NULL if there is no next
+    REF *res=CLL_map(refs,FWD,iterate); // returns iterated ref, null if no next, NON_NULL on error
+    if (res==NON_NULL)
+        status=-1;
+    else if (res)
+        STRY(REF_resolve(refs,false),"resolving iterated ref");
 
     done:
     return status;
@@ -714,9 +726,10 @@ int REF_remove(REF *ref)
     return status;
 }
 
-LTI *REF_lti(REF *ref) { return ref?ref->lti:NULL; }
-LTV *REF_ltv(REF *ref) { return ref && ref->ltvr?ref->ltvr->ltv:NULL; }
-LTV *REF_key(REF *ref) { return LTV_peek(&ref->keys,HEAD); }
+LTI *REF_lti(REF *ref)   { return ref?ref->lti:NULL; }
+LTVR *REF_ltvr(REF *ref) { return ref?ref->ltvr:NULL; }
+LTV *REF_ltv(REF *ref)   { return ref && ref->ltvr?ref->ltvr->ltv:NULL; }
+LTV *REF_key(REF *ref)   { return LTV_peek(&ref->keys,HEAD); }
 
 void REF_print(FILE *ofile,REF *ref,char *label)
 {

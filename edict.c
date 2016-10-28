@@ -331,7 +331,7 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 // parser
 //////////////////////////////////////////////////
 
-#define OPS "#$@/*|="
+#define OPS "#$@/%|="
 #define MONO_OPS "!()<>{}"
 
 int parse_expr(TOK *tok)
@@ -395,7 +395,8 @@ int eval_push(CONTEXT *context,TOK *tok) { // engine pops
 int edict_resolve(CONTEXT *context,TOK *ref_tok,int insert) { // may need to insert after a failed resolve!
     int status=0;
     STRY(!ref_tok,"validating ref tok");
-    void *dict_resolve(CLL *lnk) { return !REF_resolve(&ref_tok->children,((LTVR *) lnk)->ltv,insert)?lnk:NULL; }
+    CLL *kids=&ref_tok->children; // shorthand
+    void *dict_resolve(CLL *lnk) { return !REF_reset(REF_TAIL(kids),((LTVR *) lnk)->ltv) || !REF_resolve(kids,insert)?lnk:NULL; }
     STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
     done:
     return status;
@@ -412,7 +413,7 @@ int ref_eval(CONTEXT *context,TOK *ref_tok)
     STRY(!(ref_ltv=REF_ltv(ref_head)),"validating deref result");
     STRY(!stack_push(context,ref_ltv),"pushing resolved ref to stack");
     STRY(eval_push(context,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
-    TRYCATCH(REF_iterate(&ref_tok->children),0,terminate,"iterating ref");
+    TRYCATCH(REF_iterate(&ref_tok->children) || !REF_ltv(ref_head),0,terminate,"iterating ref");
     goto done; // success!
     terminate:
     TOK_free(ref_tok);
@@ -491,10 +492,11 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             int status=0;
             edict_resolve(context,ref_tok,0);
             LTI *lti=REF_lti(ref_head);
-            STRY(!lti,"validating ref_head->lti");
-            CLL *ltvs=&lti->ltvs;
-            graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
-            print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
+            if (lti) {
+                CLL *ltvs=&lti->ltvs;
+                graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
+                print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
+            }
             done:
             return status;
         }
@@ -617,7 +619,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             case '>': STRY(scope_close(),   "evaluating scope_close");    break;
             case ')': STRY(function_close(),"evaluating function_close"); break;
             case '!': STRY(eval(),          "evaluating eval");           break;
-            case '*': STRY(map(),           "evaluating map");            break;
+            case '%': STRY(map(),           "evaluating map");            break;
             case '|': STRY(or(),            "evaluating or");             break;
             case '=': STRY(compare(),       "evaluating compare");        break;
             case '{': break; // placeholder

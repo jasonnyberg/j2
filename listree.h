@@ -164,7 +164,9 @@ typedef struct REF {
 extern int REF_create(LTV *ltv,CLL *refs);
 extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 
-extern int REF_resolve(CLL *refs,LTV *root,int insert);
+extern LTV *REF_reset(REF *ref,LTV *newroot);
+
+extern int REF_resolve(CLL *refs,int insert);
 extern int REF_iterate(CLL *refs);
 
 extern int REF_assign(REF *ref,LTV *ltv);

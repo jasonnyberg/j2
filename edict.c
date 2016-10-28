@@ -75,11 +75,12 @@ int tok_count=0;
 
 typedef enum {
     TOK_NONE     =0,
-    TOK_FILE     =1<<0x00,
-    TOK_EXPR     =1<<0x01,
-    TOK_LIT      =1<<0x02,
-    TOK_OPS      =1<<0x03,
-    TOK_REF      =1<<0x04,
+    TOK_POP      =1<<0x00,
+    TOK_FILE     =1<<0x01,
+    TOK_EXPR     =1<<0x02,
+    TOK_LIT      =1<<0x03,
+    TOK_OPS      =1<<0x04,
+    TOK_REF      =1<<0x05,
 } TOK_FLAGS;
 
 struct TOK;
@@ -168,7 +169,8 @@ TOK *TOK_expr(char *buf,int len) { return TOK_new(TOK_EXPR,LTV_new(buf,len,LT_NO
 
 void show_tok_flags(FILE *ofile,TOK *tok)
 {
-    if (tok->flags&TOK_FILE)    fprintf(ofile,"FILE ");
+    if (tok->flags&TOK_POP)     fprintf(ofile,"POP ");
+    if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
     if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
     if (tok->flags&TOK_LIT)     fprintf(ofile,"LIT ");
     if (tok->flags&TOK_OPS)     fprintf(ofile,"OPS ");
@@ -331,8 +333,8 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 // parser
 //////////////////////////////////////////////////
 
-#define OPS "#$@/%|="
-#define MONO_OPS "!+()<>{}"
+#define OPS "#$@/!%+|="
+#define MONO_OPS "()<>{}"
 
 int parse_expr(TOK *tok)
 {
@@ -406,14 +408,16 @@ int ref_eval(CONTEXT *context,TOK *ref_tok)
 {
     int status=0;
     REF *ref_head=NULL;
-    LTV *ref_ltv=NULL,*lambda_ltv=NULL;
+    LTV *lambda_ltv=NULL,*ref_ltv=NULL;
 
     STRY(!(lambda_ltv=LTV_peek(&ref_tok->lambdas,HEAD)),"validating ref lambda");
     STRY(!(ref_head=REF_HEAD(&ref_tok->children)),"validating ref head");
     STRY(!(ref_ltv=REF_ltv(ref_head)),"validating deref result");
     STRY(!stack_push(context,ref_ltv),"pushing resolved ref to stack");
     STRY(eval_push(context,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
-    TRYCATCH(REF_iterate(&ref_tok->children) || !REF_ltv(ref_head),0,terminate,"iterating ref");
+    TRYCATCH(REF_iterate(&ref_tok->children,ref_tok->flags&TOK_POP),0,terminate,"iterating ref");
+    TRYCATCH(!REF_ltv(ref_head),0,terminate,"iterating ref");
+
     goto done; // success!
     terminate:
     TOK_free(ref_tok);
@@ -556,13 +560,6 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int scope_close()    { return !stack_push(context,dict_pop(context)); }
     int function_close() { return eval_push(context,TOK_new(TOK_EXPR,dict_peek(context))); }
 
-    int eval() { // map too!
-        int status=0;
-        STRY(eval_push(context,TOK_new(TOK_EXPR,stack_pop(context))),"pushing lambda");
-        done:
-        return status;
-    }
-
     int append() {
         int status=0;
         LTV *a=NULL,*b=NULL;
@@ -577,7 +574,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int map() {
+    int map(int pop) {
         int status=0;
         LTV *expr_ltv=NULL,*lambda_ltv=NULL;
         TOK *map_tok=NULL;
@@ -585,6 +582,8 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         if (ref_head) { // prep ref for iteration
             STRY(edict_resolve(context,ref_tok,0),"resolving ref for deref");
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
+            if (pop)
+                map_tok->flags|=TOK_POP;
             STRY(!(lambda_ltv=stack_pop(context)),"popping lambda");
         }
         else { // pop/prep expression for iteration
@@ -594,6 +593,16 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         STRY(!(LTV_enq(&map_tok->lambdas,lambda_ltv,HEAD)),"pushing lambda into map tok");
         STRY(eval_push(context,map_tok),"pushing map tok");
 
+        done:
+        return status;
+    }
+
+    int eval() { // map too!
+        int status=0;
+        if (ref_head) // popping iteration
+            STRY(map(true),"delegating map w/pop");
+        else
+            STRY(eval_push(context,TOK_new(TOK_EXPR,stack_pop(context))),"pushing lambda");
         done:
         return status;
     }
@@ -634,7 +643,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             case ')': STRY(function_close(),"evaluating function_close"); break;
             case '!': STRY(eval(),          "evaluating eval");           break;
             case '+': STRY(append(),        "evaluating append");         break;
-            case '%': STRY(map(),           "evaluating map");            break;
+            case '%': STRY(map(false),      "evaluating map");            break;
             case '|': STRY(or(),            "evaluating or");             break;
             case '=': STRY(compare(),       "evaluating compare");        break;
             case '{': break; // placeholder

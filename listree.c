@@ -672,35 +672,43 @@ int REF_resolve(CLL *refs,int insert)
     return status;
 }
 
-int REF_iterate(CLL *refs)
+int REF_iterate(CLL *refs,int remove)
 {
     int status=0;
 
     void *iterate(CLL *lnk) { // return null if there is no next
-        int status=0;
         REF *ref=(REF *) lnk;
         if (!ref->lti || !ref->ltvr)
             goto done;
 
-        LTVR *name_ltvr=NULL;
+        LTVR *name_ltvr=NULL,*ref_ltvr=ref->ltvr;
         LTV *name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&name_ltvr);
         LTVR *val=(LTVR *) CLL_next(&ref->keys,&name_ltvr->lnk,FWD); // val will be next key
 
-        if (LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr)!=NULL)
-            return ref;
-        for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti));
-        if (ref->lti!=NULL)
+        LTV *next_ltv=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr);
+        if (remove)
+            LTVR_release(&ref_ltvr->lnk);
+        if (next_ltv)
             return ref;
 
+        if (LTV_wildcard(name)) {
+            LTV *root=REF_root(ref);
+            LTI *lti=ref->lti;
+            for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti)); // find next lti
+            if (CLL_EMPTY(&lti->ltvs)) // if LTI is pruneable
+                RBN_release(&root->sub.ltis,&lti->rbn,LTI_release); // prune it
+            if (ref->lti!=NULL)
+                return ref;
+        }
+
+        REF_reset(ref,NULL);
+
         done:
-        return status?NON_NULL:NULL; // returning non-null terminates cll map
+        return NULL;
     }
 
     STRY(!refs,"validating arguments");
-    REF *res=CLL_map(refs,FWD,iterate); // returns iterated ref, null if no next, NON_NULL on error
-    if (res==NON_NULL)
-        status=-1;
-    else if (res)
+    if (CLL_map(refs,FWD,iterate))
         STRY(REF_resolve(refs,false),"resolving iterated ref");
 
     done:

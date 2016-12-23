@@ -70,8 +70,8 @@
 #include <unistd.h>     /* For close() */
 #include <stdio.h>
 #include <errno.h>
-#include "libdwarf/dwarf.h"
-#include "libdwarf/libdwarf.h"
+#include "dwarf.h"
+#include "libdwarf.h"
 #include "util.h"
 
 #define END "\n"

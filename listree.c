@@ -643,8 +643,8 @@ int REF_resolve(CLL *refs,int insert)
             // process CVAR
         } else {
             if (!ref->lti) { // resolve lti
-                TRY(!(ref->lti=LTI_lookup(root,name,insert)),"looking up lti");
-                CATCH(status,0,goto done,"lti lookup failed");
+		 if ((status=!(ref->lti=LTI_lookup(root,name,insert))))
+		    goto done; // return failure, but don't log it
             }
             if (!ref->ltvr) { // resolve ltv(r)
                 TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
@@ -663,7 +663,7 @@ int REF_resolve(CLL *refs,int insert)
 
     STRY(!refs,"validating refs");
     STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
-    status=CLL_map(refs,REV,resolve)!=NULL;
+    status=(CLL_map(refs,REV,resolve)!=NULL);
     if (placeholder) { // remove terminal placeholder
         LTVR_release(&ref->ltvr->lnk);
         ref->ltvr=NULL;

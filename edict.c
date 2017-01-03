@@ -399,13 +399,10 @@ int edict_resolve(CONTEXT *context,TOK *ref_tok,int insert) { // may need to ins
     STRY(!ref_tok,"validating ref tok");
     CLL *kids=&ref_tok->children; // shorthand
     void *dict_resolve(CLL *lnk) {
-        int status=0;
-        STRY(!REF_reset(REF_TAIL(kids),((LTVR *) lnk)->ltv),"resetting ref");
-        STRY(!REF_resolve(kids,insert),"resolving ref");
-      done:
-        return status?NULL:NON_NULL; // if error, continue by returning NULL
-    }
-    STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
+	 REF_reset(REF_TAIL(kids),((LTVR *) lnk)->ltv);
+	 return REF_resolve(kids,insert)?NULL:NON_NULL;
+    } // if lookup failed, continue map by returning NULL
+    status=!CLL_map(&context->dict,FWD,dict_resolve); 
   done:
     return status;
 }
@@ -500,7 +497,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
         int dump(char *label) {
             int status=0;
-            edict_resolve(context,ref_tok,0);
+            edict_resolve(context,ref_tok,false);
             LTI *lti=REF_lti(ref_head);
             if (lti) {
                 CLL *ltvs=&lti->ltvs;
@@ -530,11 +527,10 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
     int deref() {
         int status=0;
-        STRY(edict_resolve(context,ref_tok,0),"resolving ref for deref");
-        if (REF_ltv(ref_head))
-            STRY(!stack_push(context,REF_ltv(ref_head)),"pushing resolved ref to stack");
-        else
+        if (edict_resolve(context,ref_tok,false) || !REF_ltv(ref_head)) // if lookup failed, push copy to stack
             STRY(!stack_push(context,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
+	else
+            STRY(!stack_push(context,REF_ltv(ref_head)),"pushing resolved ref to stack");
         done:
         return status;
     }
@@ -542,7 +538,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int assign() { // resolve refs needs to not worry about last ltv, just the lti is important.
         int status=0;
         LTV *tos=NULL;
-        STRY(edict_resolve(context,ref_tok,1),"resolving ref for assign");
+        STRY(edict_resolve(context,ref_tok,true),"resolving ref for assign");
         STRY(!(tos=stack_peek(context)),"peeking anon");
         STRY(REF_assign(ref_head,tos),"assigning anon to ref");
         stack_pop(context); // succeeded, detach anon from stack
@@ -553,7 +549,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int remove() {
         int status=0;
         if (ref_head) {
-            STRY(edict_resolve(context,ref_tok,0),"resolving ref for remove");
+            STRY(edict_resolve(context,ref_tok,false),"resolving ref for remove");
             STRY(REF_remove(ref_head),"performing ref remove");
         } else {
             LTV_release(stack_pop(context));
@@ -586,7 +582,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         TOK *map_tok=NULL;
 
         if (ref_head) { // prep ref for iteration
-            STRY(edict_resolve(context,ref_tok,0),"resolving ref for deref");
+	    STRY(edict_resolve(context,ref_tok,false),"resolving ref for deref");
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
             if (pop)
                 map_tok->flags|=TOK_POP;

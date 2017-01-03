@@ -378,7 +378,7 @@ void read_cu_list(FILE *ofile,Dwarf_Debug dbg,char *module)
 
     done:
     fprintf(ofile,END END); // instantiate dependencies
-    fprintf(ofile,"[!]!/finalize [/]!/reflection.module.id" END); // instantiate dependencies
+    fprintf(ofile,"[!]!finalize [/]!reflection.module.id" END); // instantiate dependencies
     fprintf(ofile,">/" END END); // instantiate dependencies
     return;
  panic:

@@ -663,7 +663,7 @@ int REF_resolve(CLL *refs,int insert)
 
     STRY(!refs,"validating refs");
     STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
-    CLL_map(refs,REV,resolve);
+    status=CLL_map(refs,REV,resolve)!=NULL;
     if (placeholder) { // remove terminal placeholder
         LTVR_release(&ref->ltvr->lnk);
         ref->ltvr=NULL;

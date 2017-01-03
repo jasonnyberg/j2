@@ -398,9 +398,15 @@ int edict_resolve(CONTEXT *context,TOK *ref_tok,int insert) { // may need to ins
     int status=0;
     STRY(!ref_tok,"validating ref tok");
     CLL *kids=&ref_tok->children; // shorthand
-    void *dict_resolve(CLL *lnk) { return !REF_reset(REF_TAIL(kids),((LTVR *) lnk)->ltv) || !REF_resolve(kids,insert)?lnk:NULL; }
+    void *dict_resolve(CLL *lnk) {
+        int status=0;
+        STRY(!REF_reset(REF_TAIL(kids),((LTVR *) lnk)->ltv),"resetting ref");
+        STRY(!REF_resolve(kids,insert),"resolving ref");
+      done:
+        return status?NULL:NON_NULL; // if error, continue by returning NULL
+    }
     STRY(!CLL_map(&context->dict,FWD,dict_resolve),"performing dict resolve");
-    done:
+  done:
     return status;
 }
 
@@ -627,7 +633,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     // iterate over ops
     ////////////////////////////////////////////////////////////////////////////
 
-    edict_graph_to_file("/tmp/jj.dot",context->edict);
+    //edict_graph_to_file("/tmp/jj.dot",context->edict);
 
     if (!opslen && ref_head) // implied deref
         STRY(deref(),"performing implied deref");
@@ -654,9 +660,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         }
     }
 
-    edict_graph_to_file("/tmp/jj.dot",context->edict);
+    //edict_graph_to_file("/tmp/jj.dot",context->edict);
 
-    done:
+ done:
     TOK_free(ops_tok);
     return status;
 }

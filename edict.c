@@ -107,14 +107,16 @@ void show_toks(FILE *ofile,char *pre,CLL *toks,char *post);
 typedef struct CONTEXT {
     CLL lnk;
     EDICT *edict;
-    CLL dict;  // cll of ltvr
-    CLL stack; // cll of ltvr (grows at tail)
-    CLL toks;  // cll of tok
+    CLL dict;        // cll of ltvr
+    CLL stack;       // cll of ltvr (grows at tail)
+    CLL toks;        // cll of tok
+    void *exception;
+    int skipdepth;
+    int skip;
 } CONTEXT;
 
 CONTEXT *CONTEXT_new();
 void CONTEXT_free(CONTEXT *context);
-
 
 //////////////////////////////////////////////////
 // REPL Tokens
@@ -170,7 +172,7 @@ TOK *TOK_expr(char *buf,int len) { return TOK_new(TOK_EXPR,LTV_new(buf,len,LT_NO
 void show_tok_flags(FILE *ofile,TOK *tok)
 {
     if (tok->flags&TOK_POP)     fprintf(ofile,"POP ");
-    if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
+    if (tok->flags&TOK_FILE)    fprintf(ofile,"FILE ");
     if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
     if (tok->flags&TOK_LIT)     fprintf(ofile,"LIT ");
     if (tok->flags&TOK_OPS)     fprintf(ofile,"OPS ");
@@ -223,6 +225,9 @@ CONTEXT *CONTEXT_new(EDICT *edict)
     CLL_init(&context->dict);
     CLL_init(&context->stack);
     CLL_init(&context->toks);
+    context->exception=NULL;
+    context->skipdepth=0;
+    context->skip=false;
 
     TRYCATCH(!dict_push(context,edict->root),-1,release_context,"pushing context->dict root");
     TRYCATCH(!CLL_put(&edict->contexts,&context->lnk,HEAD),-1,release_context,"pushing context into edict");
@@ -246,7 +251,6 @@ void CONTEXT_free(CONTEXT *context)
     CLL_release(&context->toks,tok_free);
     DELETE(context);
 }
-
 
 //////////////////////////////////////////////////
 // instrumentation
@@ -333,7 +337,7 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 // parser
 //////////////////////////////////////////////////
 
-#define OPS "#$@/!%+|="
+#define OPS "|&!%#@/+="
 #define MONO_OPS "()<>{}"
 
 int parse_expr(TOK *tok)
@@ -451,6 +455,11 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         ref_head=REF_HEAD(&ref_tok->children);
     }
 
+    int throw(void *exception) {
+        context->exception=exception;
+        return 0;
+    }
+
     int special() { // handle special operations
         int readfrom()  {
             int status=0;
@@ -508,13 +517,19 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
+        int error() {
+            return 1;
+        }
+
         int status=0;
         if (ref_head) {
             LTV *key=REF_key(ref_head);
             if (key) {
-                if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
-                else if (!strnncmp(key->data,key->len,"d2e",-1))    STRY(d2e(),"converting dwarf to edict");
-                else if (!strnncmp(key->data,key->len,"cvar",-1))   STRY(cvar(),"creating cvar");
+                if      (!strnncmp(key->data,key->len,"read",-1))  STRY(readfrom(),"starting input stream");
+                else if (!strnncmp(key->data,key->len,"d2e",-1))   STRY(d2e(),"converting dwarf to edict");
+                else if (!strnncmp(key->data,key->len,"cvar",-1))  STRY(cvar(),"creating cvar");
+                else if (!strnncmp(key->data,key->len,"error",-1)) STRY(error(),"evaluating \"#error\"");
+                else if (!strnncmp(key->data,key->len,"throw",-1)) STRY(throw(NON_NULL),"evaluating \"#throw\"");
                 else STRY(dump((char *) key->data),"dumping named item");
             }
         } else {
@@ -549,7 +564,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int remove() {
         int status=0;
         if (ref_head) {
-            STRY(edict_resolve(context,ref_tok,false),"resolving ref for remove");
+	    TRYCATCH(edict_resolve(context,ref_tok,false),0,done,"resolving ref for remove");
             STRY(REF_remove(ref_head),"performing ref remove");
         } else {
             LTV_release(stack_pop(context));
@@ -609,12 +624,10 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int or() {
+    int catch() {
         int status=0;
-        LTV *ltv=NULL;
-        STRY(!(ltv=stack_peek(context)),"peeking anon");
-        TRYCATCH(0==(ltv->flags&LT_NIL),-1,done,"testing for non-nil"); // break expressions up into OR clauses (simple "|" or "|<catchval>")
-        done:
+        // if (context->exception == whatever) could do some pattern-matching here
+        context->exception=NULL;
         return status;
     }
 
@@ -631,31 +644,52 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
     //edict_graph_to_file("/tmp/jj.dot",context->edict);
 
-    if (!opslen && ref_head) // implied deref
+    if (!context->skip && !context->exception && !opslen && ref_head) // implied deref
         STRY(deref(),"performing implied deref");
-    else for (int i=0;i<opslen;i++) {
-        switch (ops[i]) {
-            case '#': STRY(special(),       "evaluating special");        break;
-            case '$': STRY(deref(),         "evaluating explicit deref"); break;
-            case '@': STRY(assign(),        "evaluating assign");         break;
-            case '/': STRY(remove(),        "evaluating remove");         break;
-            case '<': STRY(stack_open(),    "evaluating scope_open");     break;
-            case '(': STRY(stack_open(),    "evaluating function_open");  break;
-            case '>': STRY(scope_close(),   "evaluating scope_close");    break;
-            case ')': STRY(function_close(),"evaluating function_close"); break;
-            case '!': STRY(eval(),          "evaluating eval");           break;
-            case '+': STRY(append(),        "evaluating append");         break;
-            case '%': STRY(map(false),      "evaluating map");            break;
-            case '|': STRY(or(),            "evaluating or");             break;
-            case '=': STRY(compare(),       "evaluating compare");        break;
-            case '{': break; // placeholder
-            case '}': break; // placeholder
-            default:
-                printf("skipping unrecognized OP %c (%d)",ops[i],ops[i]);
-                break;
+    else
+        for (int i=0;i<opslen;i++) {
+            if (context->skipdepth) // just keep track of nestings 
+                switch (ops[i]) {
+                    case '<': case '(':                         context->skipdepth++; break;
+                    case '>': case ')': if (context->skipdepth) context->skipdepth--; break;
+                    default: break;
+                }
+            else if (context->exception)
+                switch (ops[i]) {
+                    case '<': case '(': context->skipdepth++; break;
+                    case '>': STRY(scope_close(),   "evaluating scope_close (ex)");    break;
+                    case ')': STRY(function_close(),"evaluating function_close (ex)"); break;                     
+                    case '|': STRY(catch(),         "evaluating catch (ex)");          break;
+                    default: break;
+                }
+            else if (context->skip) // exception handlers end at end of blocks
+                switch (ops[i]) {
+                    case '<': case '(': context->skipdepth++; break;
+                    case '>': context->skip=false; STRY(scope_close(),   "evaluating scope_close (skip)");    break;
+                    case ')': context->skip=false; STRY(function_close(),"evaluating function_close (skip)"); break;
+                    default: break;
+                }
+            else
+                switch (ops[i]) {
+                    case '|': context->skip=true; goto done; // skip over exception handlers
+                    case '<': STRY(stack_open(),    "evaluating scope_open");     break;
+                    case '>': STRY(scope_close(),   "evaluating scope_close");    break;
+                    case '(': STRY(stack_open(),    "evaluating function_open");  break;
+                    case ')': STRY(function_close(),"evaluating function_close"); break;
+                    case '&': STRY(throw(NON_NULL), "evaluating throw");          break;
+                    case '!': STRY(eval(),          "evaluating eval");           break;
+                    case '%': STRY(map(false),      "evaluating map");            break;
+                    case '@': STRY(assign(),        "evaluating assign");         break;
+                    case '/': STRY(remove(),        "evaluating remove");         break;
+                    case '+': STRY(append(),        "evaluating append");         break;
+                    case '=': STRY(compare(),       "evaluating compare");        break;
+                    case '#': STRY(special(),       "evaluating special");        break;
+                    default:
+                        printf("skipping unrecognized OP %c (%d)",ops[i],ops[i]);
+                        break;
+                }
         }
-    }
-
+    
     //edict_graph_to_file("/tmp/jj.dot",context->edict);
 
  done:
@@ -666,7 +700,8 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 int lit_eval(CONTEXT *context,TOK *tok)
 {
     int status=0;
-    STRY(!stack_push(context,tok_pop(tok)),"pushing expr lit");
+    if (!context->skip && !context->exception)
+        STRY(!stack_push(context,tok_pop(tok)),"pushing expr lit");
     TOK_free(tok);
     done:
     return status;
@@ -683,9 +718,10 @@ int expr_eval(CONTEXT *context,TOK *tok)
             STRY(eval_push(context,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
         STRY(eval_push(context,child),"pushing child");
     } else {
+        context->skip=false; // exception handlers end at end of expressions
         TOK_free(tok);
     }
-
+    
     done:
     return status;
 }
@@ -726,12 +762,12 @@ int tok_eval(CONTEXT *context,TOK *tok)
         case TOK_FILE: STRY(file_eval(context,tok),"evaluating file"); break;
         case TOK_LIT : STRY(lit_eval(context,tok), "evaluating lit");  break;
         case TOK_OPS : STRY(ops_eval(context,tok), "evaluating ops");  break;
-        case TOK_REF : STRY(ref_eval(context,tok), "evaluating ref");  break;
+            //case TOK_REF : STRY(ref_eval(context,tok), "evaluating ref");  break;
         case TOK_EXPR: STRY(expr_eval(context,tok),"evaluating expr"); break;
         default: TOK_free(tok); break;
     }
 
-    done:
+ done:
     return status;
 }
 

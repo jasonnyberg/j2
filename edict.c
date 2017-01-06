@@ -266,7 +266,6 @@ int edict_graph(FILE *ofile,EDICT *edict)
             fprintf(ofile,"\"%x\" [shape=box label=\"",tok);
             show_tok_flags(ofile,tok);
             fprintf(ofile,"\"]\n\"%x\" -> \"%x\" [color=red]\n",tok,lnk->lnk[0]);
-            //fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
             fprintf(ofile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
             ltvs2dot(ofile,&tok->ltvs,0,NULL);
             fprintf(ofile,"\"%2$x\" [label=\"lambdas\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->lambdas);
@@ -288,7 +287,7 @@ int edict_graph(FILE *ofile,EDICT *edict)
     void show_context(CONTEXT *context) {
         int halt=0;
         fprintf(ofile,"\"Context %x\"\n",context);
-        fprintf(ofile,"\"A%2$x\" [label=\"Stack\"]\n\"Context %1$x\" -> \"A%2$x\" -> \"%2$x\"\n",context,&context->stack);
+        fprintf(ofile,"\"S%2$x\" [label=\"Stack\"]\n\"Context %1$x\" -> \"S%2$x\" -> \"%2$x\"\n",context,&context->stack);
         ltvs2dot(ofile,&context->stack,0,NULL);
         fprintf(ofile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
         ltvs2dot(ofile,&context->dict,0,NULL);

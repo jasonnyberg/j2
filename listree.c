@@ -289,7 +289,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
         return rval;
     }
 
-    void *traverse(CLL *lnk) { return LTV_traverse(NULL,((LTVR *) lnk)->ltv); }
+    void *traverse(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; return LTV_traverse(ltvr,ltvr->ltv); }
     rval=CLL_map(ltvs,FWD,traverse);
     cleanup=1;
     preop=postop=NULL;
@@ -418,12 +418,17 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
     int halt=0;
-
+    
+    void lnk2dot(CLL *lnk) {
+        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",lnk,lnk->lnk[0]);
+    }
+    
     void ltvs2dot(CLL *ltvs,char *label) {
         if (label)
             fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse color=blue]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,ltvs);
-        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=red]\n",ltvs);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=red]\n",ltvs,ltvs->lnk[0]);
+        lnk2dot(ltvs);
+        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=red]\n",ltvs->lnk[0]);
     }
 
     void lti2dot(LTV *ltv,LTI *lti,int depth,int *flags) {
@@ -433,19 +438,12 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         ltvs2dot(&lti->ltvs,NULL);
     }
 
-    void lti_ltvr2dot(LTI *lti,LTVR *ltvr,int depth,int *flags) {
-        if (ltvr->ltv) fprintf(ofile,"\"%x\" -> \"%x\" [weight=2]\n",ltvr,ltvr->ltv);
-        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",&ltvr->lnk);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",&ltvr->lnk,ltvr->lnk.lnk[0]);
-    }
-
-    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr,int depth,int *flags) {
-        if (ltvr->ltv) fprintf(ofile,"\"%x\" -> \"%x\" [weight=2]\n",ltvr,ltvr->ltv);
-        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",&ltvr->lnk);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",&ltvr->lnk,ltvr->lnk.lnk[0]);
-    }
+    void lti_ltvr2dot(LTI *lti,LTVR *ltvr,int depth,int *flags) { lnk2dot(&ltvr->lnk); }
+    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr,int depth,int *flags) { lnk2dot(&ltvr->lnk); }
 
     void ltv2dot(LTVR *ltvr,LTV *ltv,int depth,int *flags) {
+        if (ltvr) fprintf(ofile,"\"%x\" -> \"%x\" [weight=2 color=blue]\n",&ltvr->lnk,ltv); // draw ltvrs, but don't redraw the ltv
+        
         if (ltv->flags&LT_AVIS) { // don't re-descend already represented nodes
             *flags|=LT_TRAVERSE_HALT;
             return;
@@ -493,7 +491,8 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         }
         return NULL;
     }
-    
+
+    ltvs2dot(ltvs,NULL);
     listree_traverse(ltvs,preop,NULL);
 }
 

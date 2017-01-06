@@ -378,8 +378,8 @@ void read_cu_list(FILE *ofile,Dwarf_Debug dbg,char *module)
 
     done:
     fprintf(ofile,END END); // instantiate dependencies
-    fprintf(ofile,"[!]!finalize" END); // instantiate dependencies
-    fprintf(ofile,"[/]!id" END); // cleanup
+    fprintf(ofile,"[!] !finalize" END); // instantiate dependencies
+    fprintf(ofile,"[/] !id" END); // cleanup
     fprintf(ofile,">/" END END);
     return;
  panic:

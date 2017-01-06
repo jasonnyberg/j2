@@ -207,13 +207,13 @@ void show_toks(FILE *ofile,char *pre,CLL *toks,char *post)
 // REPL Context
 //////////////////////////////////////////////////
 
-LTV *stack_push(CONTEXT *context,LTV *ltv) { return (LTV *) LTV_enq(&context->stack,ltv,HEAD); }
-LTV *stack_pop(CONTEXT *context)           { return (LTV *) LTV_deq(&context->stack,HEAD); }
-LTV *stack_peek(CONTEXT *context)          { return (LTV *) LTV_peek(&context->stack,HEAD); }
-
 LTV *dict_push(CONTEXT *context,LTV *ltv)  { return (LTV *) LTV_enq(&context->dict,ltv,HEAD); }
 LTV *dict_pop(CONTEXT *context)            { return (LTV *) LTV_deq(&context->dict,HEAD); }
 LTV *dict_peek(CONTEXT *context)           { return (LTV *) LTV_peek(&context->dict,HEAD); }
+
+LTV *stack_push(CONTEXT *context,LTV *ltv) { return (LTV *) LTV_enq(&context->stack,ltv,HEAD); }
+LTV *stack_pop(CONTEXT *context)           { return (LTV *) LTV_deq(&context->stack,HEAD); }
+LTV *stack_peek(CONTEXT *context)          { return (LTV *) LTV_peek(&context->stack,HEAD); }
 
 CONTEXT *CONTEXT_new(EDICT *edict)
 {
@@ -376,8 +376,8 @@ int parse_expr(TOK *tok)
             TOK *ops=NULL;
             tlen=series(data,len,OPS,NULL,NULL); // ops
             STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
-            tlen=series(data,len,NULL,WHITESPACE OPS MONO_OPS,"[]"); // ref
-            STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
+            if ((tlen=series(data,len,NULL,WHITESPACE OPS MONO_OPS,"[]"))) // ref
+                STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
         }
     }
 
@@ -406,7 +406,7 @@ int edict_resolve(CONTEXT *context,TOK *ref_tok,int insert) { // may need to ins
 	 REF_reset(REF_TAIL(kids),((LTVR *) lnk)->ltv);
 	 return REF_resolve(kids,insert)?NULL:NON_NULL;
     } // if lookup failed, continue map by returning NULL
-    status=!CLL_map(&context->dict,FWD,dict_resolve); 
+    status=!CLL_map(&context->dict,FWD,dict_resolve);
   done:
     return status;
 }
@@ -648,7 +648,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         STRY(deref(),"performing implied deref");
     else
         for (int i=0;i<opslen;i++) {
-            if (context->skipdepth) // just keep track of nestings 
+            if (context->skipdepth) // just keep track of nestings
                 switch (ops[i]) {
                     case '<': case '(':                         context->skipdepth++; break;
                     case '>': case ')': if (context->skipdepth) context->skipdepth--; break;
@@ -658,7 +658,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
                 switch (ops[i]) {
                     case '<': case '(': context->skipdepth++; break;
                     case '>': STRY(scope_close(),   "evaluating scope_close (ex)");    break;
-                    case ')': STRY(function_close(),"evaluating function_close (ex)"); break;                     
+                    case ')': STRY(function_close(),"evaluating function_close (ex)"); break;
                     case '|': STRY(catch(),         "evaluating catch (ex)");          break;
                     default: break;
                 }
@@ -689,7 +689,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
                         break;
                 }
         }
-    
+
     //edict_graph_to_file("/tmp/jj.dot",context->edict);
 
  done:
@@ -721,8 +721,8 @@ int expr_eval(CONTEXT *context,TOK *tok)
         context->skip=false; // exception handlers end at end of expressions
         TOK_free(tok);
     }
-    
-    done:
+
+ done:
     return status;
 }
 
@@ -762,7 +762,7 @@ int tok_eval(CONTEXT *context,TOK *tok)
         case TOK_FILE: STRY(file_eval(context,tok),"evaluating file"); break;
         case TOK_LIT : STRY(lit_eval(context,tok), "evaluating lit");  break;
         case TOK_OPS : STRY(ops_eval(context,tok), "evaluating ops");  break;
-            //case TOK_REF : STRY(ref_eval(context,tok), "evaluating ref");  break;
+        case TOK_REF : STRY(ref_eval(context,tok), "evaluating ref");  break; // used for map
         case TOK_EXPR: STRY(expr_eval(context,tok),"evaluating expr"); break;
         default: TOK_free(tok); break;
     }

@@ -110,9 +110,19 @@ extern void LTI_release(RBN *rbn);
 //////////////////////////////////////////////////
 // Combined pre-, in-, and post-fix LT traversal
 //////////////////////////////////////////////////
-enum { LT_TRAVERSE_HALT=1, LT_TRAVERSE_REVERSE=2 };
+enum { LT_TRAVERSE_HALT=1<<0, LT_TRAVERSE_SKIP=1<<1, LT_TRAVERSE_REVERSE=1<<2 };
 typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
-void *listree_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
+void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop);
+/*
+// lti/ltvr/ltv AND PARENT (if present) are passed in
+void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+    if      (*lti && !*ltvr) return lti(*ltv,*lti,depth,flags);
+    else if (*ltvr && !*ltv) return ltvr(*lti,*ltvr,depth,flags);
+    else if (*ltv && !*lti)  return ltv(*ltvr,*ltv,depth,flags); // PARENT IS LIST-FORM LTV IF ltvr->ltv!=ltv!!!
+}
+listree_traverse(ltv,op,NULL); // preop or postop can be NULL
+*/
+  
 
 //////////////////////////////////////////////////
 // Dictionary

@@ -552,11 +552,17 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int assign() { // resolve refs needs to not worry about last ltv, just the lti is important.
         int status=0;
         LTV *tos=NULL;
-        STRY(edict_resolve(context,ref_tok,true),"resolving ref for assign");
-        STRY(!(tos=stack_peek(context)),"peeking anon");
-        STRY(REF_assign(ref_head,tos),"assigning anon to ref");
+        TRYCATCH(edict_resolve(context,ref_tok,true),0,exception,"resolving ref for assign");
+        TRYCATCH(!(tos=stack_peek(context)),0,exception,"peeking anon");
+        TRYCATCH(REF_assign(ref_head,tos),0,exception,"assigning anon to ref");
         stack_pop(context); // succeeded, detach anon from stack
-        done:
+        goto done;
+
+  exception:
+        TOK_free(ref_tok);
+        context->exception=NON_NULL;
+        
+  done: 
         return status;
     }
 

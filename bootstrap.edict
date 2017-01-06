@@ -1,2 +1,3 @@
 [[preloads.edict] #read]/
-[stdin] #read
+[[stdin] #read | read_stdin!] @read_stdin
+read_stdin!

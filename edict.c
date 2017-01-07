@@ -558,11 +558,10 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         stack_pop(context); // succeeded, detach anon from stack
         goto done;
 
-  exception:
+      exception:
         TOK_free(ref_tok);
         context->exception=NON_NULL;
-        
-  done: 
+      done:
         return status;
     }
 

@@ -76,7 +76,7 @@ typedef struct TYPE_INFO
     DICT_ITEM *item;                   //
     
     char *typename;                    // human readable cross-referenced type name
-    DICT_ITEM *nexttype;               // string containing pointer to referenced type dict entry (cheat)
+    DICT_ITEM *nexttype;               // pointer to referenced type dict entry (cheat)
 
     char *addr;                        // set by Type_combine...
     char *name;                        // set by Type_combine...

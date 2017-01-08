@@ -176,7 +176,7 @@ extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 
 extern LTV *REF_reset(REF *ref,LTV *newroot);
 
-extern int REF_resolve(CLL *refs,int insert);
+extern int REF_resolve(LTV *root,CLL *refs,int insert);
 extern int REF_iterate(CLL *refs,int remove);
 
 extern int REF_assign(REF *ref,LTV *ltv);

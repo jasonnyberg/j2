@@ -639,13 +639,12 @@ LTI *LTI_lookup(LTV *root,LTV *name,int insert)
     return lti;
 }
 
-int REF_resolve(CLL *refs,int insert)
+int REF_resolve(LTV *root,CLL *refs,int insert)
 {
     int status=0;
     REF *ref=NULL;
     int placeholder=0;
-    LTV *root=NULL;
-
+    
     void *resolve(CLL *lnk) {
         int status=0;
         ref=(REF *) lnk;
@@ -682,7 +681,8 @@ int REF_resolve(CLL *refs,int insert)
     }
 
     STRY(!refs,"validating refs");
-    STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
+    if (!root)
+        STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
     status=(CLL_map(refs,REV,resolve)!=NULL);
     if (placeholder) { // remove terminal placeholder
         LTVR_release(&ref->ltvr->lnk);
@@ -729,7 +729,7 @@ int REF_iterate(CLL *refs,int remove)
 
     STRY(!refs,"validating arguments");
     if (CLL_map(refs,FWD,iterate))
-        STRY(REF_resolve(refs,false),"resolving iterated ref");
+        STRY(REF_resolve(NULL,refs,false),"resolving iterated ref");
 
     done:
     return status;

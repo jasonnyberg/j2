@@ -548,20 +548,20 @@ TYPE_UTYPE Type_getUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
 
             switch (*encoding)
             {
-                case 4: // float
+                case DW_ATE_float:
                     if (*size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
                     if (*size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
                     if (*size==12) GETUVAL(float12,TYPE_FLOAT12,uval);
                     break;
-                case 5: // signed int
-                case 6: // signed char
+                case DW_ATE_signed:
+                case DW_ATE_signed_char:
                     if (*size==1) GETUBITS(int1s,TYPE_INT1S,uval,bit_size,bit_offset,1);
                     if (*size==2) GETUBITS(int2s,TYPE_INT2S,uval,bit_size,bit_offset,1);
                     if (*size==4) GETUBITS(int4s,TYPE_INT4S,uval,bit_size,bit_offset,1);
                     if (*size==8) GETUBITS(int8s,TYPE_INT8S,uval,bit_size,bit_offset,1);
                     break;
-                case 7: // unsigned int
-                case 8: // unsigned char
+                case DW_ATE_unsigned:
+                case DW_ATE_unsigned_char:
                     if (*size==1) GETUBITS(int1u,TYPE_INT1U,uval,bit_size,bit_offset,0);
                     if (*size==2) GETUBITS(int2u,TYPE_INT2U,uval,bit_size,bit_offset,0);
                     if (*size==4) GETUBITS(int4u,TYPE_INT4U,uval,bit_size,bit_offset,0);

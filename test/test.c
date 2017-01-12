@@ -21,12 +21,15 @@ teststring teststringvar;
 static int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
 {
     int localc = 5;
+    int locale;
+    z=&localc;
 
     {
         int locald = MYMACRO(localc) + const_int;
+        locale=locald;
     }
 
-    return x+y[5]+*z+arga+argb->b+localc;
+    return x+y[5]+*z+arga+argb->b+localc+locale;
 }
 
 int main(int argc,char *argv[])

@@ -35,8 +35,6 @@ typedef struct
     Dwarf_Unsigned bytesize;
     Dwarf_Unsigned bitsize;
     Dwarf_Unsigned bitoffset;
-    Dwarf_Unsigned srclang;
-    Dwarf_Unsigned arrayorder;
     void *data_member_location;
     void *location;
     char *encoding;

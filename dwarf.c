@@ -217,67 +217,6 @@ int get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
                                                                  vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
         printf("\n");
 
-#if 0
-        Dwarf_Locdesc **llbuf;
-        if (dwarf_loclist_n(*attr,&llbuf,&vint,&error)==DW_DLV_OK)
-        {
-            printf("loclist\n");
-            int i,j;
-            for (i=0;i<vint;i++)
-            {
-                printf("        loclist %d lowpc %" DW_PR_DUx " hipc %"  DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
-                       i,
-                       llbuf[i]->ld_lopc,
-                       llbuf[i]->ld_hipc,
-                       llbuf[i]->ld_section_offset,llbuf[i]->ld_from_loclist?"debug_loc":"debug_info",
-                       llbuf[i]->ld_cents);
-                for (j=0;j<llbuf[i]->ld_cents;j++)
-                {
-                    printf("            ");
-                    if (llbuf[i]->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf[i]->ld_s[j].lr_atom <= DW_OP_breg31)
-                        printf("location (a) %" DW_PR_DSd " ", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
-                    else
-                        switch(llbuf[i]->ld_s[j].lr_atom)
-                        {
-                            case DW_OP_addr:
-                                printf("location (b) 0x%" DW_PR_DUx " ", llbuf[i]->ld_s[j].lr_number);
-                                break;
-                            case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s:
-                            case DW_OP_skip:
-                            case DW_OP_bra:
-                            case DW_OP_fbreg:
-                                printf("location (c) %" DW_PR_DSd " ", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
-                                break;
-                            case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u:
-                            case DW_OP_pick:
-                            case DW_OP_plus_uconst:
-                            case DW_OP_regx:
-                            case DW_OP_piece:
-                            case DW_OP_deref_size:
-                            case DW_OP_xderef_size:
-                                printf("location (d) %" DW_PR_DUu " ", llbuf[i]->ld_s[j].lr_number);
-                                break;
-                            case DW_OP_bregx:
-                                printf("location (e) reg%" DW_PR_DUu "(%" DW_PR_DSd ") ",llbuf[i]->ld_s[j].lr_number,llbuf[i]->ld_s[j].lr_number2);
-                                break;
-                            case DW_OP_GNU_uninit:
-                            case DW_OP_GNU_encoded_addr:
-                            case DW_OP_GNU_implicit_pointer:
-                            case DW_OP_GNU_entry_value:
-                                printf("DW_OP %d ",llbuf[i]->ld_s[j].lr_atom);
-                            default:
-                                break;
-                        }
-                    printf("\n");
-                }
-                printf("\n");
-                dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
-                dwarf_dealloc(dbg,llbuf[i], DW_DLA_LOCDESC);
-            }
-            dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
-        }
-#endif
-
         dwarf_dealloc(dbg,atlist[atcnt],DW_DLA_ATTR);
     }
     dwarf_dealloc(dbg,atlist,DW_DLA_LIST);

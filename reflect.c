@@ -18,32 +18,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-#include "edict.h"
-
-
-LTV *reflection_member(LTV *val,char *name); // dereference member by name
-
-int reflection_dump(LTv *val); // dump binary data, metadata to stdout
-
-char *refelction_write(LTV *val); // to_string(s)
-int reflection_read(LTV *val,char *value); // from_string(s)
-
-int reflection_new(char *type); // expose through edict
-int reflection_delete(LTV *val); // expose through edict
-
-int reflection_pickle(); // TOS cvar to edict representation
-int reflection_unpickle(); // TOS edict representation to cvar
-
-
-
-LTV *reflection_member(LTV *val,char *name)
-{
-    return NULL;
-}
-
-
-
 #define _GNU_SOURCE // strndupa, stpcpy
 #define __USE_GNU // strndupa, stpcpy
 #include <stdio.h>
@@ -51,11 +25,43 @@ LTV *reflection_member(LTV *val,char *name)
 #include <stdlib.h>
 
 #include "util.h"
-#include "hdict.h"
-#include "jli.h"
-#include "jliext.h"
+#include "listree.h"
 #include "reflect.h"
 
+typedef enum
+{
+    TYPE_NONE,
+    TYPE_INT1S,
+    TYPE_INT2S,
+    TYPE_INT4S,
+    TYPE_INT8S,
+    TYPE_INT1U,
+    TYPE_INT2U,
+    TYPE_INT4U,
+    TYPE_INT8U,
+    TYPE_FLOAT4,
+    TYPE_FLOAT8,
+    TYPE_FLOAT12
+} TYPE_UTYPE;
+
+typedef union // keep members aligned with associated dutype enum
+{
+    TYPE_UTYPE dutype;
+    struct { TYPE_UTYPE dutype; unsigned char        val; } int1u;
+    struct { TYPE_UTYPE dutype; unsigned short       val; } int2u;
+    struct { TYPE_UTYPE dutype; unsigned long        val; } int4u;
+    struct { TYPE_UTYPE dutype; unsigned long long   val; } int8u;
+    struct { TYPE_UTYPE dutype; signed   char        val; } int1s;
+    struct { TYPE_UTYPE dutype; signed   short       val; } int2s;
+    struct { TYPE_UTYPE dutype; signed   long        val; } int4s;
+    struct { TYPE_UTYPE dutype; signed   long long   val; } int8s;
+    struct { TYPE_UTYPE dutype;          float       val; } float4;
+    struct { TYPE_UTYPE dutype;          double      val; } float8;
+    struct { TYPE_UTYPE dutype;          long double val; } float12;
+} TYPE_UVALUE;
+
+
+#if 0
 #define ENUMS_PREFIX "" //"enums."
 
 DICT_ITEM *SU_subitem(DICT *dict,char *name) { return jli_getitem(dict,name,strlen(name),0); }
@@ -69,6 +75,8 @@ DICT_ITEM *Type_lookupName(DICT *dict,char *name);
 void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data);
 void Type_dumpType(DICT *dict,char *name,char *addr,char *prefix);
 void Type_dumpVar(DICT *dict,char *name,char *prefix);
+
+
 
 typedef struct
 {
@@ -106,7 +114,7 @@ DICT_ITEM *Type_getTypeInfo(DICT_ITEM *typeitem,TYPE_INFO *type_info)
             type_info->DW_AT_encoding = p;
         if ((p = SU_lookup(&typeitem->dict,"DW_AT_upper_bound")))
             type_info->DW_AT_upper_bound = p;
-        
+
         type_info->index = strtou(SU_lookup(&typeitem->dict,"index"));
         type_info->level = strtou(SU_lookup(&typeitem->dict,"level"));
         type_info->item = typeitem;
@@ -117,7 +125,7 @@ DICT_ITEM *Type_getTypeInfo(DICT_ITEM *typeitem,TYPE_INFO *type_info)
         type_info->typename=SU_lookup(&typeitem->dict,"typename");
         type_info->nexttype=(addr=STRTOULLP(SU_lookup(&typeitem->dict,"nexttype")))?(DICT_ITEM *)*addr:NULL;
     }
-    
+
     return typeitem;
 }
 
@@ -132,7 +140,7 @@ DICT_ITEM *Type_findBasic(DICT *dict,DICT_ITEM *typeitem,TYPE_INFO *type_info)
             !strcmp(type_info->category,"pointer_type") ||
             !strcmp(type_info->category,"array_type"))
             break;
-        
+
         typeitem=type_info->nexttype;
     }
 
@@ -199,7 +207,7 @@ long long *Type_getLocation(char *loc)
 }
 
 
-void *Type_remapChildren(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data) 
+void *Type_remapChildren(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
 {
     void *Type_remapChild(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
     {
@@ -221,7 +229,7 @@ void *Type_remapChildren(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
 }
 
 
-void *Type_mapEnum(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data) 
+void *Type_mapEnum(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
 {
     void *Type_mapEnumeration(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
     {
@@ -246,7 +254,7 @@ void *Type_mapEnum(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
         if (type_info.children)
             dict_traverse(dict,&type_info.children->dict,Type_mapEnumeration,&type_info);
     }
-        
+
     return NULL;
 }
 
@@ -267,14 +275,14 @@ DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
         }
         return NULL;
     }
-    
+
     void *Type_findMemberByIndex(DICT *dict,char *name)
     {
         DICT_ITEM *item=jli_getitem(dict,name,strlen(name),0);
         ull *addr=item?STRTOULLP(item->data):NULL;
         return addr?(void *) *addr:NULL;
     }
-    
+
     DICT_ITEM *children=NULL;
 
     if (typeitem && (children=SU_subitem(&typeitem->dict,"children")))
@@ -283,7 +291,7 @@ DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
             dict_traverse(dict,&children->dict,Type_findMemberByName,(void *) member):
             Type_findMemberByIndex(&children->dict,(char *) ulltostr("%llu",(ull)n));
     }
-    
+
     return typeitem;
 }
 
@@ -298,7 +306,7 @@ void Type_mapTypeInfoNames(DICT *dict,TYPE_INFO *type_info)
 {
     char *format=NULL,*p=NULL;
     int indirect=0;
-        
+
     if (!strcmp(type_info->category,"base_type")) format="%s";
     else if (!strcmp(type_info->category,"typedef")) format="%s";
     else if (!strcmp(type_info->category,"enumeration_type")) format="enum.%s";
@@ -312,7 +320,7 @@ void Type_mapTypeInfoNames(DICT *dict,TYPE_INFO *type_info)
         TYPE_INFO next_type_info;
         Type_getTypeInfo(type_info->nexttype,&ZERO(next_type_info));
         indirect=1;
-        
+
         if (!strcmp(type_info->category,"subroutine_type"))
         {
             format="function.%s";
@@ -339,25 +347,25 @@ void Type_mapTypeInfoNames(DICT *dict,TYPE_INFO *type_info)
             DICT_ITEM *subrange_item=Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,0),&ZERO(subrange_info));
             ull *upper_bound,*byte_size;
             FORMATA(format,64,"array.%%s.[%s]",subrange_info.DW_AT_upper_bound);
-            
+
             if (next_type_info.typename && Type_findBasic(dict,type_info->nexttype,&ZERO(element_info)))
             {
                 ull *upper_bound=STRTOULLP(subrange_info.DW_AT_upper_bound);
                 ull *byte_size=STRTOULLP(element_info.DW_AT_byte_size);
                 ull bs = upper_bound && byte_size? ((*byte_size)*((*upper_bound)+1)):0;
-                
+
                 if (!type_info->DW_AT_byte_size)
                     Type_install(dict,ulltostr("0x%llx",(ull)bs),"types.",type_info->type_id,".DW_AT_byte_size");
-                                 
+
                 type_info->DW_AT_name=next_type_info.typename;
             }
         }
     }
-    
+
     if (format)
     {
         char *itemstr=ulltostr("0x%llx",(ull) type_info->item);
-        
+
         if (type_info->DW_AT_name)
         {
             FORMATA(p,256,format,type_info->DW_AT_name);
@@ -380,7 +388,7 @@ void Type_mapTypeInfoNames(DICT *dict,TYPE_INFO *type_info)
 void *Type_mapTypeInfo(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
 {
     TYPE_INFO type_info;
-    
+
     if (Type_getTypeInfo(item,&ZERO(type_info)))
     {
         Type_mapTypeInfoTypes(dict,&type_info);
@@ -421,7 +429,7 @@ void Type_permute(DICT *dict,char *name)
         DICT_ITEM *enums=NULL;
         DICT_ITEM *structs=NULL;
         DICT_ITEM *unions=NULL;
-        
+
         printf("    Remapping Children...\n");
         dict_traverse(dict,&item->dict,Type_remapChildren,"");
         printf("    Mapping TypeInfo...\n");
@@ -522,7 +530,7 @@ TYPE_UTYPE Type_getUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
 {
     ZERO(*uval);
     ull *size,*encoding,*bit_size,*bit_offset;
-    
+
     if (addr && type_info && uval)
     {
         if ((!strcmp(type_info->category,"base_type") &&
@@ -594,7 +602,7 @@ int Type_putUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
 {
     int status=0;
     ull *size,*encoding,*bit_size,*bit_offset;
-    
+
     if (addr && type_info && uval)
     {
         if ((!strcmp(type_info->category,"base_type") &&
@@ -678,7 +686,7 @@ int Type_traverseArray(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseF
     TYPE_INFO subrange_info,element_info;
     ull *upper_bound,*byte_size;
     int status=fn(dict,data,type_info);
-    
+
     if (Type_findBasic(dict,type_info->nexttype,&ZERO(element_info)) &&
         Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,0),&ZERO(subrange_info)))
     {
@@ -699,17 +707,17 @@ int Type_traverseArray(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseF
             }
         }
     }
-    
+
     return status;
 }
 
 int Type_traverseTypedef(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
 {
     int status=fn(dict,data,type_info);
-    
+
     if (Type_findBasic(dict,type_info->item,type_info))
         Type_traverseTypeInfo(dict,data,type_info,fn);
-    
+
     return status;
 }
 
@@ -719,7 +727,7 @@ int Type_traverseStruct(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverse
     DICT_ITEM *memberitem;
     TYPE_INFO local_type_info;
     int status=fn(dict,data,type_info);
-    
+
     while (Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,i++),&ZERO(local_type_info)))
     {
         char *name=strlen(type_info->name)?
@@ -728,7 +736,7 @@ int Type_traverseStruct(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverse
         Type_combine(&local_type_info,type_info->addr,name);
         Type_traverseTypeInfo(dict,data,&local_type_info,fn);
     }
-    
+
     return status;
 }
 
@@ -736,7 +744,7 @@ int Type_traverseUnion(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseF
 {
     TYPE_INFO local_type_info;
     int status=fn(dict,data,type_info);
-    
+
     if (Type_findBasic(dict,Type_getChild(dict,type_info->item,"dutype",0),&ZERO(local_type_info)) &&
         !strcmp(local_type_info.category,"enumeration_type"))
     {
@@ -750,7 +758,7 @@ int Type_traverseUnion(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseF
             Type_traverseTypeInfo(dict,data,&local_type_info,fn);
         }
     }
-    
+
     return status;
 }
 
@@ -768,7 +776,7 @@ int Type_traverseMember(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverse
         Type_combine(type_info,addr+offset,name);
         Type_traverseTypeInfo(dict,data,type_info,fn);
     }
-    
+
     return status;
 }
 
@@ -785,7 +793,7 @@ int Type_traverseVariable(DICT *dict,void *data,TYPE_INFO *type_info,Type_traver
         Type_combine(type_info,newaddr,type_info->name);
         Type_traverseTypeInfo(dict,data,type_info,fn);
     }
-    
+
     return status;
 }
 
@@ -817,7 +825,7 @@ int Type_traverse(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data,Type_trav
 char *Type_humanReadableVal(TYPE_INFO *type_info,char *buf)
 {
     strcpy(buf,"n/a");
-    
+
     if (!strcmp(type_info->category,"base_type"))
     {
         TYPE_UVALUE uval;
@@ -833,11 +841,11 @@ char *Type_humanReadableVal(TYPE_INFO *type_info,char *buf)
             unsigned int value;
             char *valstr;
             DICT_ITEM *enumitem;
-            
+
             UVAL2VAR(uval,value);
             valstr=ulltostr("values.%llu",value);
             enumitem=jli_getitem(&type_info->item->dict,valstr,strlen(valstr),0);
-            
+
             if (enumitem) sprintf(buf,ENUMS_PREFIX "%s",enumitem->data);
             else sprintf(buf,"%lld",value);
         }
@@ -858,14 +866,14 @@ int Type_dumpTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
 {
     char buf[64];
     data=strlen((char *) data)?data:"%50s :%s\n";
-    
+
     if (!strcmp(type_info->category,"base_type") ||
         !strcmp(type_info->category,"enumeration_type") ||
         !strcmp(type_info->category,"pointer_type"))
     {
         printf(data,Type_humanReadableVal(type_info,buf),type_info->name);
     }
-    
+
     return 0;
 }
 
@@ -885,7 +893,7 @@ int Type_installTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
         !strcmp(type_info->category,"enumeration_type") ||
         !strcmp(type_info->category,"pointer_type"))
         jli_install(dict,Type_humanReadableVal(type_info,buf),type_info->name);
-    
+
     return 0;
 }
 
@@ -931,16 +939,16 @@ void Type_member(DICT *dict,DICT_ITEM *typeitem,char *addr,char *member)
         TYPE_INFO type_info;
         DICT_ITEM *basicitem=Type_findBasic(dict,typeitem,&ZERO(type_info));
         Type_getTypeInfo(basicitem,&ZERO(type_info)); // re-retrieve so we don't mistake a member's name for struct's
-                         
+
         if (dlen)
         {
             ull *index,*byte_size;
             char *container_name;
             ull offset=0;
-            
+
             if (!(container_name=type_info.DW_AT_name))
                 container_name=type_info.type_id;
-            
+
             if (!strcmp(type_info.category,"array_type") &&
                 (index=STRTOULLP(member)) &&
                 (typeitem=Type_getTypeInfo(type_info.nexttype,&type_info)) &&
@@ -954,7 +962,7 @@ void Type_member(DICT *dict,DICT_ITEM *typeitem,char *addr,char *member)
                 ull *loc=Type_getLocation(type_info.DW_AT_data_member_location);
                 offset=loc?*loc:0;
             }
-            
+
             if (member[dlen]=='.')
                 return Type_member(dict,typeitem,addr+offset,member+dlen+1);
             else
@@ -1265,9 +1273,9 @@ void reflect_pushvar(char *type,void *addr)
 void reflect_init(char *binname,char *fifoname)
 {
     char *cmd;
-    
+
     reflection_dict=jliext_init();
-    
+
     jli_parse(reflection_dict,ulltostr("'0x%llx@var",      (ull) (void *) reflect_var));
     jli_parse(reflection_dict,ulltostr("'0x%llx@member",   (ull) (void *) reflect_member));
     jli_parse(reflection_dict,ulltostr("'0x%llx@dump",     (ull) (void *) reflect_dump));
@@ -1288,22 +1296,11 @@ void reflect_init(char *binname,char *fifoname)
     DICT_BYTECODE(reflection_dict,":",reflect_cvarset);
 
     jli_frame_begin(reflection_dict);
-    
+
     reflection_fifoname = fifoname;
     mkfifo(reflection_fifoname,777);
-    
+
     printf("Ready!\n");
 }
 
-void reflect(char *command)
-{
-    /*sem-protect:*/
-    //printf(CODE_RED "%s\n" CODE_RESET,command);
-    
-    {
-        if (command)
-            jli_parse(reflection_dict,command);
-        else
-            jli_read(reflection_dict,reflection_fifoname,jli_interact,1);
-    }
-}
+#endif

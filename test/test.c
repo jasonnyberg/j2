@@ -1,4 +1,5 @@
 volatile int x=0;
+const int const_int=10;
 int y[10];
 int *z;
 
@@ -22,7 +23,7 @@ static int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
     int localc = 5;
 
     {
-        int locald = localc + 10;
+        int locald = MYMACRO(localc) + const_int;
     }
 
     return x+y[5]+*z+arga+argb->b+localc;

@@ -219,7 +219,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
 {
     int depth=0,flags=0,cleanup=0;
     void *rval=NULL;
-    
+
     void *LTV_traverse(LTVR *parent,LTV *ltv) {
         void *LTVR_traverse(CLL *lnk) { // for list-form ltv
             LTVR *ltvr=(LTVR *) lnk;
@@ -238,33 +238,33 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
 
         void *LTI_traverse(RBN *rbn) {
             LTI *lti=(LTI *) rbn;
-            
-            void *LTVR_traverse(CLL *lnk) { // for normal-form (ltv->lti->ltvr) form ltv
-                LTVR *ltvr=(LTVR *) lnk;
-                if (!ltvr) goto done;
-                
-                LTI *parent=lti; LTV *child=NULL;
-                if (cleanup && ltvr->ltv) LTV_traverse(ltvr,ltvr->ltv);
-                else if (preop && (rval=preop(&parent,&ltvr,&child,depth,&flags)) ||
-                         ((flags&LT_TRAVERSE_HALT) || (rval=LTV_traverse(ltvr,ltvr->ltv))) ||
-                         postop && (rval=postop(&parent,&ltvr,&child,depth,&flags)))
-                    goto done;
-        done:
-                flags=0;
-                return rval;
-            }
 
-            if (!lti) goto done;
-            LTV *parent=ltv; LTVR *child=NULL;
-            if (cleanup) CLL_map(&lti->ltvs,FWD,LTVR_traverse);
-            else if (preop && (rval=preop(&lti,&child,&parent,depth,&flags)) ||
-                     ((flags&LT_TRAVERSE_HALT) || (rval=child?LTVR_traverse(&child->lnk):CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
-                     postop && (rval=postop(&lti,&child,&parent,depth,&flags)))
+        void *LTVR_traverse(CLL *lnk) { // for normal-form (ltv->lti->ltvr) form ltv
+            LTVR *ltvr=(LTVR *) lnk;
+            if (!ltvr) goto done;
+
+            LTI *parent=lti; LTV *child=NULL;
+            if (cleanup && ltvr->ltv) LTV_traverse(ltvr,ltvr->ltv);
+            else if (preop && (rval=preop(&parent,&ltvr,&child,depth,&flags)) ||
+                     ((flags&LT_TRAVERSE_HALT) || (rval=LTV_traverse(ltvr,ltvr->ltv))) ||
+                     postop && (rval=postop(&parent,&ltvr,&child,depth,&flags)))
                 goto done;
-    done:
+        done:
             flags=0;
             return rval;
         }
+
+        if (!lti) goto done;
+            LTV *parent=ltv; LTVR *child=NULL;
+        if (cleanup) CLL_map(&lti->ltvs,FWD,LTVR_traverse);
+        else if (preop && (rval=preop(&lti,&child,&parent,depth,&flags)) ||
+                 ((flags&LT_TRAVERSE_HALT) || (rval=child?LTVR_traverse(&child->lnk):CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
+                 postop && (rval=postop(&lti,&child,&parent,depth,&flags)))
+            goto done;
+    done:
+        flags=0;
+        return rval;
+    }
 
         if (!ltv) goto done;
         LTI *child=NULL;
@@ -283,7 +283,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
             if (postop && (rval=postop(&child,&parent,&ltv,depth,&flags))) goto done;
         }
 
- done:
+    done:
         if (ltv) ltv->flags|=LT_AVIS;
         flags=0;
         return rval;
@@ -418,37 +418,40 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
     int halt=0;
-    
+
     void lnk2dot(CLL *lnk) {
         fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",lnk,lnk->lnk[0]);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",lnk,lnk->lnk[HEAD]);
     }
-    
-    void ltvs2dot(CLL *ltvs,char *label) {
+
+    void cll2dot(CLL *cll,char *label) {
+        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=red]\n",cll);
         if (label)
-            fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse color=blue]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,ltvs);
-        lnk2dot(ltvs);
-        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=red]\n",ltvs->lnk[0]);
+            fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse style=filled fillcolor=gray]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,cll);
+        lnk2dot(cll);
     }
 
     void lti2dot(LTV *ltv,LTI *lti,int depth,int *flags) {
         fprintf(ofile,"\"%x\" [label=\"%s\" shape=ellipse color=blue]\n",lti,lti->name);
         if (rb_parent(&lti->rbn)) fprintf(ofile,"\"%x\" -> \"%x\" [color=blue weight=0]\n",rb_parent(&lti->rbn),&lti->rbn);
         fprintf(ofile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
-        ltvs2dot(&lti->ltvs,NULL);
+        cll2dot(&lti->ltvs,NULL);
     }
 
-    void lti_ltvr2dot(LTI *lti,LTVR *ltvr,int depth,int *flags) { lnk2dot(&ltvr->lnk); }
-    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr,int depth,int *flags) { lnk2dot(&ltvr->lnk); }
+    void lti_ltvr2dot(LTI *lti,LTVR *ltvr,int depth,int *flags) {} // left as an example
+    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr,int depth,int *flags) {} // left as an example
 
     void ltv2dot(LTVR *ltvr,LTV *ltv,int depth,int *flags) {
-        if (ltvr) fprintf(ofile,"\"%x\" -> \"%x\" [weight=2 color=blue]\n",&ltvr->lnk,ltv); // draw ltvrs, but don't redraw the ltv
-        
+        if (ltvr) {
+            lnk2dot(&ltvr->lnk);
+            fprintf(ofile,"\"%x\" -> \"%x\" [weight=2 color=blue]\n",&ltvr->lnk,ltv); // draw ltvrs, but don't redraw the ltv
+        }
+
         if (ltv->flags&LT_AVIS) { // don't re-descend already represented nodes
             *flags|=LT_TRAVERSE_HALT;
             return;
         }
-        
+
         if (ltv->len && !(ltv->flags&LT_NSTR)) {
             fprintf(ofile,"\"%x\" [style=filled shape=box color=orange label=\"",ltv);
             fstrnprint(ofile,ltv->data,ltv->len);
@@ -492,7 +495,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         return NULL;
     }
 
-    ltvs2dot(ltvs,NULL);
+    cll2dot(ltvs,label);
     listree_traverse(ltvs,preop,NULL);
 }
 
@@ -644,7 +647,7 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
     int status=0;
     REF *ref=NULL;
     int placeholder=0;
-    
+
     void *resolve(CLL *lnk) {
         int status=0;
         ref=(REF *) lnk;

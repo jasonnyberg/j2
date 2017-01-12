@@ -171,7 +171,7 @@ int fstrnprint(FILE *ofile,char *str,int len)
     return len;
 }
 
-char *bufdup(char *buf,int len)
+char *bufdup(const char *buf,int len)
 {
     // always null terminate whether string or not
     char *newbuf;

@@ -171,7 +171,7 @@ extern void *mybzero(void *p,int size);
 extern char *strstrip(char *buf,int *len);
 extern int fstrnprint(FILE *ofile,char *str,int len);
 
-extern char *bufdup(char *buf,int len);
+extern char *bufdup(const char *buf,int len);
 extern char *stripdup(char *buf,int *len);
 
 extern int strtou(char *str,int len,unsigned *val);

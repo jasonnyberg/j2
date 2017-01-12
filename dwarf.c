@@ -74,271 +74,178 @@
 #include "libdwarf.h"
 #include "util.h"
 
-#define END "\n"
-#define SPC " "
+#include "reflect.h"
 
-void get_die_and_siblings(FILE *ofile,Dwarf_Debug dbg, Dwarf_Die in_die,int level);
-
-#define DIE(cond) TRYCATCH(cond!=DW_DLV_OK,-1,panic,END)
+#define PANIC(cond) TRYCATCH(cond!=DW_DLV_OK,-1,panic,#cond)
 #define SKIP(cond,followup) if (cond==DW_DLV_OK) followup
 
-typedef void (*attrib_handler)(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr);
-
-
-void dump_attrib(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
-{
-    int status=0;
-    Dwarf_Error error=0;
-
-    Dwarf_Signed vint;
-    Dwarf_Unsigned vuint;
-    Dwarf_Half vshort;
-    const char *vcstr;
-    char *vstr;
-    Dwarf_Off voffset;
-    Dwarf_Addr vaddr;
-    Dwarf_Bool vbool;
-    Dwarf_Block *vblock;
-
-    DIE(dwarf_whatattr(*attr,&vshort,&error));
-    switch (vshort) {
-        case DW_AT_data_member_location:
-        case DW_AT_const_value:
-            break;
-        default:
-            //break;
-            return;
-    }
-
-    /*
-    fprintf(ofile,"[" END);
-    DIE(dwarf_whatattr(*attr,&vshort,&error));
-    DIE(dwarf_get_AT_name(vshort,&vcstr));
-    fprintf(ofile,"[%d]@attr attr<[%s]@name" SPC,vshort,vcstr);
-
-    DIE(dwarf_whatform(*attr,&vshort,&error));
-    DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    fprintf(ofile,"[%d]@form [%s]@form.name" SPC,vshort,vcstr);
-
-    DIE(dwarf_whatform_direct(*attr,&vshort,&error));
-    DIE(dwarf_get_FORM_name(vshort,&vcstr));
-    fprintf(ofile,"[%d]@form_direct [%s]@form_direct.name" SPC,vshort,vcstr);
-
-    //SKIP(dwarf_formref(*attr,&voffset,&error),fprintf(ofile,"[%d]@formref" SPC,(int) voffset));
-    SKIP(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"[%d]@global_formref" SPC,(int) voffset));
-    SKIP(dwarf_formaddr(*attr,&vaddr,&error),fprintf(ofile,"[0x%x]@formaddr" SPC,(int) vaddr));
-    SKIP(dwarf_formflag(*attr,&vbool,&error),fprintf(ofile,"[%d]@formflag" SPC,vbool));
-    SKIP(dwarf_formudata(*attr,&vuint,&error),fprintf(ofile,"[0x%x]@udata" SPC,(unsigned) vuint));
-    //SKIP(dwarf_formblock(*attr,&vblock,&error),fprintf(ofile,"[%d]@block" SPC,vblock));
-    SKIP(dwarf_formstring(*attr,&vstr,&error),fprintf(ofile,"[%s]@string" SPC,vstr));
-    fprintf(ofile,END "]@full_data" END);
-    */
-
-    fprintf(ofile,"[");
-    //SKIP(dwarf_formref(*attr,&voffset,&error),fprintf(ofile,"[0x%" DW_PR_DSx "]@formref" SPC,voffset));
-    //SKIP(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"[0x%" DW_PR_DSx "]@global_formref" SPC,voffset));
-    SKIP(dwarf_formaddr(*attr,&vaddr,&error),fprintf(ofile,"0x%" DW_PR_DUx SPC,vaddr));
-    SKIP(dwarf_formflag(*attr,&vbool,&error),fprintf(ofile,"%" DW_PR_DSd SPC,vbool));
-    SKIP(dwarf_formudata(*attr,&vuint,&error),fprintf(ofile,"0x%" DW_PR_DUx SPC,vuint));
-    //SKIP(dwarf_formblock(*attr,&vblock,&error),fprintf(ofile,"0x%" DW_PR_DUx SPC,vblock->bl_len));
-    SKIP(dwarf_formstring(*attr,&vstr,&error),fprintf(ofile,"%s" SPC,vstr));
-    fprintf(ofile,"]");
-
-    DIE(dwarf_get_AT_name(vshort,&vcstr));
-    fprintf(ofile,"@%s" END,vcstr+6); // skip DW_AT_
-
-    Dwarf_Locdesc **llbuf;
-    if (dwarf_loclist_n(*attr,&llbuf,&vint,&error) == DW_DLV_OK)
-    {
-        int i,j;
-        for (i=0;i<vint;i++)
-        {
-            fprintf(ofile,"[%d]@loclist loclist<",i);
-
-            fprintf(ofile,"[%" DW_PR_DUx "]@lowpc" SPC,llbuf[i]->ld_lopc);
-            fprintf(ofile,"[%" DW_PR_DUx "]@hipc" SPC,llbuf[i]->ld_hipc);
-            fprintf(ofile,"[%" DW_PR_DUx "]@section_offset.%s" SPC,llbuf[i]->ld_section_offset,llbuf[i]->ld_from_loclist?"debug_loc":"debug_info");
-            fprintf(ofile,"[%d]@ld_cents" SPC,llbuf[i]->ld_cents);
-            for (j=0;j<llbuf[i]->ld_cents;j++)
-            {
-                if (llbuf[i]->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf[i]->ld_s[j].lr_atom <= DW_OP_breg31)
-                    fprintf(ofile,"[%" DW_PR_DSd "]@-location" SPC, (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
-                else
-                    switch(llbuf[i]->ld_s[j].lr_atom)
-                    {
-                        case DW_OP_addr:
-                            fprintf(ofile,"[0x%" DW_PR_DUx "]@-location" SPC, llbuf[i]->ld_s[j].lr_number);
-                            break;
-                        case DW_OP_const1s:
-                        case DW_OP_const2s:
-                        case DW_OP_const4s:
-                        case DW_OP_const8s:
-                        case DW_OP_consts:
-                        case DW_OP_skip:
-                        case DW_OP_bra:
-                        case DW_OP_fbreg:
-                            fprintf(ofile,"[%" DW_PR_DSd "]@-location" SPC, (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
-                            break;
-                        case DW_OP_const1u:
-                        case DW_OP_const2u:
-                        case DW_OP_const4u:
-                        case DW_OP_const8u:
-                        case DW_OP_constu:
-                        case DW_OP_pick:
-                        case DW_OP_plus_uconst:
-                        case DW_OP_regx:
-                        case DW_OP_piece:
-                        case DW_OP_deref_size:
-                        case DW_OP_xderef_size:
-                            fprintf(ofile,"[%" DW_PR_DUu "]@-location" SPC, llbuf[i]->ld_s[j].lr_number);
-                            break;
-                        case DW_OP_bregx:
-                            fprintf(ofile,"[reg%" DW_PR_DUu "(%" DW_PR_DSd ")]@-location" SPC,
-                                   llbuf[i]->ld_s[j].lr_number,
-                                   llbuf[i]->ld_s[j].lr_number2);
-                            break;
-                        default:
-                            break;
-                    }
-            }
-
-            fprintf(ofile,">/" END); // loclist
-
-            dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
-            dwarf_dealloc(dbg,llbuf[i], DW_DLA_LOCDESC);
-        }
-        dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
-    }
-
-    return;
-
- panic:
-    exit(1);
-}
-
-
-void dump_attrib_base(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,Dwarf_Attribute *attr)
-{
-    int status=0;
-    Dwarf_Error error=0;
-    Dwarf_Half vshort;
-    Dwarf_Off die_offset;
-    Dwarf_Off voffset;
-
-    dwarf_dieoffset(die,&die_offset,&error);
-    DIE(dwarf_whatattr(*attr,&vshort,&error));
-    if (vshort==DW_AT_type)
-        SKIP(dwarf_global_formref(*attr,&voffset,&error),
-             fprintf(ofile,"reflection.module<[id[0x%" DW_PR_DUx "].die@id[0x%" DW_PR_DUx "].die.base]@finalize>/" SPC,(int) voffset,(int) die_offset));
-    return;
-
- panic:
-    exit(1);
-}
-
-void traverse_attribs(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,attrib_handler handler)
-{
-    Dwarf_Signed atcnt=0;
-    Dwarf_Attribute *atlist=NULL;
-    Dwarf_Error error=0;
-    int errv=dwarf_attrlist(die,&atlist,&atcnt,&error);
-
-    if (errv == DW_DLV_OK)
-    {
-        int i;
-        for (i=0;i<atcnt;i++)
-        {
-            handler(ofile,dbg,die,&atlist[i]);
-            dwarf_dealloc(dbg,atlist[i],DW_DLA_ATTR);
-        }
-        dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
-    }
-}
-
-void print_die_data(FILE *ofile,Dwarf_Debug dbg,Dwarf_Die die,int level)
+void get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
 {
     int status=0;
     char *diename = NULL,*name=NULL;
     Dwarf_Error error = 0;
-    Dwarf_Half tag = 0;
     const char *tagname = 0;
-    Dwarf_Die child = NULL;
     Dwarf_Off die_offset=0;
+    Dwarf_Signed vint;
     Dwarf_Unsigned vuint;
     Dwarf_Addr vaddr;
+    Dwarf_Off voffset;
+    Dwarf_Half vshort;
+    Dwarf_Bool vbool;
+    Dwarf_Ptr vptr;
+    Dwarf_Block *vblock;
+    Dwarf_Signed atcnt=0;
+    Dwarf_Attribute *atlist=NULL;
+    const char *vcstr;
+    char *vstr;
 
     int res;
 
-    static char *indent="                                                                                        ";
+    PANIC(dwarf_dieoffset(die,&type_info->id,&error));
+    PANIC(dwarf_tag(die,&type_info->tag,&error)); // DW_TAG_compile_unit subprogram formal_parameter enumeration_type enumerator variable structure_type base_type member typedef:
 
-    TRYCATCH((res=dwarf_diename(die,&diename,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_diename , level %d" END,level);
+    TRYCATCH((res=dwarf_diename(die,&diename,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_diename");
     name=diename?diename:"__anon__";
-    TRYCATCH(dwarf_tag(die,&tag,&error) != DW_DLV_OK,-1,panic,"checking dwarf_tag , level %d" END,level);
-    TRYCATCH(dwarf_get_TAG_name(tag,&tagname) != DW_DLV_OK,-1,panic,"checking dwarf_get_TAG_name , level %d" END,level);
-    TRYCATCH(dwarf_dieoffset(die,&die_offset,&error) !=  DW_DLV_OK,-1,panic,"checking dwarf_dieoffset, level %d" END,level);
 
-    fprintf(ofile,END);
-    fstrnprint(ofile,indent,level*2);
-    fprintf(ofile,"[%s]@-%2$s -%2$s<[%2$s]@tag" SPC,name,tagname+7);
-
+    type_info->name=bufdup(name,-1);
     dwarf_dealloc(dbg,diename,DW_DLA_STRING);
-    SKIP(dwarf_lowpc(die,&vaddr,&error),fprintf(ofile,"[0x%" DW_PR_DUx "]@lowpc" SPC,vaddr));
-    SKIP(dwarf_highpc(die,&vaddr,&error),fprintf(ofile,"[0x%" DW_PR_DUx "]@highpc" SPC,vaddr));
-    SKIP(dwarf_bytesize(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@bytesize" SPC,vuint));
-    SKIP(dwarf_bitsize(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@bitsize" SPC,vuint));
-    SKIP(dwarf_bitoffset(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@bitoffset" SPC,vuint));
-    SKIP(dwarf_srclang(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@srclang" SPC,vuint));
-    SKIP(dwarf_arrayorder(die,&vuint,&error),fprintf(ofile,"[%" DW_PR_DUu "]@arrayorder" SPC,vuint));
 
-    traverse_attribs(ofile,dbg,die,dump_attrib);
+    PANIC(dwarf_get_TAG_name(type_info->tag,&tagname));
+    printf(CODE_RED "0x%" DW_PR_DUx " %s %s" CODE_RESET "\n",(int) type_info->id,tagname+7,name);
 
-    switch(tag)
-    {
-        case DW_TAG_compile_unit:
-        case DW_TAG_subprogram:
-        case DW_TAG_formal_parameter:
-        case DW_TAG_enumeration_type:
-        case DW_TAG_enumerator:
-        case DW_TAG_variable:
-        case DW_TAG_structure_type:
-        case DW_TAG_base_type:
-        case DW_TAG_member:
-        case DW_TAG_typedef:
-            break;
+    SKIP(dwarf_bytesize  (die,&type_info->bytesize,  &error),printf("%"   DW_PR_DUu " bytesize\n",  type_info->bytesize));
+    SKIP(dwarf_bitsize   (die,&type_info->bitsize,   &error),printf("%"   DW_PR_DUu " bitsize\n",   type_info->bitsize));
+    SKIP(dwarf_bitoffset (die,&type_info->bitoffset, &error),printf("%"   DW_PR_DUu " bitoffset\n", type_info->bitoffset));
+    SKIP(dwarf_srclang   (die,&type_info->srclang,   &error),printf("%"   DW_PR_DUu " srclang\n",   type_info->srclang));
+    SKIP(dwarf_arrayorder(die,&type_info->arrayorder,&error),printf("%"   DW_PR_DUu " arrayorder\n",type_info->arrayorder));
+
+    PANIC(dwarf_attrlist(die,&atlist,&atcnt,&error));
+    Dwarf_Attribute *attr=NULL;
+    while (--atcnt) {
+        attr=&atlist[atcnt];
+
+        PANIC(dwarf_whatattr(*attr,&vshort,&error));
+        switch (vshort) {
+            case DW_AT_data_member_location:
+            case DW_AT_const_value:
+                break;
+            default:
+                break;
+                //return;
+        }
+
+        PANIC(dwarf_whatattr(*attr,&vshort,&error));
+        PANIC(dwarf_get_AT_name(vshort,&vcstr));
+        printf("    attr %d (%s) ",vshort,vcstr);
+
+        /*
+        PANIC(dwarf_whatform(*attr,&vshort,&error));
+        PANIC(dwarf_get_FORM_name(vshort,&vcstr));
+        printf("form %d (%s) ",vshort,vcstr);
+
+        PANIC(dwarf_whatform_direct(*attr,&vshort,&error));
+        PANIC(dwarf_get_FORM_name(vshort,&vcstr));
+        printf("form_direct %d (%s) ",vshort,vcstr);
+        */
+
+        //SKIP(dwarf_formref(*attr,&voffset,&error),       printf("formref 0x%"        DW_PR_DSx " ",voffset));
+        SKIP(dwarf_global_formref(*attr,&voffset,&error), printf("global_formref 0x%" DW_PR_DSx " ",voffset));
+        SKIP(dwarf_formaddr(*attr,&vaddr,&error),         printf("addr 0x%"      DW_PR_DUx " ",vaddr));
+        SKIP(dwarf_formflag(*attr,&vbool,&error),         printf("flag %"        DW_PR_DSd " ",vbool));
+        SKIP(dwarf_formudata(*attr,&vuint,&error),        printf("udata %"       DW_PR_DUu " ",vuint));
+        SKIP(dwarf_formsdata(*attr,&vint,&error),         printf("sdata %"       DW_PR_DSd " ",vint));
+        SKIP(dwarf_formblock(*attr,&vblock,&error),       printf("block 0x%"     DW_PR_DUx " ",vblock->bl_len));
+        SKIP(dwarf_formexprloc(*attr,&vuint,&vptr,&error),printf("exprloc len %" DW_PR_DUu " loc 0x%" DW_PR_DUx " ",vuint,vptr));
+        SKIP(dwarf_formstring(*attr,&vstr,&error),        printf("string %s ",                  vstr));
+        printf("\n");
+
+        Dwarf_Locdesc **llbuf;
+        if (dwarf_loclist_n(*attr,&llbuf,&vint,&error) == DW_DLV_OK)
+        {
+            int i,j;
+            for (i=0;i<vint;i++)
+            {
+                printf("loclist %d ",i);
+                printf("lowpc %" DW_PR_DUx " ",llbuf[i]->ld_lopc);
+                printf("hipc %"  DW_PR_DUx " ",llbuf[i]->ld_hipc);
+                printf("ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ",llbuf[i]->ld_section_offset,llbuf[i]->ld_from_loclist?"debug_loc":"debug_info");
+                printf("ld_cents %d ",llbuf[i]->ld_cents);
+                for (j=0;j<llbuf[i]->ld_cents;j++)
+                {
+                    if (llbuf[i]->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf[i]->ld_s[j].lr_atom <= DW_OP_breg31)
+                        printf("location (a) %" DW_PR_DSd " ", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
+                    else
+                        switch(llbuf[i]->ld_s[j].lr_atom)
+                        {
+                            case DW_OP_addr:
+                                printf("location (b) 0x%" DW_PR_DUx " ", llbuf[i]->ld_s[j].lr_number);
+                                break;
+                            case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s:
+                            case DW_OP_skip:
+                            case DW_OP_bra:
+                            case DW_OP_fbreg:
+                                printf("location (c) %" DW_PR_DSd " ", (Dwarf_Signed) llbuf[i]->ld_s[j].lr_number);
+                                break;
+                            case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u:
+                            case DW_OP_pick:
+                            case DW_OP_plus_uconst:
+                            case DW_OP_regx:
+                            case DW_OP_piece:
+                            case DW_OP_deref_size:
+                            case DW_OP_xderef_size:
+                                printf("location (d) %" DW_PR_DUu " ", llbuf[i]->ld_s[j].lr_number);
+                                break;
+                            case DW_OP_bregx:
+                                printf("location (e) reg%" DW_PR_DUu "(%" DW_PR_DSd ") ",llbuf[i]->ld_s[j].lr_number,llbuf[i]->ld_s[j].lr_number2);
+                                break;
+                            case DW_OP_GNU_uninit:
+                            case DW_OP_GNU_encoded_addr:
+                            case DW_OP_GNU_implicit_pointer:
+                            case DW_OP_GNU_entry_value:
+                                printf("DW_OP %d ",llbuf[i]->ld_s[j].lr_atom);
+                            default:
+                                break;
+                        }
+                    printf("\n");
+                }
+                dwarf_dealloc(dbg,llbuf[i]->ld_s, DW_DLA_LOC_BLOCK);
+                dwarf_dealloc(dbg,llbuf[i], DW_DLA_LOCDESC);
+            }
+            dwarf_dealloc(dbg, llbuf, DW_DLA_LIST);
+        }
+
+        dwarf_dealloc(dbg,atlist[atcnt],DW_DLA_ATTR);
     }
+    dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
 
-
-    TRYCATCH((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_child , level %d" END,level);
-    TRYCATCH(res!=DW_DLV_OK,0,done,"checking if die finished" END);
-
-    get_die_and_siblings(ofile,dbg,child,level+1);
-
-    done:
-    fprintf(ofile,END);
-    fstrnprint(ofile,indent,level*2);
-    traverse_attribs(ofile,dbg,die,dump_attrib_base);
-    fprintf(ofile,"> reflection.module<@id[0x%" DW_PR_DUx "].die>/ /" END,(int) die_offset); // scope element left on anon stack upon closure!
+ done:
+    printf("\n");
     return;
 
  panic:
     exit(1);
 }
 
-void get_die_and_siblings(FILE *ofile,Dwarf_Debug dbg, Dwarf_Die in_die,int level)
+void get_die_and_siblings(Dwarf_Debug dbg, Dwarf_Die die)
 {
     int status=0;
-    Dwarf_Die cur_die=in_die,sib_die=0;
+    Dwarf_Die child=0,sibling=0;
+    TYPE_INFO *type_info=NULL;
 
-    while (cur_die)
+    while (die)
     {
         Dwarf_Error error;
         int res;
-        print_die_data(ofile,dbg,cur_die,level);
-        TRYCATCH((res=dwarf_siblingof(dbg,cur_die,&sib_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof , level %d" END,level);
+        TRYCATCH(!(type_info=NEW(TYPE_INFO)),-1,panic,"allocating type_info");
+        get_die_data(dbg,die,type_info);
+
+        TRYCATCH((res=dwarf_child(die,&child,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_child");
+        CATCH(res==DW_DLV_OK,0,get_die_and_siblings(dbg,child),"processing children if necessary");
+
+        TRYCATCH((res=dwarf_siblingof(dbg,die,&sibling,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof");
         TRYCATCH(res==DW_DLV_NO_ENTRY,0,done,"checking for DW_DLV_NO_ENTRY"); /* Done at this level. */
-        if(cur_die!=in_die)
-            dwarf_dealloc(dbg,cur_die,DW_DLA_DIE);
-        cur_die=sib_die;
+        dwarf_dealloc(dbg,die,DW_DLA_DIE);
+        die=sibling;
     }
 
  done:
@@ -347,7 +254,7 @@ void get_die_and_siblings(FILE *ofile,Dwarf_Debug dbg, Dwarf_Die in_die,int leve
     exit(1);
 }
 
-void read_cu_list(FILE *ofile,Dwarf_Debug dbg,char *module)
+void read_cu_list(Dwarf_Debug dbg,char *filename)
 {
     int status=0;
     Dwarf_Unsigned cu_header_length = 0;
@@ -356,55 +263,39 @@ void read_cu_list(FILE *ofile,Dwarf_Debug dbg,char *module)
     Dwarf_Half address_size = 0;
     Dwarf_Unsigned next_cu_header = 0;
     Dwarf_Error error;
-    int cu_number = 0;
-
-    fprintf(ofile,"[%s]@reflection.module reflection.module<" END,module);
 
     while (1)
     {
-        Dwarf_Die no_die = NULL;
         Dwarf_Die cu_die = NULL;
         int res=dwarf_next_cu_header(dbg,&cu_header_length,&version_stamp,&abbrev_offset,&address_size,&next_cu_header,&error);
-
         TRYCATCH(res==DW_DLV_NO_ENTRY,0,done,"checking DW_DLV_NO_ENTRY");
-        TRYCATCH(res==DW_DLV_ERROR,-1,panic,"checking dwarf_next_cu_header" END);
-        TRYCATCH((res=dwarf_siblingof(dbg,no_die,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof on CU die" END);
-        TRYCATCH(res==DW_DLV_NO_ENTRY,-1,panic,"checking for DW_DLV_NO_ENTRY in dwarf_siblingof on CU die" END);
-
-        get_die_and_siblings(ofile,dbg,cu_die,0);
-        dwarf_dealloc(dbg,cu_die,DW_DLA_DIE);
-        cu_number++;
+        TRYCATCH(res==DW_DLV_ERROR,-1,panic,"checking dwarf_next_cu_header");
+        TRYCATCH((res=dwarf_siblingof(dbg,NULL,&cu_die,&error))==DW_DLV_ERROR,-1,panic,"checking dwarf_siblingof on CU die");
+        TRYCATCH(res==DW_DLV_NO_ENTRY,-1,panic,"checking for DW_DLV_NO_ENTRY in dwarf_siblingof on CU die");
+        get_die_and_siblings(dbg,cu_die);
     }
 
-    done:
-    fprintf(ofile,END END); // instantiate dependencies
-    fprintf(ofile,"[!] !finalize" END); // instantiate dependencies
-    fprintf(ofile,"[/] !id" END); // cleanup
-    fprintf(ofile,">/" END END);
+ done:
     return;
  panic:
     exit(1);
 }
 
 
-int dwarf2edict(char *import,char *export)
+int dwarf2edict(char *filename)
 {
     int status=0;
-    Dwarf_Debug dbg = NULL;
     int import_fd = -1;
+    Dwarf_Debug dbg = NULL;
     Dwarf_Error error;
-    FILE *export_file=NULL;
 
-    STRY((import_fd=open(import,O_RDONLY))<0,"opening dward2edict input file %s",import);
-    TRYCATCH(!(export_file=fopen(export,"w")),status,close_import,"opening dwarf2edict output file %s",export);
+    STRY((import_fd=open(filename,O_RDONLY))<0,"opening dward2edict input file %s",filename);
 
-    TRYCATCH((dwarf_init(import_fd,DW_DLC_READ,NULL,NULL,&dbg,&error) != DW_DLV_OK),-1,close_export,"initializing dwarf reader");
-    read_cu_list(export_file,dbg,import);
-    TRYCATCH((dwarf_finish(dbg,&error) != DW_DLV_OK),-1,close_export,"finalizing dwarf reader");
+    TRYCATCH((dwarf_init(import_fd,DW_DLC_READ,NULL,NULL,&dbg,&error) != DW_DLV_OK),-1,close_file,"initializing dwarf reader");
+    read_cu_list(dbg,filename);
+    TRYCATCH((dwarf_finish(dbg,&error) != DW_DLV_OK),-1,close_file,"finalizing dwarf reader");
 
-    close_export:
-    fclose(export_file);
-    close_import:
+    close_file:
     close(import_fd);
     done:
     return status;

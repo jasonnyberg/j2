@@ -68,6 +68,21 @@ typedef union // keep members aligned with associated dutype enum
     struct { TYPE_UTYPE dutype;          long double val; } float12;
 } TYPE_UVALUE;
 
+typedef struct
+{
+    Dwarf_Off id;
+    Dwarf_Off base;
+    Dwarf_Half tag; // kind of item (base, struct, etc.
+    char *name;
+    char *const_value; // enum val
+    Dwarf_Unsigned bytesize;
+    Dwarf_Unsigned bitsize;
+    Dwarf_Unsigned bitoffset;
+    void *data_member_location;
+    void *location;
+    char *encoding;
+    unsigned upper_bound;
+} TYPE_INFO;
 
 
 #define SKIP(cond,followup) if (cond==DW_DLV_OK) followup
@@ -97,12 +112,12 @@ int get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
 
     STRY(dwarf_dieoffset(die,&type_info->id,&error),"getting die offset");
     STRY(dwarf_tag(die,&type_info->tag,&error),"getting die tag");
-    
+
     TRYCATCH((res=dwarf_diename(die,&diename,&error))==DW_DLV_ERROR,-1,done,"checking dwarf_diename");
     type_info->name=diename?bufdup(diename,-1):NULL;
     dwarf_dealloc(dbg,diename,DW_DLA_STRING);
 
-    switch (type_info->tag) 
+    switch (type_info->tag)
     {
         default:
             printf(CODE_RED "(Unhandled tag) " CODE_RESET);
@@ -133,18 +148,18 @@ int get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
         case DW_AT_GNU_all_tail_call_sites:
             goto done; // explicitly skipped
     }
-    
+
     SKIP(dwarf_bytesize  (die,&type_info->bytesize,  &error),printf("%" DW_PR_DUu " bytesize\n",  type_info->bytesize));
     SKIP(dwarf_bitsize   (die,&type_info->bitsize,   &error),printf("%" DW_PR_DUu " bitsize\n",   type_info->bitsize));
     SKIP(dwarf_bitoffset (die,&type_info->bitoffset, &error),printf("%" DW_PR_DUu " bitoffset\n", type_info->bitoffset));
 
     STRY(res=dwarf_attrlist(die,&atlist,&atcnt,&error)==DW_DLV_ERROR,"getting die attrlist");
     CATCH(res==DW_DLV_NO_ENTRY,0,goto done,"checking for DW_DLV_NO_ENTRY in dwarf_attrlist");
-    
+
     Dwarf_Attribute *attr=NULL;
     while (atcnt--) {
         char *prefix;
-        
+
         attr=&atlist[atcnt];
 
         STRY(dwarf_whatattr(*attr,&vshort,&error),"getting attr type");
@@ -155,7 +170,6 @@ int get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
                 prefix=CODE_RED "    Unhandled attr" CODE_RESET;
             case DW_AT_name:
             case DW_AT_type:
-            case DW_AT_sibling:
             case DW_AT_data_member_location:
             case DW_AT_const_value:
             case DW_AT_location:
@@ -167,14 +181,10 @@ int get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
             case DW_AT_encoding: // DW_ATE_unsigned, etc.
             case DW_AT_high_pc:
             case DW_AT_low_pc:
-            case DW_AT_frame_base: // stack?
-            case DW_AT_prototyped: // signature?
-            case DW_AT_language:
-            case DW_AT_producer:
                 STRY(dwarf_get_AT_name(vshort,&vcstr),"getting attr name for attr %d",vshort);
-               printf("%s %d (%s) ",prefix,vshort,vcstr);
+                printf("%s %d (%s) ",prefix,vshort,vcstr);
                 break;
-            case 8473: // an attribute that has no definition or name in current dwarf.h
+            case DW_AT_sibling:
             case DW_AT_decl_line:
             case DW_AT_decl_file:
             case DW_AT_call_line:
@@ -184,6 +194,15 @@ int get_die_data(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO *type_info)
             case DW_AT_stmt_list:
             case DW_AT_comp_dir:
             case DW_AT_static_link:
+            case DW_AT_artificial: // __line__, etc.
+            case DW_AT_frame_base: // stack?
+            case DW_AT_inline:
+            case DW_AT_prototyped: // signature?
+            case DW_AT_language:
+            case DW_AT_producer:
+            case DW_AT_declaration: // i.e. not a definition
+            case DW_AT_abstract_origin: // associated with DW_TAG_inlined_subroutine
+            case 8473: // an attribute that has no definition or name in current dwarf.h
                 continue; // explicitly skipped
         }
 

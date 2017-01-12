@@ -21,26 +21,6 @@
 #ifndef REFLECT_H
 #define REFLECT_H
 
-#include "dwarf.h"
-#include "libdwarf.h"
-
-typedef struct
-{
-    Dwarf_Off id;
-    Dwarf_Off base;
-
-    Dwarf_Half tag; // kind of item (base, struct, etc.
-    char *name;
-    char *const_value; // enum val
-    Dwarf_Unsigned bytesize;
-    Dwarf_Unsigned bitsize;
-    Dwarf_Unsigned bitoffset;
-    void *data_member_location;
-    void *location;
-    char *encoding;
-    unsigned upper_bound;
-} TYPE_INFO;
-
 extern long long *Type_getLocation(char *loc);
 
 extern char *reflect_enumstr(char *type,unsigned int val);

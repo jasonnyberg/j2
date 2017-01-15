@@ -1,5 +1,6 @@
 volatile int x=0;
 const int const_int=10;
+const double const_double=10.0;
 int y[10];
 int *z;
 
@@ -29,7 +30,7 @@ static int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
         locale=locald;
     }
 
-    return x+y[5]+*z+arga+argb->b+localc+locale;
+    return x+y[5]+*z+arga+argb->b+localc+locale*const_double;
 }
 
 int main(int argc,char *argv[])

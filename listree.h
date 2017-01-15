@@ -91,7 +91,6 @@ extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
-extern LTI *LTV_lookup(LTV *root,LTV *name,int insert); // find lti matching "name" in root
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
 extern LTVR *LTVR_new(LTV *ltv);
@@ -136,6 +135,7 @@ extern LTI *LTI_first(LTV *ltv);
 extern LTI *LTI_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
+extern LTI *LTI_lookup(LTV *ltv,LTV *name,int insert); // find lti matching "name" in ltv
 
 extern int LTV_empty(LTV *ltv);
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
@@ -155,6 +155,14 @@ extern void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth);
 extern void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label);
+
+
+//////////////////////////////////////////////////
+// Basic LT construction
+//////////////////////////////////////////////////
+
+extern LTV *LT_put(LTV *parent,char *name,int end,LTV *child);
+extern LTV *LT_get(LTV *parent,char *name,int end);
 
 //////////////////////////////////////////////////
 // REF (Listree's "cli")

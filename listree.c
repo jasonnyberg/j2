@@ -307,6 +307,17 @@ extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LT
 extern LTI *LTI_next(LTI *lti) { return lti? (LTI *) rb_next((RBN *) lti):NULL; }
 extern LTI *LTI_prev(LTI *lti) { return lti? (LTI *) rb_prev((RBN *) lti):NULL; }
 
+LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
+{
+    LTI *lti=NULL;
+    if (LTV_wildcard(name))
+        for (lti=LTI_first(ltv); lti && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti));
+    else
+        lti=RBR_find(&ltv->sub.ltis,name->data,name->len,insert);
+    done:
+    return lti;
+}
+
 int LTV_empty(LTV *ltv)
 {
     if (!ltv) return true;
@@ -511,6 +522,25 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
     fclose(ofile);
 }
 
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+
+LTV *LT_put(LTV *parent,char *name,int end,LTV *child)
+{
+    LTV *nameltv=LTV_new(name,-1,0);
+    LTI *lti=LTI_lookup(parent,nameltv,true);
+    LTV_free(nameltv);
+    return lti?LTV_enq(&lti->ltvs,child,end):NULL;
+}
+
+LTV *LT_get(LTV *parent,char *name,int end)
+{
+    LTV *nameltv=LTV_new(name,-1,0);
+    LTI *lti=LTI_lookup(parent,nameltv,true);
+    LTV_free(nameltv);
+    return lti?LTV_peek(&lti->ltvs,end):NULL;
+}
 
 
 //////////////////////////////////////////////////
@@ -629,17 +659,6 @@ int REF_delete(CLL *refs)
 {
     void release(CLL *lnk) { REF_free(lnk); }
     CLL_release(refs,release);
-}
-
-LTI *LTI_lookup(LTV *root,LTV *name,int insert)
-{
-    LTI *lti=NULL;
-    if (LTV_wildcard(name))
-        for (lti=LTI_first(root); lti && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti));
-    else
-        lti=RBR_find(&root->sub.ltis,name->data,name->len,insert);
-    done:
-    return lti;
 }
 
 int REF_resolve(LTV *root,CLL *refs,int insert)

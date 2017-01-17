@@ -106,7 +106,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 void LTV_free(LTV *ltv)
 {
     if (ltv) {
-        if (ltv->flags&LT_FREE && !(ltv->flags&LT_IMM)) DELETE(ltv->data);
+        if (ltv->flags&LT_FREE && !(ltv->flags&LT_NAP)) DELETE(ltv->data);
         ZERO(*ltv);
         CLL_put(&ltv_repo,ltv->repo,HEAD);
         ltv_count--;
@@ -343,7 +343,7 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
 {
     void *ltv_match(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
-        if (!ltvr || !ltvr->ltv || ltvr->ltv->flags&LT_IMM || fnmatch_len(ltvr->ltv->data,ltvr->ltv->len,match->data,match->len)) return NULL;
+        if (!ltvr || !ltvr->ltv || ltvr->ltv->flags&LT_NAP || fnmatch_len(ltvr->ltv->data,ltvr->ltv->len,match->data,match->len)) return NULL;
         else return lnk;
     }
 
@@ -369,7 +369,7 @@ LTV *LTV_dup(LTV *ltv)
     if (!ltv) return NULL;
 
     int flags=ltv->flags & ~LT_FREE;
-    if (!(flags&LT_IMM))
+    if (!(flags&LT_NAP))
         flags |= LT_DUP;
     return LTV_new(ltv->data,ltv->len,flags);
 }
@@ -398,12 +398,13 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
             fstrnprint(ofile,indent,depth*4);
             if (pre) fprintf(ofile,"%s",pre);
             else fprintf(ofile,"[");
-            if (((*ltv)->flags&LT_IMM)==LT_IMM) fprintf(ofile,"0x%p (immediate)",&(*ltv)->data);
-            else if ((*ltv)->flags==LT_VOID)    fprintf(ofile,"<void>");
-            else if ((*ltv)->flags&LT_NULL)     fprintf(ofile,"<null>");
-            else if ((*ltv)->flags&LT_NIL)      fprintf(ofile,"<nil>");
-            else if ((*ltv)->flags&LT_BIN)      hexdump(ofile,(*ltv)->data,(*ltv)->len);
-            else                                fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
+            if      ((*ltv)->flags&LT_CVAR)            fprintf(ofile,"0x%p (cvar)",(*ltv)->data);
+            else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"0x%p (immediate)",(*ltv)->data);
+            else if (((*ltv)->flags&LT_VOID)==LT_VOID) fprintf(ofile,"<void>");
+            else if ((*ltv)->flags&LT_NULL)            fprintf(ofile,"<null>");
+            else if ((*ltv)->flags&LT_NIL)             fprintf(ofile,"<nil>");
+            else if ((*ltv)->flags&LT_BIN)             hexdump(ofile,(*ltv)->data,(*ltv)->len);
+            else                                       fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
             if (post) fprintf(ofile,"%s",post);
             else fprintf(ofile,"]\n");
         }
@@ -442,22 +443,21 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         lnk2dot(cll);
     }
 
-    void lti2dot(LTV *ltv,LTI *lti,int depth,int *flags) {
+    void lti2dot(LTV *ltv,LTI *lti) {
         fprintf(ofile,"\"%x\" [label=\"%s\" shape=ellipse color=blue]\n",lti,lti->name);
         if (rb_parent(&lti->rbn)) fprintf(ofile,"\"%x\" -> \"%x\" [color=blue weight=0]\n",rb_parent(&lti->rbn),&lti->rbn);
         fprintf(ofile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
         cll2dot(&lti->ltvs,NULL);
     }
 
-    void lti_ltvr2dot(LTI *lti,LTVR *ltvr,int depth,int *flags) {} // left as an example
-    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr,int depth,int *flags) {} // left as an example
+    void ltvr2dot(LTVR *ltvr) {
+        lnk2dot(&(ltvr->lnk));
+        fprintf(ofile,"\"%x\" -> \"%x\" [weight=2 color=blue]\n",&ltvr->lnk,ltvr->ltv);
+    }
+    void lti_ltvr2dot(LTI *lti,LTVR *ltvr) { ltvr2dot(ltvr); }
+    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { ltvr2dot(ltvr); }
 
     void ltv2dot(LTVR *ltvr,LTV *ltv,int depth,int *flags) {
-        if (ltvr) {
-            lnk2dot(&ltvr->lnk);
-            fprintf(ofile,"\"%x\" -> \"%x\" [weight=2 color=blue]\n",&ltvr->lnk,ltv); // draw ltvrs, but don't redraw the ltv
-        }
-
         if (ltv->flags&LT_AVIS) { // don't re-descend already represented nodes
             *flags|=LT_TRAVERSE_HALT;
             return;
@@ -468,7 +468,9 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
         }
-        else if ((ltv->flags&LT_IMM)==LT_IMM)
+        else if (ltv->flags&LT_CVAR)
+            fprintf(ofile,"\"%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data); // FIXME: invoke reflection
+        else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
         else if (ltv->flags==LT_VOID)
             fprintf(ofile,"\"%x\" [label=\"\" shape=point style=filled color=purple]\n",ltv);
@@ -493,15 +495,15 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             if (maxdepth && depth>=maxdepth)
                 *flags|=LT_TRAVERSE_HALT;
             else
-                lti2dot(*ltv,*lti,depth,flags);
+                lti2dot(*ltv,*lti);
         }
         else if ((*ltvr) && !(*ltv))
-            lti_ltvr2dot(*lti,*ltvr,depth,flags);
+            lti_ltvr2dot(*lti,*ltvr);
         else if ((*ltv) && !(*lti)) {
             if (!(*ltvr) || (*ltvr)->ltv==(*ltv))
                 ltv2dot(*ltvr,*ltv,depth,flags);
             else
-                ltv_ltvr2dot(*ltv,*ltvr,depth,flags);
+                ltv_ltvr2dot(*ltv,*ltvr);
         }
         return NULL;
     }

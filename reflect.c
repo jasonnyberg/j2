@@ -73,20 +73,44 @@ typedef union // keep members aligned with associated dutype enum
     struct { TYPE_UTYPE dutype;               void * val; } addr;
 } TYPE_UVALUE;
 
+
+typedef enum {
+    TYPEF_DQ         = 1<<0x0,
+    TYPEF_BASE       = 1<<0x1,
+    TYPEF_CONSTVAL   = 1<<0x2,
+    TYPEF_BYTESIZE   = 1<<0x3,
+    TYPEF_BITSIZE    = 1<<0x4,
+    TYPEF_BITOFFSET  = 1<<0x5,
+    TYPEF_ENCODING   = 1<<0x6,
+    TYPEF_UPPERBOUND = 1<<0x7,
+    TYPEF_LOWPC      = 1<<0x8,
+    TYPEF_MEMBERLOC  = 1<<0x9,
+    TYPEF_LOCATION   = 1<<0xa,
+    TYPEF_ADDR       = 1<<0xb,
+    TYPEF_EXTERNAL   = 1<<0xc,
+    TYPEF_SIBLING    = 1<<0xd
+} TYPE_FLAGS;
+
+
 typedef struct
 {
+    TYPE_FLAGS flags;
     Dwarf_Off id; // global offset
     Dwarf_Half tag; // kind of item (base, struct, etc.
     char *name;
     Dwarf_Off base; // global offset
+    Dwarf_Off sibling; // global offset
     Dwarf_Signed const_value; // enum val
     Dwarf_Unsigned bytesize;
     Dwarf_Unsigned bitsize;
     Dwarf_Unsigned bitoffset;
     Dwarf_Unsigned encoding;
     Dwarf_Unsigned upper_bound;
+    Dwarf_Unsigned low_pc;
     Dwarf_Addr data_member_location;
-    Dwarf_Ptr location; // ??
+    Dwarf_Signed location; // ??
+    Dwarf_Bool external;
+    Dwarf_Unsigned addr; // from loclist
 } TYPE_INFO;
 
 
@@ -96,6 +120,89 @@ typedef struct
 int print_type_info(TYPE_INFO *type_info)
 {
     int status=0;
+ done:
+    return status;
+}
+
+int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
+{
+    int status=0;
+    const char *str=NULL;
+    fprintf(ofile,"\"DIE_%1$x\" [shape=record label=\"{TYPE_INFO %1$x",type_info->id);
+    dwarf_get_TAG_name(type_info->tag,&str);
+    fprintf(ofile,"|%s %s",str+7,type_info->name?type_info->name:"");
+    if (type_info->flags&TYPEF_CONSTVAL)   fprintf(ofile,"|constval %u",type_info->const_value);
+    if (type_info->flags&TYPEF_BYTESIZE)   fprintf(ofile,"|bytesize %u",type_info->bytesize);
+    if (type_info->flags&TYPEF_BITSIZE)    fprintf(ofile,"|bitsize %u",type_info->bitsize);
+    if (type_info->flags&TYPEF_BITOFFSET)  fprintf(ofile,"|bitoffset %u",type_info->bitoffset);
+    if (type_info->flags&TYPEF_ENCODING)   fprintf(ofile,"|encoding %u",type_info->encoding);
+    if (type_info->flags&TYPEF_UPPERBOUND) fprintf(ofile,"|upperbound 0x%x",type_info->upper_bound);
+    if (type_info->flags&TYPEF_MEMBERLOC)  fprintf(ofile,"|member location %u",type_info->data_member_location);
+    if (type_info->flags&TYPEF_LOCATION)   fprintf(ofile,"|location 0x%x",type_info->location);
+    if (type_info->flags&TYPEF_ADDR)       fprintf(ofile,"|addr 0x%x",type_info->addr);
+    if (type_info->flags&TYPEF_EXTERNAL)   fprintf(ofile,"|external %u",type_info->external);
+    fprintf(ofile,"}\" color=%s]\n",type_info->flags&TYPEF_DQ?"red":"black");
+    if (type_info->flags&TYPEF_BASE)       fprintf(ofile,"\"DIE_%x\" -> \"DIE_%x\" [color=red]\n",type_info->id,type_info->base);
+    //if (type_info->flags&TYPEF_SIBLING)    fprintf(ofile,"\"DIE_%x\" -> \"DIE_%x\" [color=blue]\n",type_info->id,type_info->sibling);
+ done:
+    return status;
+}
+
+void graph_module_to_file(char *filename,LTV *module_ltv) {
+    FILE *ofile=fopen(filename,"w");
+
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
+            if ((*ltv)->flags&LT_AVIS)
+                *flags|=LT_TRAVERSE_HALT;
+            else if ((*ltv)->flags&LT_CVAR) {
+                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                dot_type_info(ofile,type_info);
+                fprintf(ofile,"\"%x\" -> \"DIE_%x\"\n",(*ltv),type_info->id); // link ltv to type_info
+            }
+        return NULL;
+    }
+
+    fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+
+    CLL ltvs;
+    CLL_init(&ltvs);
+    LTV_enq(&ltvs,module_ltv,HEAD);
+    ltvs2dot(ofile,&ltvs,0,filename);
+    //listree_traverse(&ltvs,preop,NULL);
+    LTV_deq(&ltvs,HEAD);
+
+    fprintf(ofile,"}\n");
+    fclose(ofile);
+}
+
+int postprocess_module(LTV *module_ltv)
+{
+    int status=0;
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        int status=0;
+        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
+            if ((*ltv)->flags&LT_AVIS || depth>1)
+                *flags|=LT_TRAVERSE_HALT;
+            else if ((*ltv)->flags&LT_CVAR) {
+                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                if (type_info->flags&TYPEF_BASE) {
+                    char *base_name=NULL;
+                    LTV *base_ltv=NULL;
+                    STRY(!FORMATA(base_name,32,"%x",type_info->base),"FORMATA'ing base name");
+                    STRY(!(base_ltv=LT_get(module_ltv,base_name,HEAD)),"looking up base");
+                    LT_put((*ltv),"base",HEAD,base_ltv);
+                }
+            }
+    done:
+        return status?NON_NULL:NULL;
+    }
+    
+    CLL ltvs;
+    CLL_init(&ltvs);
+    LTV_enq(&ltvs,module_ltv,HEAD);
+    STRY(listree_traverse(&ltvs,preop,NULL)!=NULL,"traversing module in postprocess");
+    LTV_deq(&ltvs,HEAD);
  done:
     return status;
 }
@@ -159,8 +266,6 @@ int dwarf2edict_fd(int filedesc)
                 case DW_TAG_formal_parameter:
                 case DW_TAG_variable:
                 case DW_TAG_unspecified_parameters: // varargs
-                    STRY(dwarf_get_TAG_name(type_info->tag,&tagname),"getting die tagname");
-                    printf(CODE_BLUE "0x%" DW_PR_DUx " %s %s" CODE_RESET "\n",(int) type_info->id,tagname,type_info->name?type_info->name:"");
                     break;
                 case DW_TAG_lexical_block:
                 case DW_AT_GNU_all_tail_call_sites:
@@ -168,10 +273,6 @@ int dwarf2edict_fd(int filedesc)
                 case DW_TAG_inlined_subroutine:
                     goto done; // explicitly skipped
             }
-
-            IF_OK(dwarf_bytesize (die,&type_info->bytesize, &error),printf("%" DW_PR_DUu " bytesize\n", type_info->bytesize));
-            IF_OK(dwarf_bitsize  (die,&type_info->bitsize,  &error),printf("%" DW_PR_DUu " bitsize\n",  type_info->bitsize));
-            IF_OK(dwarf_bitoffset(die,&type_info->bitoffset,&error),printf("%" DW_PR_DUu " bitoffset\n",type_info->bitoffset));
 
             TRY(dwarf_attrlist(die,&atlist,&atcnt,&error),"getting die attrlist");
             CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for DW_DLV_NO_ENTRY in dwarf_attrlist");
@@ -185,23 +286,43 @@ int dwarf2edict_fd(int filedesc)
                 STRY(dwarf_whatattr(*attr,&vshort,&error),"getting attr type");
 
                 switch (vshort) {
-                    default:
-                        printf(CODE_RED "(Unrecognized)");
                     case DW_AT_name: // string
+                        break;
                     case DW_AT_type: // global_formref
+                        IF_OK(dwarf_global_formref(*attr,&type_info->base,&error),type_info->flags|=TYPEF_BASE);
+                        break;
                     case DW_AT_sibling: // global_formref
+                        IF_OK(dwarf_global_formref(*attr,&type_info->sibling,&error),type_info->flags|=TYPEF_SIBLING);
+                        break;
                     case DW_AT_low_pc:
-                    case DW_AT_data_member_location: // sdata
+                        IF_OK(dwarf_formsdata(*attr,&type_info->low_pc,&error),type_info->flags|=TYPEF_LOWPC);
+                        break;
+                   case DW_AT_data_member_location: // sdata
+                        IF_OK(dwarf_formsdata(*attr,&type_info->data_member_location,&error),type_info->flags|=TYPEF_MEMBERLOC);
+                        break;
                     case DW_AT_const_value: // sdata
+                        IF_OK(dwarf_formsdata(*attr,&type_info->const_value,&error),type_info->flags|=TYPEF_CONSTVAL);
+                        break;
                     case DW_AT_location: // sdata
+                        IF_OK(dwarf_formsdata(*attr,&type_info->location,&error),type_info->flags|=TYPEF_LOCATION);
+                        break;
                     case DW_AT_byte_size:
+                        IF_OK(dwarf_formudata(*attr,&type_info->bytesize,&error),type_info->flags|=TYPEF_BYTESIZE);
+                        break;
                     case DW_AT_bit_offset:
+                        IF_OK(dwarf_formudata(*attr,&type_info->bitoffset,&error),type_info->flags|=TYPEF_BITOFFSET);
+                        break;
                     case DW_AT_bit_size:
+                        IF_OK(dwarf_formudata(*attr,&type_info->bitsize,&error),type_info->flags|=TYPEF_BITSIZE);
+                        break;
                     case DW_AT_external:
+                        IF_OK(dwarf_formflag(*attr,&type_info->external,&error),type_info->flags|=TYPEF_EXTERNAL);
+                        break;
                     case DW_AT_upper_bound:
+                        IF_OK(dwarf_formsdata(*attr,&type_info->upper_bound,&error),type_info->flags|=TYPEF_UPPERBOUND);
+                        break;
                     case DW_AT_encoding: // DW_ATE_unsigned, etc.
-                        STRY(dwarf_get_AT_name(vshort,&vcstr),"getting attr name for attr %d",vshort);
-                        printf("    %d (%s) ",vshort,vcstr);
+                        IF_OK(dwarf_formsdata(*attr,&type_info->encoding,&error),type_info->flags|=TYPEF_ENCODING);
                         break;
                     case DW_AT_high_pc:
                     case DW_AT_decl_line:
@@ -223,10 +344,9 @@ int dwarf2edict_fd(int filedesc)
                     case DW_AT_abstract_origin: // associated with DW_TAG_inlined_subroutine
                     case 8473: // an attribute that has no definition or name in current dwarf.h
                         break;
-                        /*
-                          type_info->tag=0;
-                          goto done; // disqualified
-                        */
+                    default:
+                        printf(CODE_RED "(Unrecognized attr 0x%x)\n",vshort);
+                        break;
                 }
 
                 /*
@@ -237,7 +357,6 @@ int dwarf2edict_fd(int filedesc)
                   STRY(dwarf_whatform_direct(*attr,&vshort,&error),"getting attr form_direct");
                   STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr form_direct name");
                   printf("form_direct %d (%s) ",vshort,vcstr);
-                */
 
                 IF_OK(dwarf_formref(*attr,&voffset,&error),       printf("formref 0x%"        DW_PR_DSx " ",voffset));
                 IF_OK(dwarf_global_formref(*attr,&voffset,&error),printf("global_formref 0x%" DW_PR_DSx " ",voffset));
@@ -250,6 +369,7 @@ int dwarf2edict_fd(int filedesc)
                 IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        printf("addr %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x ",
                                                                          vsig8.signature[0],vsig8.signature[1],vsig8.signature[2],vsig8.signature[3],
                                                                          vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
+                */
 
                 int get_expr_loclist_data(Dwarf_Unsigned exprlen,Dwarf_Ptr exprloc) {
                     int status=0;
@@ -258,34 +378,20 @@ int dwarf2edict_fd(int filedesc)
                     STRY(dwarf_loclist_from_expr(dbg,exprloc,exprlen,&llbuf,&listlen,&error),"getting exprloc");
                     for (int j=0;j<llbuf->ld_cents;j++)
                     {
-                        printf("%d: ",j);
-                        if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31)
-                            printf(" breg%d + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_atom-DW_OP_breg0, (Dwarf_Signed) llbuf->ld_s[j].lr_number);
-                        else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31)
-                            printf(" reg%d + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_atom-DW_OP_reg0, (Dwarf_Signed) llbuf->ld_s[j].lr_number);
+                        if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ; // printf(" breg%d + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_atom-DW_OP_breg0, (Dwarf_Signed) llbuf->ld_s[j].lr_number);
+                        else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ; //printf(" reg%d + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_atom-DW_OP_reg0, (Dwarf_Signed) llbuf->ld_s[j].lr_number);
                         else
                             switch(llbuf->ld_s[j].lr_atom)
                             {
                                 case DW_OP_addr:
-                                    printf(" addr, 0x%" DW_PR_DUx " ", llbuf->ld_s[j].lr_number);
+                                    type_info->addr=llbuf->ld_s[j].lr_number;
+                                    type_info->flags|=TYPEF_ADDR;
                                     break;
-                                case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s:
-                                    printf(" signed const, %" DW_PR_DSd " ",(Dwarf_Signed) llbuf->ld_s[j].lr_number);
-                                    break;
-                                case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u:
-                                    printf(" signed const, %" DW_PR_DUu " ",llbuf->ld_s[j].lr_number);
-                                    break;
-                                case DW_OP_fbreg:
-                                    printf(" frame base offset, %" DW_PR_DSd " ",(Dwarf_Signed) llbuf->ld_s[j].lr_number);
-                                    // disqualify
-                                    type_info->tag=0;
-                                    break;
-                                case DW_OP_bregx:
-                                    printf(" bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                                    break;
-                                case DW_OP_regx:
-                                    printf(" regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                                    break;
+                                case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                                case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u: // llbuf->ld_s[j].lr_number
+                                case DW_OP_fbreg: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                                case DW_OP_bregx: // printf(" bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                                case DW_OP_regx: // printf(" regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
                                 case DW_OP_pick:
                                 case DW_OP_plus_uconst:
                                 case DW_OP_piece:
@@ -300,7 +406,7 @@ int dwarf2edict_fd(int filedesc)
                                 case DW_OP_skip:
                                 case DW_OP_bra:
                                 case DW_OP_call_frame_cfa:
-                                    printf(" Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                                    // printf(" Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                                     break;
                                 default:
                                     printf(" Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
@@ -316,12 +422,11 @@ int dwarf2edict_fd(int filedesc)
                 }
 
                 IF_OK(dwarf_formexprloc(*attr,&vuint,&vptr,&error),get_expr_loclist_data(vuint,vptr));
-                printf(CODE_RESET "\n");
+                // printf(CODE_RESET "\n");
 
                 dwarf_dealloc(dbg,atlist[atcnt],DW_DLA_ATTR);
             }
             dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
-            printf(CODE_RESET "\n");
 
         done:
             return status;
@@ -364,17 +469,17 @@ int dwarf2edict_fd(int filedesc)
                 TYPE_INFO *type_info=NULL;
                 STRY(!(type_info=NEW(TYPE_INFO)),"allocating type_info");
                 STRY(populate_type_info(die,type_info),"populating type_info");
-                TRYCATCH(!type_info->tag,0,done,"checking for disqualified type_info");
-
-                if (type_info->tag) { // not disqualified, hook it up!
-                    STRY(!(ltv=LTV_new(type_info,sizeof(TYPE_INFO),LT_OWN | LT_BIN)),"allocating type_info ltv");
-                    LT_put(parent,"<id>",HEAD,ltv);
+                if (0 &&
+                    type_info->flags&TYPEF_DQ)
+                    DELETE(type_info);
+                else
+                {
+                    STRY(!(ltv=LTV_new(type_info,sizeof(TYPE_INFO),LT_OWN | LT_CVAR)),"allocating type_info ltv");
+                    char *idbuf=FORMATA(idbuf,32,"%x",type_info->id);
+                    LT_put(root,idbuf,HEAD,ltv);
                     if (parent)
                         LT_put(parent,type_info->name?type_info->name:"",HEAD,ltv);
                     STRY(traverse_child(),"traversing first die child");
-                }
-                else { // delete it and move on to sibling
-                    DELETE(type_info);
                 }
             }
 
@@ -400,10 +505,13 @@ int dwarf2edict_fd(int filedesc)
         while (1)
         {
             TRY(dwarf_next_cu_header_b(dbg,&cu_header_length,&version_stamp,&abbrev_offset,&address_size,&length_size,&extension_size,&next_cu_header,&error),"reading next cu header");
-            CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for no next cu header");
+            CATCH(status==DW_DLV_NO_ENTRY,0,goto finished,"checking for no next cu header");
             CATCH(status==DW_DLV_ERROR,status,goto done,"checking error dwarf_next_cu_header");
-            process_type_node(NULL,NULL); // get siblings of CU header
+            STRY(process_type_node(NULL,NULL),"processing type node"); // get siblings of CU header
         }
+    finished:
+        STRY(postprocess_module(root),"postprocessing module");
+        graph_module_to_file("/tmp/module.dot",root);
     done:
         return status;
     }

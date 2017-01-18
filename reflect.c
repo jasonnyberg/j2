@@ -184,7 +184,7 @@ void graph_module_to_file(char *filename,LTV *module_ltv) {
     CLL ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs,module_ltv,HEAD);
-    fprintf(ofile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
+    fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
     ltvs2dot(ofile,&ltvs,0,filename);
     listree_traverse(&ltvs,preop,NULL);
     fprintf(ofile,"}\n");
@@ -317,8 +317,6 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
 
             switch (type_info->tag)
             {
-                default:
-                    printf(CODE_RED "(Unrecognized) " CODE_RESET);
                 case DW_TAG_compile_unit:
                 case DW_TAG_base_type:
                 case DW_TAG_volatile_type:
@@ -343,6 +341,9 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                 case DW_TAG_label:
                 case DW_TAG_inlined_subroutine:
                     goto done; // explicitly skipped
+                default:
+                    printf(CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
+                    goto done;
             }
 
             TRY(dwarf_attrlist(die,&atlist,&atcnt,&error),"getting die attrlist");
@@ -413,10 +414,12 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     case DW_AT_producer:
                     case DW_AT_declaration: // i.e. not a definition
                     case DW_AT_abstract_origin: // associated with DW_TAG_inlined_subroutine
+                    case DW_AT_GNU_tail_call:
+                    case DW_AT_GNU_call_site_value:
                     case 8473: // an attribute that has no definition or name in current dwarf.h
                         break;
                     default:
-                        printf(CODE_RED "(Unrecognized attr 0x%x)\n",vshort);
+                        printf(CODE_RED "Unrecognized attr 0x%x\n",vshort);
                         break;
                 }
 

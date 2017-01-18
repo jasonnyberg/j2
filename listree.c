@@ -482,7 +482,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         else
             fprintf(ofile,"\"%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
 
-        fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
+        fprintf(ofile,"subgraph cluster_%d { subgraph { rank=same\n",i++);
         for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
             fprintf(ofile,"\"%x\"\n",lti);
         fprintf(ofile,"}}\n");

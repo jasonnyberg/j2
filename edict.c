@@ -474,9 +474,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             int status=0;
             LTV *mod_ltv=NULL;
             STRY(!(mod_ltv=stack_peek(context)),"peeking dwarf import filename");
-            char *ifilename=bufdup(mod_ltv->data,mod_ltv->len);
-            STRY(import_module(ifilename,mod_ltv),"importing module %s",ifilename);
-            myfree(ifilename,strlen(ifilename)+1);
+            STRY(import_module(mod_ltv),"importing module");
         done:
             return status;
         }

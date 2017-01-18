@@ -23,7 +23,7 @@
 
 #include "listree.h"
 
-extern int import_module(char *filename,LTV *module);
+extern int import_module(LTV *module);
 
 extern long long *Type_getLocation(char *loc);
 

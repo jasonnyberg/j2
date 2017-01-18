@@ -20,10 +20,10 @@
    02110-1301, USA.  */
 
 #include <stdio.h>
-#include "sysdep.h"
-#include "libiberty.h"
-#include "bfd.h"
-#include "bucomm.h"
+//#include "sysdep.h"
+//#include "libiberty.h"
+//#include "bfd.h"
+//#include "bucomm.h"
 #include "elf/dwarf2.h"
 #include "dwarf.h"
 

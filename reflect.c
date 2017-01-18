@@ -36,6 +36,10 @@
 #include "listree.h"
 #include "reflect.h"
 
+typedef int (*DIE_OP)(Dwarf_Debug dbg,LTV *parent_ltv,LTV *die_ltv,Dwarf_Die die);
+extern int reflect_dies(Dwarf_Debug dbg,int filedesc,DIE_OP preop,DIE_OP postop);
+
+
 typedef enum
 {
     TYPE_NONE    =    0x0,
@@ -211,7 +215,7 @@ int graph_cus_to_files(LTV *module_ltv)
     done:
         return status?NON_NULL:NULL;
     }
-    
+
     CLL ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs,module_ltv,HEAD);
@@ -253,7 +257,7 @@ int link_base_types(LTV *dies)
     done:
         return status?NON_NULL:NULL;
     }
-    
+
     CLL ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs,dies,HEAD);
@@ -318,7 +322,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
             switch (type_info->tag)
             {
                 case DW_TAG_compile_unit:
-                    printf("compile_unit %s\n",type_info->name);
+                    printf("Reading compile_unit %s\n",type_info->name);
                 case DW_TAG_base_type:
                 case DW_TAG_volatile_type:
                 case DW_TAG_typedef:
@@ -343,7 +347,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                 case DW_TAG_inlined_subroutine:
                 case DW_TAG_GNU_call_site:
                 case DW_TAG_GNU_call_site_parameter:
-                    
+
                 case DW_TAG_dwarf_procedure:
                 case DW_TAG_reference_type: // C++?
                 case DW_TAG_namespace:
@@ -353,7 +357,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                 case DW_TAG_template_type_parameter:
                 case DW_TAG_template_value_parameter:
                 case DW_TAG_imported_module:
-                    
+
                     goto done; // explicitly skipped
                 default:
                     printf(CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
@@ -431,7 +435,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     case DW_AT_GNU_tail_call:
                     case DW_AT_GNU_call_site_value:
                     case 8473: // an attribute that has no definition or name in current dwarf.h
-                        
+
                     case DW_AT_specification: // C++?
                     case DW_AT_object_pointer: // C++
                     case DW_AT_pure: // C++
@@ -439,7 +443,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     case DW_AT_accessibility:
                     case DW_AT_ranges:
                     case DW_AT_explicit:
-                        
+
                         break;
                     default:
                         printf(CODE_RED "Unrecognized attr 0x%x\n",vshort);
@@ -516,10 +520,10 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                                 case DW_OP_shra:
                                 case DW_OP_mul:
                                 case DW_OP_minus:
-                                    
+
                                 case DW_OP_stack_value: // 0x9f
                                 case DW_OP_lit16: // 0x40
-                                    
+
                                     // printf(" Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                                     break;
                                 default:
@@ -553,21 +557,20 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
         int process_type_node(LTV *parent,Dwarf_Die die)
         {
             int status=0;
-            LTV *ltv=NULL;
 
-            int traverse_child()
+            int traverse_child(LTV *parent)
             {
                 int status=0;
                 Dwarf_Die child=0;
                 TRY(dwarf_child(die,&child,&error),"checking dwarf_child");
                 CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking dwarf child");
                 SCATCH("checking dwarf_child");
-                STRY(process_type_node(ltv,child),"getting child/sib dies");
+                STRY(process_type_node(parent,child),"getting child/sib dies");
             done:
                 return status;
             }
 
-            int traverse_sibling()
+            int traverse_sibling(LTV *parent)
             {
                 int status=0;
                 Dwarf_Die sibling=0;
@@ -579,10 +582,14 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                 return status;
             }
 
-            int link2parent(TYPE_INFO *type_info) {
+            int link2parent(LTV *ltv,TYPE_INFO *type_info) {
                 TYPE_INFO *pti=(TYPE_INFO *) parent->data;
                 if (!type_info->name)
                     return false;
+                if (type_info->tag==DW_TAG_compile_unit && LTV_empty(ltv)) {
+                    printf("    Empty...\n");
+                    return false;
+                }
                 if (pti->tag==DW_TAG_compile_unit)
                     switch(type_info->tag) {
                         case DW_TAG_subprogram:
@@ -605,16 +612,19 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     DELETE(type_info);
                 else
                 {
+                    LTV *ltv=NULL;
                     STRY(!(ltv=LTV_new(type_info,sizeof(TYPE_INFO),LT_OWN | LT_CVAR)),"allocating type_info ltv");
                     char *idbuf=FORMATA(idbuf,32,"%x",type_info->id);
                     LT_put(dies,idbuf,HEAD,ltv);
-                    if (link2parent(type_info))
+                    STRY(traverse_child(ltv),"traversing first die child");
+                    if (link2parent(ltv,type_info))
                         LT_put(parent,type_info->name,HEAD,ltv);
-                    STRY(traverse_child(),"traversing first die child");
+                    else
+                        LTV_release(ltv);
                 }
             }
 
-            status=traverse_sibling();
+            status=traverse_sibling(parent);
 
         done:
             if (die)
@@ -622,23 +632,28 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
             return status;
         }
 
+
+        Dwarf_Bool is_info=0; // c
         Dwarf_Unsigned cu_header_length = 0;
         Dwarf_Half version_stamp = 0;
         Dwarf_Unsigned abbrev_offset = 0;
         Dwarf_Half address_size = 0;
-        Dwarf_Unsigned next_cu_header = 0;
         Dwarf_Half length_size = 0;
         Dwarf_Half extension_size = 0;
+        Dwarf_Sig8 type_sig; // c
+        Dwarf_Unsigned typeoffset=0; // c
+        Dwarf_Unsigned next_cu_header_offset = 0;
 
         STRY(!(dies=LTV_VOID),"allocating ltv for module dies");
 
         while (1)
         {
-            TRY(dwarf_next_cu_header_b(dbg,&cu_header_length,&version_stamp,&abbrev_offset,&address_size,&length_size,&extension_size,&next_cu_header,&error),"reading next cu header");
+            TRY(dwarf_next_cu_header_b(dbg,&cu_header_length,&version_stamp,&abbrev_offset,&address_size,&length_size,&extension_size,&next_cu_header_offset,&error),"reading next cu header");
             CATCH(status==DW_DLV_NO_ENTRY,0,goto finished,"checking for no next cu header");
             CATCH(status==DW_DLV_ERROR,status,goto done,"checking error dwarf_next_cu_header");
             STRY(process_type_node(mod_ltv,NULL),"processing type node"); // get siblings of CU header
         }
+
     finished:
         STRY(link_base_types(dies),"postprocessing module");
         LTV_release(dies);
@@ -657,15 +672,23 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
 }
 
 
-int import_module(char *filename,LTV *mod_ltv)
+int reflect_dies(Dwarf_Debug dbg,int filedesc,DIE_OP preop,DIE_OP postop)
+{
+    return 0;
+}
+
+
+int import_module(LTV *mod_ltv)
 {
     int status=0;
     int filedesc = -1;
+    char *filename=FORMATA(filename,mod_ltv->len,"%s",mod_ltv->data);
     STRY((filedesc=open(filename,O_RDONLY))<0,"opening dward2edict input file %s",filename);
     TRYCATCH(dwarf2edict_fd(filedesc,mod_ltv),status,close_file,"importing dwarf from filedesc");
  close_file:
     close(filedesc);
  done:
+    printf("done!\n");
     return status;
 }
 

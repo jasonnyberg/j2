@@ -152,7 +152,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
 
 #define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { printf(CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 
-#define FORMATA(p,len,fmt,args...) (p=alloca(strlen(fmt)+len+1),sprintf(p,fmt,args),p)
+#define FORMATA(p,len,fmt,args...) (p=alloca(strlen(fmt)+len+1),snprintf(p,len+1,fmt,args),p)
 #define CONCATA(p,str1,str2) (stpcpy(stpcpy((p=alloca(strlen(str1)+strlen(str2)+1)),(str1)),(str2)),p)
 #define STRIPDUPA(str,len) (strstrip(memcpy(alloca(*len),str,*len),len))
 

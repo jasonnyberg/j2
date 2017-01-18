@@ -232,7 +232,7 @@ int graph_cus_to_files(LTV *module_ltv)
 }
 
 
-int postprocess_module(LTV *dies)
+int link_base_types(LTV *dies)
 {
     int status=0;
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
@@ -535,6 +535,21 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                 return status;
             }
 
+            int link2parent(TYPE_INFO *type_info) {
+                TYPE_INFO *pti=(TYPE_INFO *) parent->data;
+                if (!type_info->name)
+                    return false;
+                if (pti->tag==DW_TAG_compile_unit)
+                    switch(type_info->tag) {
+                        case DW_TAG_subprogram:
+                        case DW_TAG_variable:
+                            return true;
+                        default:
+                            return false;
+                    }
+                return true;
+            }
+
             if (die) // no die implies we're at the top layer, just traverse sibs
             {
                 TYPE_INFO *type_info=NULL;
@@ -549,7 +564,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     STRY(!(ltv=LTV_new(type_info,sizeof(TYPE_INFO),LT_OWN | LT_CVAR)),"allocating type_info ltv");
                     char *idbuf=FORMATA(idbuf,32,"%x",type_info->id);
                     LT_put(dies,idbuf,HEAD,ltv);
-                    if (type_info->name)
+                    if (link2parent(type_info))
                         LT_put(parent,type_info->name,HEAD,ltv);
                     STRY(traverse_child(),"traversing first die child");
                 }
@@ -581,7 +596,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
             STRY(process_type_node(mod_ltv,NULL),"processing type node"); // get siblings of CU header
         }
     finished:
-        STRY(postprocess_module(dies),"postprocessing module");
+        STRY(link_base_types(dies),"postprocessing module");
         LTV_release(dies);
         graph_module_to_file("/tmp/module.dot",mod_ltv);
         graph_cus_to_files(mod_ltv);

@@ -431,19 +431,19 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
     int halt=0;
 
-    void *lnk2dot(CLL *lnk) {
+    void *lnk2dot(CLL *lnk,int last) {
         fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",lnk,lnk->lnk[HEAD]);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown %s]\n",lnk->lnk[TAIL],lnk,last?"constraint=false":"");
     }
 
     void *ltvr2dot(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
-        lnk2dot(lnk);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=blue]\n",lnk,ltvr->ltv);
+        lnk2dot(lnk,false);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=purple len=0.1]\n",lnk,ltvr->ltv);
     }
 
     void cll2dot(CLL *cll,char *label) {
-        lnk2dot(cll);
+        lnk2dot(cll,true);
         if (label)
             fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse style=filled fillcolor=gray]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,cll);
     }

@@ -318,6 +318,7 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
             switch (type_info->tag)
             {
                 case DW_TAG_compile_unit:
+                    printf("compile_unit %s\n",type_info->name);
                 case DW_TAG_base_type:
                 case DW_TAG_volatile_type:
                 case DW_TAG_typedef:
@@ -340,6 +341,19 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                 case DW_AT_GNU_all_tail_call_sites:
                 case DW_TAG_label:
                 case DW_TAG_inlined_subroutine:
+                case DW_TAG_GNU_call_site:
+                case DW_TAG_GNU_call_site_parameter:
+                    
+                case DW_TAG_dwarf_procedure:
+                case DW_TAG_reference_type: // C++?
+                case DW_TAG_namespace:
+                case DW_TAG_class_type:
+                case DW_TAG_inheritance:
+                case DW_TAG_imported_declaration:
+                case DW_TAG_template_type_parameter:
+                case DW_TAG_template_value_parameter:
+                case DW_TAG_imported_module:
+                    
                     goto done; // explicitly skipped
                 default:
                     printf(CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
@@ -417,6 +431,15 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     case DW_AT_GNU_tail_call:
                     case DW_AT_GNU_call_site_value:
                     case 8473: // an attribute that has no definition or name in current dwarf.h
+                        
+                    case DW_AT_specification: // C++?
+                    case DW_AT_object_pointer: // C++
+                    case DW_AT_pure: // C++
+                    case DW_AT_linkage_name: // C++ mangling?
+                    case DW_AT_accessibility:
+                    case DW_AT_ranges:
+                    case DW_AT_explicit:
+                        
                         break;
                     default:
                         printf(CODE_RED "Unrecognized attr 0x%x\n",vshort);
@@ -452,8 +475,9 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                     STRY(dwarf_loclist_from_expr(dbg,exprloc,exprlen,&llbuf,&listlen,&error),"getting exprloc");
                     for (int j=0;j<llbuf->ld_cents;j++)
                     {
-                        if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ; // printf(" breg%d + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_atom-DW_OP_breg0, (Dwarf_Signed) llbuf->ld_s[j].lr_number);
-                        else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ; //printf(" reg%d + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_atom-DW_OP_reg0, (Dwarf_Signed) llbuf->ld_s[j].lr_number);
+                        if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ;
+                        else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ;
+                        else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31) ;
                         else
                             switch(llbuf->ld_s[j].lr_atom)
                             {
@@ -476,16 +500,33 @@ int dwarf2edict_fd(int filedesc,LTV *mod_ltv)
                                 case DW_OP_GNU_implicit_pointer:
                                 case DW_OP_GNU_entry_value:
                                 case DW_OP_GNU_push_tls_address: // something to do with stack local variables?
+                                case DW_OP_call_frame_cfa:
                                 case DW_OP_deref:
                                 case DW_OP_skip:
                                 case DW_OP_bra:
-                                case DW_OP_call_frame_cfa:
+                                case DW_OP_plus:
+                                case DW_OP_shl:
+                                case DW_OP_or:
+                                case DW_OP_and:
+                                case DW_OP_xor:
+                                case DW_OP_eq:
+                                case DW_OP_ne:
+                                case DW_OP_gt:
+                                case DW_OP_lt:
+                                case DW_OP_shra:
+                                case DW_OP_mul:
+                                case DW_OP_minus:
+                                    
+                                case DW_OP_stack_value: // 0x9f
+                                case DW_OP_lit16: // 0x40
+                                    
                                     // printf(" Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                                     break;
                                 default:
                                     printf(" Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                                     printf(CODE_RED " lowpc %" DW_PR_DUx " hipc %"  DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
                                            llbuf->ld_lopc,llbuf->ld_hipc,llbuf->ld_section_offset,llbuf->ld_from_loclist?"debug_loc":"debug_info",llbuf->ld_cents);
+                                    printf(CODE_RESET "\n");
                                     break;
                             }
                     }

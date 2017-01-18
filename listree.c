@@ -398,8 +398,8 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
             fstrnprint(ofile,indent,depth*4);
             if (pre) fprintf(ofile,"%s",pre);
             else fprintf(ofile,"[");
-            if      ((*ltv)->flags&LT_CVAR)            fprintf(ofile,"0x%p (cvar)",(*ltv)->data);
-            else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"0x%p (immediate)",(*ltv)->data);
+            if      ((*ltv)->flags&LT_CVAR)            fprintf(ofile,"CVAR %p",(*ltv)->data);
+            else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"IMM 0x%x",(*ltv)->data);
             else if (((*ltv)->flags&LT_VOID)==LT_VOID) fprintf(ofile,"<void>");
             else if ((*ltv)->flags&LT_NULL)            fprintf(ofile,"<null>");
             else if ((*ltv)->flags&LT_NIL)             fprintf(ofile,"<nil>");
@@ -431,31 +431,32 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
     int halt=0;
 
-    void lnk2dot(CLL *lnk) {
+    void *lnk2dot(CLL *lnk) {
         fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
         fprintf(ofile,"\"%x\" -> \"%x\" [color=brown]\n",lnk,lnk->lnk[HEAD]);
     }
 
+    void *ltvr2dot(CLL *lnk) {
+        LTVR *ltvr=(LTVR *) lnk;
+        lnk2dot(lnk);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=blue]\n",lnk,ltvr->ltv);
+    }
+
     void cll2dot(CLL *cll,char *label) {
-        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=red]\n",cll);
+        lnk2dot(cll);
         if (label)
             fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse style=filled fillcolor=gray]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,cll);
-        lnk2dot(cll);
     }
 
     void lti2dot(LTV *ltv,LTI *lti) {
         fprintf(ofile,"\"%x\" [label=\"%s\" shape=ellipse color=blue]\n",lti,lti->name);
-        if (rb_parent(&lti->rbn)) fprintf(ofile,"\"%x\" -> \"%x\" [color=blue weight=0]\n",rb_parent(&lti->rbn),&lti->rbn);
-        fprintf(ofile,"\"%x\" -> \"%x\" [weight=2]\n",&lti->rbn,&lti->ltvs);
+        if (rb_parent(&lti->rbn)) fprintf(ofile,"\"%x\" -> \"%x\" [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
+        fprintf(ofile,"\"%x\" -> \"%x\"\n",&lti->rbn,&lti->ltvs);
         cll2dot(&lti->ltvs,NULL);
     }
 
-    void ltvr2dot(LTVR *ltvr) {
-        lnk2dot(&(ltvr->lnk));
-        fprintf(ofile,"\"%x\" -> \"%x\" [weight=2 color=blue]\n",&ltvr->lnk,ltvr->ltv);
-    }
-    void lti_ltvr2dot(LTI *lti,LTVR *ltvr) { ltvr2dot(ltvr); }
-    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { ltvr2dot(ltvr); }
+    void lti_ltvr2dot(LTI *lti,LTVR *ltvr) { ltvr2dot(&ltvr->lnk); }
+    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { ltvr2dot(&ltvr->lnk); }
 
     void ltv2dot(LTVR *ltvr,LTV *ltv,int depth,int *flags) {
         if (ltv->flags&LT_AVIS) { // don't re-descend already represented nodes
@@ -481,13 +482,13 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         else
             fprintf(ofile,"\"%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
 
-        fprintf(ofile,"subgraph cluster_%d { subgraph { rank=same\n",i++);
+        fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
         for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
             fprintf(ofile,"\"%x\"\n",lti);
         fprintf(ofile,"}}\n");
 
         if (ltv->sub.ltis.rb_node)
-            fprintf(ofile,"\"%1$x\" -> \"%2$x\" [color=blue weight=0]\n",ltv,ltv->sub.ltis.rb_node);
+            fprintf(ofile,"\"%1$x\" -> \"%2$x\" [color=blue]\n",ltv,ltv->sub.ltis.rb_node);
     }
 
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
@@ -509,6 +510,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     }
 
     cll2dot(ltvs,label);
+    CLL_map(ltvs,FWD,ltvr2dot);
     listree_traverse(ltvs,preop,NULL);
 }
 

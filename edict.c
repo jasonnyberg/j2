@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include "util.h"
 #include "listree.h"
+#include "reflect.h"
 
 #include "trace.h" // lttng
 
@@ -40,9 +41,6 @@ typedef struct EDICT
     LTV *root;
     CLL contexts;
 } EDICT;
-
-
-extern int dwarf2edict(char *import,char *export);
 
 //////////////////////////////////////////////////
 
@@ -472,17 +470,13 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
-        int d2e() {
+        int module() {
             int status=0;
-            LTV *ltv_ifilename=NULL,*ltv_ofilename=NULL;
-            STRY(!(ltv_ifilename=stack_pop(context)),"popping dwarf import filename");
-            STRY(!(ltv_ofilename=stack_peek(context)),"peeking edict export filename");
-            char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
-            char *ofilename=bufdup(ltv_ofilename->data,ltv_ofilename->len);
-            dwarf2edict(ifilename,ofilename);
+            LTV *mod_ltv=NULL;
+            STRY(!(mod_ltv=stack_peek(context)),"peeking dwarf import filename");
+            char *ifilename=bufdup(mod_ltv->data,mod_ltv->len);
+            STRY(import_module(ifilename,mod_ltv),"importing module %s",ifilename);
             myfree(ifilename,strlen(ifilename)+1);
-            myfree(ofilename,strlen(ofilename)+1);
-            LTV_release(ltv_ifilename);
         done:
             return status;
         }
@@ -520,11 +514,11 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         if (ref_head) {
             LTV *key=REF_key(ref_head);
             if (key) {
-                if      (!strnncmp(key->data,key->len,"read",-1))  STRY(readfrom(),"starting input stream");
-                else if (!strnncmp(key->data,key->len,"d2e",-1))   STRY(d2e(),"converting dwarf to edict");
-                else if (!strnncmp(key->data,key->len,"cvar",-1))  STRY(cvar(),"creating cvar");
-                else if (!strnncmp(key->data,key->len,"error",-1)) STRY(error(),"evaluating \"#error\"");
-                else if (!strnncmp(key->data,key->len,"throw",-1)) STRY(throw(NON_NULL),"evaluating \"#throw\"");
+                if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
+                else if (!strnncmp(key->data,key->len,"module",-1)) STRY(module(),"importing dwarf module");
+                else if (!strnncmp(key->data,key->len,"cvar",-1))   STRY(cvar(),"creating cvar");
+                else if (!strnncmp(key->data,key->len,"error",-1))  STRY(error(),"evaluating \"#error\"");
+                else if (!strnncmp(key->data,key->len,"throw",-1))  STRY(throw(NON_NULL),"evaluating \"#throw\"");
                 else STRY(dump((char *) key->data),"dumping named item");
             }
         } else {

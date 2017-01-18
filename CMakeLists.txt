@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
-add_definitions(-std=gnu99 -g -ggdb3 -feliminate-dwarf2-dups -DLTTNG)
+#add_definitions(-std=gnu99 -g -ggdb3 -feliminate-dwarf2-dups -DLTTNG)
+add_definitions(-std=gnu99 -g -ggdb3 -feliminate-dwarf2-dups)
 include_directories(.)
 add_library (edict trace.c util.c cll.c rbtree.c listree.c edict.c reflect.c)
 add_executable (jj jj.c)

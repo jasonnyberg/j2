@@ -21,6 +21,10 @@
 #ifndef REFLECT_H
 #define REFLECT_H
 
+#include "listree.h"
+
+extern int import_module(char *filename,LTV *module);
+
 extern long long *Type_getLocation(char *loc);
 
 extern char *reflect_enumstr(char *type,unsigned int val);

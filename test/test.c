@@ -19,7 +19,7 @@ teststring teststringvar;
 
 #define MYMACRO(X) (X)*(X)
 
-static int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
+extern int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
 {
     int localc = 5;
     int locale;

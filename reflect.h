@@ -23,7 +23,9 @@
 
 #include "listree.h"
 
-extern int import_module(LTV *module);
+extern int curate_module(LTV *module);
+extern int module_cus(LTV *mod_ltv);
+
 
 extern long long *Type_getLocation(char *loc);
 

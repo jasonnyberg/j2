@@ -49,8 +49,8 @@ typedef enum {
     LT_ROOT=1<<0x0a, // root of a dict rather than a namespace
     LT_NIL =1<<0x0b, // false
     LT_NULL=1<<0x0c, // empty (as opposed to false)
-    LT_WC  =1<<0x0d, // contains a wildcard character (note to repl)
-    LT_IMM =1<<0x0f, // immediate value, not a pointer
+    LT_IMM =1<<0x0d, // immediate value, not a pointer
+    LT_WC  =1<<0x0e, // contains a wildcard character (note to repl)
     LT_NAP =LT_IMM|LT_NIL|LT_NULL, // not a pointer
     LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
     LT_NSTR=LT_NAP|LT_BIN|LT_CVAR, // not a string
@@ -163,7 +163,7 @@ extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label
 //////////////////////////////////////////////////
 
 extern LTV *LT_put(LTV *parent,char *name,int end,LTV *child);
-extern LTV *LT_get(LTV *parent,char *name,int end);
+extern LTV *LT_get(LTV *parent,char *name,int end,int pop);
 
 //////////////////////////////////////////////////
 // REF (Listree's "cli")

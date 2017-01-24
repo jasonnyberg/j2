@@ -90,15 +90,17 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
     if (!repo) repo=CLL_init(&ltv_repo);
 
     LTV *ltv=NULL;
-    if ((ltv=(LTV *) CLL_get(repo,POP,TAIL)) || (ltv=NEW(LTV))) {
-        ZERO(*ltv);
-        ltv_count++;
-        ltv->len=(len<0 && !(flags&LT_NSTR))?strlen((char *) data):len;
-        ltv->data=data;
-        if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
-        if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
-        if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
-        ltv->flags=flags;
+    if ((flags&LT_NAP) || data) { // null ptr is error
+        if ((ltv=(LTV *) CLL_get(repo,POP,TAIL)) || (ltv=NEW(LTV))) {
+            ZERO(*ltv);
+            ltv_count++;
+            ltv->len=(len<0 && !(flags&LT_NSTR))?strlen((char *) data):len;
+            ltv->data=data;
+            if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
+            if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
+            if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
+            ltv->flags=flags;
+        }
     }
     return ltv;
 }
@@ -538,12 +540,12 @@ LTV *LT_put(LTV *parent,char *name,int end,LTV *child)
     return lti?LTV_enq(&lti->ltvs,child,end):NULL;
 }
 
-LTV *LT_get(LTV *parent,char *name,int end)
+LTV *LT_get(LTV *parent,char *name,int end,int pop)
 {
     LTV *nameltv=LTV_new(name,-1,0);
     LTI *lti=LTI_lookup(parent,nameltv,true);
     LTV_free(nameltv);
-    return lti?LTV_peek(&lti->ltvs,end):NULL;
+    return lti?(pop?LTV_deq(&lti->ltvs,end):LTV_peek(&lti->ltvs,end)):NULL;
 }
 
 

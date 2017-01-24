@@ -19,6 +19,8 @@ teststring teststringvar;
 
 #define MYMACRO(X) (X)*(X)
 
+testarray ta;
+
 extern int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
 {
     int localc = 5;
@@ -26,7 +28,7 @@ extern int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
     z=&localc;
 
     {
-        int locald = MYMACRO(localc) + const_int;
+        int locald = MYMACRO(localc) + const_int + ta[10];
         locale=locald;
     }
 

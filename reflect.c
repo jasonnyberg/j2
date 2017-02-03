@@ -251,18 +251,11 @@ int traverse_cus(LTV *mod_ltv,DIE_OP op,CU_DATA *cu_data)
 
 /////////////////////////////////////////////////////////////
 
-int print_type_info(TYPE_INFO *type_info)
-{
-    int status=0;
- done:
-    return status;
-}
-
-int dot_cu_data(FILE *ofile,CU_DATA *cu_data)
+int print_cu_data(FILE *ofile,CU_DATA *cu_data)
 {
     int status=0;
     STRY(!cu_data,"validating cu data");
-    fprintf(ofile,"\"" CVAR_FORMAT "\" [shape=record label=\"{CU DATA",cu_data);
+    fprintf(ofile,"CU DATA");
 #define output_cu_field(field) fprintf(ofile,"|" #field " %x",cu_data->field)
     output_cu_field(offset);
     output_cu_field(next_cu_header_offset);
@@ -272,19 +265,28 @@ int dot_cu_data(FILE *ofile,CU_DATA *cu_data)
     output_cu_field(address_size);
     output_cu_field(length_size);
     output_cu_field(extension_size);
+ done:
+    return status;
+}
+
+int dot_cu_data(FILE *ofile,CU_DATA *cu_data)
+{
+    int status=0;
+    STRY(!cu_data,"validating cu data");
+    fprintf(ofile,"\"" CVAR_FORMAT "\" [shape=record label=\"{");
+    print_cu_data(ofile,cu_data);
     fprintf(ofile,"}\"");
     fprintf(ofile,"]\n");
  done:
     return status;
 }
 
-int dot_type_info(FILE *ofile,TYPE_INFO *type_info,int depth)
+
+int print_type_info(FILE *ofile,TYPE_INFO *type_info)
 {
     int status=0;
     const char *str=NULL;
-    for (int i=0;i<depth;i++)
-        fprintf(ofile,"  ");
-    fprintf(ofile,"\"" CVAR_FORMAT "\" [shape=record label=\"{TYPE_INFO %x",type_info,type_info->id);
+    fprintf(ofile,"TYPE_INFO %x",type_info->id);
     dwarf_get_TAG_name(type_info->tag,&str);
     fprintf(ofile,"|%s",str+7);
     if (type_info->flags&TYPEF_CONSTVAL)   fprintf(ofile,"|constval %u",type_info->const_value);
@@ -298,6 +300,14 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info,int depth)
     if (type_info->flags&TYPEF_ADDR)       fprintf(ofile,"|addr 0x%x",type_info->addr);
     if (type_info->flags&TYPEF_EXTERNAL)   fprintf(ofile,"|external %u",type_info->external);
     if (type_info->flags&TYPEF_BASE)       fprintf(ofile,"|base %x",type_info->base);
+    return status;
+}
+
+int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
+{
+    int status=0;
+    fprintf(ofile,"\"" CVAR_FORMAT "\" [shape=record label=\"{",type_info);
+    print_type_info(ofile,type_info);
     fprintf(ofile,"}\"");
     if (type_info->flags&TYPEF_DQ)
         fprintf(ofile," color=red");
@@ -325,16 +335,28 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info,int depth)
 }
 
 
-int dot_cvar(FILE *ofile,LTV *ltv,int depth)
+int print_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
     char *cvar_kind=NULL;
     STRY(!(cvar_kind=cvar_kind_get(ltv)),"getting cvar type name");
     if (!strcmp(cvar_kind,"TYPE_INFO"))
-        dot_type_info(ofile,(TYPE_INFO *) ltv->data,depth);
+        print_type_info(ofile,(TYPE_INFO *) ltv->data);
+    else if (!strcmp(cvar_kind,"CU_DATA"))
+        print_cu_data(ofile,(CU_DATA *) ltv->data);
+ done:
+    return status;
+}
+
+int dot_cvar(FILE *ofile,LTV *ltv)
+{
+    int status=0;
+    char *cvar_kind=NULL;
+    STRY(!(cvar_kind=cvar_kind_get(ltv)),"getting cvar type name");
+    if (!strcmp(cvar_kind,"TYPE_INFO"))
+        dot_type_info(ofile,(TYPE_INFO *) ltv->data);
     else if (!strcmp(cvar_kind,"CU_DATA"))
         dot_cu_data(ofile,(CU_DATA *) ltv->data);
-    fprintf(ofile,"\"%x\" -> \"CVAR_%x\"\n",ltv,ltv->data); // link ltv to type_info
  done:
     return status;
 }
@@ -347,8 +369,10 @@ void graph_types_to_file(char *filename,LTV *ltv) {
         if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
             if ((*ltv)->flags&LT_AVIS)
                 *flags|=LT_TRAVERSE_HALT;
-            else if ((*ltv)->flags&LT_CVAR)
-                dot_cvar(ofile,(*ltv),depth);
+            else if ((*ltv)->flags&LT_CVAR) {
+                dot_cvar(ofile,(*ltv));
+                fprintf(ofile,"\"%x\" -> \"CVAR_%x\"\n",(*ltv),(*ltv)->data); // link ltv to type_info
+            }
         return NULL;
     }
 
@@ -665,23 +689,14 @@ int ltv_is_cvar_kind(LTV *ltv,char *kind)
 int link_symbols(LTV *module,LTV *compile_units,LTV *index)
 {
     int status=0;
-    LTV *cu_ltv=NULL;
+
+    LTV *function=LTV_NULL,*variable=LTV_NULL,*type=LTV_NULL;
+
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
         int status=0;
-        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
+        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
             if ((*ltv)->flags&LT_AVIS)
                 *flags|=LT_TRAVERSE_HALT;
-            else if (ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
-                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
-                switch(type_info->tag) {
-                    case DW_TAG_compile_unit:
-                        cu_ltv=(*ltv); // set on way down; we'll attach descendant types info into this CU on way back up in postop
-                        break;
-                    default:
-                        break;
-                }
-            }
-        }
     done:
         return status?NON_NULL:NULL;
     }
@@ -706,51 +721,57 @@ int link_symbols(LTV *module,LTV *compile_units,LTV *index)
                 switch(type_info->tag) {
                     case DW_TAG_structure_type:
                         if (type_name)
-                            FORMATA(composite_name,strlen(type_name),"struct %s",type_name);
+                            LT_put(type,FORMATA(composite_name,strlen(type_name),"struct~%s",type_name),TAIL,(*ltv));
                         break;
                     case DW_TAG_union_type:
                         if (type_name)
-                            FORMATA(composite_name,strlen(type_name),"union %s",type_name);
+                            LT_put(type,FORMATA(composite_name,strlen(type_name),"union~%s",type_name),TAIL,(*ltv));
                         break;
                     case DW_TAG_enumeration_type:
                         if (type_name)
-                            FORMATA(composite_name,strlen(type_name),"enum %s",type_name);
+                            LT_put(type,FORMATA(composite_name,strlen(type_name),"enum~%s",type_name),TAIL,(*ltv));
                         break;
                     case DW_TAG_pointer_type:
                         if (base_name)
-                            FORMATA(composite_name,strlen(base_name),"%s[]",base_name);
+                            LT_put(type,FORMATA(composite_name,strlen(base_name),"pointer~%s",base_name),TAIL,(*ltv));
                     case DW_TAG_array_type:
                         if (base_name)
                         {
                             LTV *subrange_ltv=LT_get((*ltv),"subrange~type",HEAD,KEEP);
                             TYPE_INFO *subrange=subrange_ltv?(TYPE_INFO *) subrange_ltv->data:NULL;
                             if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
-                                FORMATA(composite_name,strlen(base_name)+20,"%s[%d]",base_name,subrange->upper_bound+1);
                                 if (base_info && base_info->flags&TYPEF_BYTESIZE) {
                                     type_info->bytesize=base_info->bytesize * (subrange->upper_bound+1);
                                     type_info->flags|=TYPEF_BYTESIZE;
                                 }
+                                LT_put(type,FORMATA(composite_name,strlen(base_name)+20,"array~%s~%d",base_name,subrange->upper_bound+1),TAIL,(*ltv));
                             }
                             else
-                                FORMATA(composite_name,strlen(base_name),"%s[]",base_name);
+                                LT_put(type,FORMATA(composite_name,strlen(base_name),"array~%s",base_name),TAIL,(*ltv));
                         }
                         break;
                     case DW_TAG_volatile_type:
                         if (base_name)
-                            FORMATA(composite_name,strlen(base_name),"volatile %s",base_name);
+                            LT_put(type,FORMATA(composite_name,strlen(base_name),"volatile~%s",base_name),TAIL,(*ltv));
                         break;
                     case DW_TAG_const_type:
                         if (base_name)
-                            FORMATA(composite_name,strlen(base_name),"const %s",base_name);
+                            LT_put(type,FORMATA(composite_name,strlen(base_name),"const~%s",base_name),TAIL,(*ltv));
+                        break;
+                    case DW_TAG_subprogram:
+                    case DW_TAG_subroutine_type:
+                        if (type_name)
+                            LT_put(function,FORMATA(composite_name,strlen(type_name),"%s",type_name),TAIL,(*ltv));
                         break;
                     case DW_TAG_base_type:
                     case DW_TAG_typedef:
+                        if (type_name)
+                            LT_put(type,FORMATA(composite_name,strlen(type_name),"%s",type_name),TAIL,(*ltv));
+                        break;
                     case DW_TAG_enumerator:
-                    case DW_TAG_subprogram:
-                    case DW_TAG_subroutine_type:
                     case DW_TAG_variable:
                         if (type_name)
-                            composite_name=FORMATA(composite_name,strlen(type_name),"%s",type_name);
+                            LT_put(variable,FORMATA(composite_name,strlen(type_name),"%s",type_name),TAIL,(*ltv));
                         break;
                     case DW_TAG_compile_unit:
                     case DW_TAG_subrange_type:
@@ -760,9 +781,6 @@ int link_symbols(LTV *module,LTV *compile_units,LTV *index)
                     default: // no name
                         break;
                 }
-
-                if (composite_name) // TODO: DEDUP AND REWIRE DEPS HERE
-                    LT_put(module,composite_name,TAIL,(*ltv));
             }
         }
     done:
@@ -770,6 +788,9 @@ int link_symbols(LTV *module,LTV *compile_units,LTV *index)
     }
 
     STRY(ltv_traverse(compile_units,preop,postop)!=NULL,"traversing module in link_base_types");
+    LT_put(module,"function",TAIL,function);
+    LT_put(module,"variable",TAIL,variable);
+    LT_put(module,"type",TAIL,type);
  done:
     return status;
 }
@@ -937,16 +958,6 @@ int curate_module(LTV *module)
 
 
 #if 0
-#define ENUMS_PREFIX "" //"enums."
-
-DICT_ITEM *SU_subitem(DICT *dict,char *name) { return jli_getitem(dict,name,strlen(name),0); }
-char *SU_lookup(DICT *dict,char *name) { return jli_lookup(dict,name,strlen(name)); }
-
-
-DICT_ITEM *Type_getTypeInfo(DICT_ITEM *item,TYPE_INFO *type_info);
-DICT_ITEM *Type_isaTypeItem(DICT *dict,char *type_id);
-DICT_ITEM *Type_lookupName(DICT *dict,char *name);
-
 void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data);
 void Type_dumpType(DICT *dict,char *name,char *addr,char *prefix);
 void Type_dumpVar(DICT *dict,char *name,char *prefix);

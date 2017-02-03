@@ -25,6 +25,7 @@
 #include <string.h>
 #include "util.h"
 #include "listree.h"
+#include "reflect.h"
 
 #include "trace.h" // lttng
 
@@ -233,7 +234,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
                      ((flags&LT_TRAVERSE_HALT) || (rval=LTV_traverse(ltvr,ltvr->ltv))) ||
                      postop && (rval=postop(&null,&ltvr,&parent,depth,&flags)))
                 goto done;
-    done:
+        done:
             flags=0;
             return rval;
         }
@@ -241,32 +242,32 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
         void *LTI_traverse(RBN *rbn) {
             LTI *lti=(LTI *) rbn;
 
-        void *LTVR_traverse(CLL *lnk) { // for normal-form (ltv->lti->ltvr) form ltv
-            LTVR *ltvr=(LTVR *) lnk;
-            if (!ltvr) goto done;
+            void *LTVR_traverse(CLL *lnk) { // for normal-form (ltv->lti->ltvr) form ltv
+                LTVR *ltvr=(LTVR *) lnk;
+                if (!ltvr) goto done;
 
-            LTI *parent=lti; LTV *child=NULL;
-            if (cleanup && ltvr->ltv) LTV_traverse(ltvr,ltvr->ltv);
-            else if (preop && (rval=preop(&parent,&ltvr,&child,depth,&flags)) ||
-                     ((flags&LT_TRAVERSE_HALT) || (rval=LTV_traverse(ltvr,ltvr->ltv))) ||
-                     postop && (rval=postop(&parent,&ltvr,&child,depth,&flags)))
+                LTI *parent=lti; LTV *child=NULL;
+                if (cleanup && ltvr->ltv) LTV_traverse(ltvr,ltvr->ltv);
+                else if (preop && (rval=preop(&parent,&ltvr,&child,depth,&flags)) ||
+                         ((flags&LT_TRAVERSE_HALT) || (rval=LTV_traverse(ltvr,ltvr->ltv))) ||
+                         postop && (rval=postop(&parent,&ltvr,&child,depth,&flags)))
+                    goto done;
+            done:
+                flags=0;
+                return rval;
+            }
+
+            if (!lti) goto done;
+            LTV *parent=ltv; LTVR *child=NULL;
+            if (cleanup) CLL_map(&lti->ltvs,FWD,LTVR_traverse);
+            else if (preop && (rval=preop(&lti,&child,&parent,depth,&flags)) ||
+                     ((flags&LT_TRAVERSE_HALT) || (rval=child?LTVR_traverse(&child->lnk):CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
+                     postop && (rval=postop(&lti,&child,&parent,depth,&flags)))
                 goto done;
         done:
             flags=0;
             return rval;
         }
-
-        if (!lti) goto done;
-            LTV *parent=ltv; LTVR *child=NULL;
-        if (cleanup) CLL_map(&lti->ltvs,FWD,LTVR_traverse);
-        else if (preop && (rval=preop(&lti,&child,&parent,depth,&flags)) ||
-                 ((flags&LT_TRAVERSE_HALT) || (rval=child?LTVR_traverse(&child->lnk):CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,LTVR_traverse))) ||
-                 postop && (rval=postop(&lti,&child,&parent,depth,&flags)))
-            goto done;
-    done:
-        flags=0;
-        return rval;
-    }
 
         if (!ltv) goto done;
         LTI *child=NULL;
@@ -418,7 +419,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
             fstrnprint(ofile,indent,depth*4);
             if (pre) fprintf(ofile,"%s",pre);
             else fprintf(ofile,"[");
-            if      ((*ltv)->flags&LT_CVAR)            fprintf(ofile,"CVAR %p",(*ltv)->data);
+            if      ((*ltv)->flags&LT_CVAR)            print_cvar(ofile,(*ltv));
             else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"IMM 0x%x",(*ltv)->data);
             else if (((*ltv)->flags&LT_VOID)==LT_VOID) fprintf(ofile,"<void>");
             else if ((*ltv)->flags&LT_NULL)            fprintf(ofile,"<null>");
@@ -502,7 +503,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         else
             fprintf(ofile,"\"%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
 
-        fprintf(ofile,"subgraph cluster_%d { subgraph { rank=same\n",i++);
+        fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
         for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
             fprintf(ofile,"\"%x\"\n",lti);
         fprintf(ofile,"}}\n");

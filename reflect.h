@@ -23,10 +23,12 @@
 
 #include "listree.h"
 
+extern int print_cvar(FILE *ofile,LTV *ltv);
+extern int dot_cvar(FILE *ofile,LTV *ltv);
 extern int curate_module(LTV *mod_ltv);
 extern int preview_module(LTV *mod_ltv);
 
-
+#if 0
 extern long long *Type_getLocation(char *loc);
 
 extern char *reflect_enumstr(char *type,unsigned int val);
@@ -36,5 +38,6 @@ extern void reflect_pushvar(char *type,void *addr);
 
 extern void reflect_init(char *binname,char *fifoname);
 extern void reflect(char *command);
+#endif
 
 #endif

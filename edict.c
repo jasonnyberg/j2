@@ -479,11 +479,11 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
-        int cus() {
+        int preview() {
             int status=0;
             LTV *mod_ltv=NULL;
             STRY(!(mod_ltv=stack_peek(context)),"peeking dwarf import filename");
-            STRY(module_cus(mod_ltv),"listing module");
+            STRY(preview_module(mod_ltv),"listing module");
         done:
             return status;
         }
@@ -522,8 +522,8 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             LTV *key=REF_key(ref_head);
             if (key) {
                 if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
+                else if (!strnncmp(key->data,key->len,"cus",-1))    STRY(preview(),"importing module preview");
                 else if (!strnncmp(key->data,key->len,"import",-1)) STRY(import(),"importing dwarf module");
-                else if (!strnncmp(key->data,key->len,"cus",-1))    STRY(cus(),"listing dwarf module");
                 else if (!strnncmp(key->data,key->len,"cvar",-1))   STRY(cvar(),"creating cvar");
                 else if (!strnncmp(key->data,key->len,"error",-1))  STRY(error(),"evaluating \"#error\"");
                 else if (!strnncmp(key->data,key->len,"throw",-1))  STRY(throw(NON_NULL),"evaluating \"#throw\"");

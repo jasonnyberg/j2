@@ -113,6 +113,7 @@ extern void LTI_release(RBN *rbn);
 enum { LT_TRAVERSE_HALT=1<<0, LT_TRAVERSE_SKIP=1<<1, LT_TRAVERSE_REVERSE=1<<2 };
 typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
 void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop);
+void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 /*
 // lti/ltvr/ltv AND PARENT (if present) are passed in
 void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
@@ -122,7 +123,6 @@ void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
 }
 listree_traverse(ltv,op,NULL); // preop or postop can be NULL
 */
-  
 
 //////////////////////////////////////////////////
 // Dictionary
@@ -136,7 +136,8 @@ extern LTI *LTI_first(LTV *ltv);
 extern LTI *LTI_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
-extern LTI *LTI_lookup(LTV *ltv,LTV *name,int insert); // find lti matching "name" in ltv
+extern LTI *LTI_lookup(LTV *ltv,LTV *name,int insert); // find (or insert) lti matching "name" in ltv
+extern LTI *LTI_resolve(LTV *ltv,char *name,int insert);
 
 extern int LTV_empty(LTV *ltv);
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);

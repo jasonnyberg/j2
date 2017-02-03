@@ -299,6 +299,16 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
     return rval;
 }
 
+void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
+{
+    CLL ltvs;
+    CLL_init(&ltvs);
+    LTV_enq(&ltvs,ltv,HEAD);
+    void *result=listree_traverse(&ltvs,preop,postop);
+    LTV_deq(&ltvs,HEAD);
+    return result;
+}
+
 //////////////////////////////////////////////////
 // Basic LT insert/remove
 //////////////////////////////////////////////////
@@ -317,6 +327,14 @@ LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
     else
         lti=RBR_find(&ltv->sub.ltis,name->data,name->len,insert);
     done:
+    return lti;
+}
+
+LTI *LTI_resolve(LTV *ltv,char *name,int insert)
+{
+    LTV *nameltv=LTV_new(name,-1,0);
+    LTI *lti=LTI_lookup(ltv,nameltv,insert);
+    LTV_free(nameltv);
     return lti;
 }
 
@@ -534,17 +552,13 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
 
 LTV *LT_put(LTV *parent,char *name,int end,LTV *child)
 {
-    LTV *nameltv=LTV_new(name,-1,0);
-    LTI *lti=LTI_lookup(parent,nameltv,true);
-    LTV_free(nameltv);
+    LTI *lti=LTI_resolve(parent,name,true);
     return lti?LTV_enq(&lti->ltvs,child,end):NULL;
 }
 
 LTV *LT_get(LTV *parent,char *name,int end,int pop)
 {
-    LTV *nameltv=LTV_new(name,-1,0);
-    LTI *lti=LTI_lookup(parent,nameltv,true);
-    LTV_free(nameltv);
+    LTI *lti=LTI_resolve(parent,name,false);
     return lti?(pop?LTV_deq(&lti->ltvs,end):LTV_peek(&lti->ltvs,end)):NULL;
 }
 
@@ -687,18 +701,21 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
         root=REF_reset(ref,root); // clean up ref if root changed
 
         if (root->flags&LT_CVAR) {
-            // process CVAR
-        } else {
-            if (!ref->lti) { // resolve lti
-		 if ((status=!(ref->lti=LTI_lookup(root,name,insert))))
-		    goto done; // return failure, but don't log it
-            }
-            if (!ref->ltvr) { // resolve ltv(r)
-                TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
-                CATCH(!ref->ltvr && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
-            }
-            root=ref->ltvr->ltv;
+            // attempt lookup within cvar
+            // if (complete)
+            //     goto done;
         }
+
+        if (!ref->lti) { // resolve lti
+            if ((status=!(ref->lti=LTI_lookup(root,name,insert))))
+                goto done; // return failure, but don't log it
+        }
+        if (!ref->ltvr) { // resolve ltv(r)
+            TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
+            CATCH(!ref->ltvr && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
+        }
+        root=ref->ltvr->ltv;
+
         goto done; // success!
 
         install_placeholder:

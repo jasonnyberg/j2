@@ -520,6 +520,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         if (ref_head) {
             LTV *key=REF_key(ref_head);
+            char *buf=NULL;
             if (key) {
                 if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
                 else if (!strnncmp(key->data,key->len,"cus",-1))    STRY(preview(),"importing module preview");
@@ -527,7 +528,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
                 else if (!strnncmp(key->data,key->len,"cvar",-1))   STRY(cvar(),"creating cvar");
                 else if (!strnncmp(key->data,key->len,"error",-1))  STRY(error(),"evaluating \"#error\"");
                 else if (!strnncmp(key->data,key->len,"throw",-1))  STRY(throw(NON_NULL),"evaluating \"#throw\"");
-                else STRY(dump((char *) key->data),"dumping named item");
+                else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");
             }
         } else {
             edict_graph_to_file("/tmp/jj.dot",context->edict);

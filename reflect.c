@@ -52,14 +52,15 @@
  *     [type_info]...
  */
 
-#define TYPE_ID   "type~id"   // a die's offset
-#define TYPE_BASE "type~base" // a die's base's offset
-#define TYPE_HIER "type~hier" // a die's parent offset
+#define TYPE_ID   "type id"   // a die's offset
+#define TYPE_BASE "type base" // a die's base's offset
+#define TYPE_HIER "type hier" // a die's parent offset
 
-#define TYPE_NAME "type~name" // a die's type name
-#define TYPE_SYMB "type~symb" // a die's composite name
+#define TYPE_NAME "type name" // a die's type name
+#define TYPE_SYMB "type symb" // a die's composite name
 
-#define CVAR_KIND "cvar~kind" // what kind of cvar is this (i.e. what to cast ltv->data to)
+#define CVAR_KIND "cvar kind" // what kind of cvar is this (i.e. what to cast ltv->data to)
+#define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
 
 #define DIE_FORMAT "0x%x"     // format for a die's DOT-language element id
 #define CVAR_FORMAT "CVAR_%x" // format for a CVAR's DOT-language element id
@@ -135,31 +136,52 @@ typedef struct
     Dwarf_Off base; // global offset
     Dwarf_Off parent;
     struct {
-        TYPE_FLAGS flags;
-        Dwarf_Half tag; // kind of item (base, struct, etc.
-        Dwarf_Signed const_value; // enum val
-        Dwarf_Unsigned bytesize;
-        Dwarf_Unsigned bitsize;
-        Dwarf_Unsigned bitoffset;
-        Dwarf_Unsigned encoding;
-        Dwarf_Unsigned upper_bound;
-        Dwarf_Unsigned low_pc;
-        Dwarf_Addr data_member_location;
-        Dwarf_Signed location; // ??
-        Dwarf_Bool external;
-        Dwarf_Unsigned addr; // from loclist
+    TYPE_FLAGS flags;
+    Dwarf_Half tag; // kind of item (base, struct, etc.
+    Dwarf_Signed const_value; // enum val
+    Dwarf_Unsigned bytesize;
+    Dwarf_Unsigned bitsize;
+    Dwarf_Unsigned bitoffset;
+    Dwarf_Unsigned encoding;
+    Dwarf_Unsigned upper_bound;
+    Dwarf_Unsigned low_pc;
+    Dwarf_Addr data_member_location;
+    Dwarf_Signed location; // ??
+    Dwarf_Bool external;
+    Dwarf_Unsigned addr; // from loclist
     } attr;
 } TYPE_INFO;
 
 
 /////////////////////////////////////////////////////////////
 
-char *cvar_kind_get(LTV *ltv) 
+LTV *attr_set(LTV *ltv,char *attr,char *name) { return LT_put(ltv,attr,TAIL,LTV_new(name,-1,LT_DUP)); }
+LTV *attr_own(LTV *ltv,char *attr,char *name) { return LT_put(ltv,attr,TAIL,LTV_new(name,-1,LT_OWN)); }
+LTV *attr_imm(LTV *ltv,char *attr,long long imm)    { return LT_put(ltv,attr,TAIL,LTV_new((void *) imm,0,LT_IMM)); }
+
+char *attr_get(LTV *ltv,char *attr)
 {
+    LTV *attr_ltv=LT_get(ltv,attr,TAIL,KEEP);
+    return attr_ltv?attr_ltv->data:NULL;
+}
+
+char *attr_deref(LTV *ltv,char *attr,LTV *index)
+{
+    char *attr_val=attr_get(ltv,attr);
+    if (attr_val)
+        return attr_get(index,attr_val);
+}
+
+/////////////////////////////////////////////////////////////
+
+char *cvar_kind_get(LTV *ltv)
+{
+    // replace w/attr_get
     LTV *cvar_kind_ltv=LT_get(ltv,CVAR_KIND,HEAD,KEEP);
     return cvar_kind_ltv?cvar_kind_ltv->data:NULL;
 }
 
+// replace w/attr_set
 LTV *cvar_kind_set(LTV *ltv,char *name) { return LT_put(ltv,CVAR_KIND,HEAD,LTV_new(name,-1,LT_NONE))?ltv:NULL; }
 
 #define CVAR_NEW(kind) cvar_kind_set(LTV_new(NEW(kind),sizeof(kind),LT_OWN | LT_CVAR),#kind)
@@ -171,10 +193,12 @@ LTV *cvar_kind_set(LTV *ltv,char *name) { return LT_put(ltv,CVAR_KIND,HEAD,LTV_n
 
 char *type_name_get(LTV *ltv)
 {
+    // replace w/attr_get
     LTV *type_name_ltv=LT_get(ltv,TYPE_NAME,HEAD,KEEP);
     return type_name_ltv?type_name_ltv->data:NULL;
 }
 
+// replace w/attr_set
 LTV *type_name_set(LTV *ltv,char *name) { return LT_put(ltv,TYPE_NAME,HEAD,LTV_new(name,-1,LT_DUP)); }
 
 
@@ -186,7 +210,7 @@ LTV *type_name_set(LTV *ltv,char *name) { return LT_put(ltv,TYPE_NAME,HEAD,LTV_n
 
 typedef int (*DIE_OP)(Dwarf_Debug dbg,Dwarf_Die die);
 
-int process_die(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op)
+int traverse_die(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op)
 {
     int status=0;
     if (die) {
@@ -205,7 +229,7 @@ int traverse_child(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op)
     TRY(dwarf_child(die,&child,&error),"retrieving dwarf_child");
     CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking dwarf child's existence");
     SCATCH("checking dwarf_child for error");
-    STRY(process_die(dbg,child,op),"processing child");
+    STRY(traverse_die(dbg,child,op),"processing child");
  done:
     return status;
 }
@@ -218,7 +242,7 @@ int traverse_sibling(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op)
     TRY(dwarf_siblingof(dbg,die,&sibling,&error),"retrieving dwarf_sibling");
     CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for DW_DLV_NO_ENTRY"); /* Done at this level. */
     SCATCH("checking dwarf_siblingof");
-    STRY(process_die(dbg,sibling,op),"processing sibling");
+    STRY(traverse_die(dbg,sibling,op),"processing sibling");
  done:
     return status;
 }
@@ -268,10 +292,6 @@ int traverse_cus(LTV *mod_ltv,DIE_OP op,CU_DATA *cu_data)
 }
 
 /////////////////////////////////////////////////////////////
-/////////////////////////////////////////////////////////////
-
-
-
 /////////////////////////////////////////////////////////////
 
 int print_cu_data(FILE *ofile,CU_DATA *cu_data)
@@ -362,7 +382,7 @@ int print_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
     char *cvar_kind=NULL;
-    STRY(!(cvar_kind=cvar_kind_get(ltv)),"getting cvar type name");
+    STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
     if (!strcmp(cvar_kind,"TYPE_INFO"))
         print_type_info(ofile,(TYPE_INFO *) ltv->data);
     else if (!strcmp(cvar_kind,"CU_DATA"))
@@ -375,7 +395,7 @@ int dot_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
     char *cvar_kind=NULL;
-    STRY(!(cvar_kind=cvar_kind_get(ltv)),"getting cvar type name");
+    STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
     if (!strcmp(cvar_kind,"TYPE_INFO"))
         dot_type_info(ofile,(TYPE_INFO *) ltv->data);
     else if (!strcmp(cvar_kind,"CU_DATA"))
@@ -703,19 +723,20 @@ int preview_module(LTV *module) // just put the cu name under module
 int ltv_is_cvar_kind(LTV *ltv,char *kind) 
 {
     char *cvar_kind=NULL;
-    return ltv->flags&LT_CVAR &&       // ltv is a cvar
-        (cvar_kind=cvar_kind_get(ltv)) && // cvar has a "kind of cvar" name
-        !strcmp(kind,cvar_kind);          // name matches param
+    return ltv->flags&LT_CVAR &&               // ltv is a cvar
+        (cvar_kind=attr_get(ltv,CVAR_KIND)) && // cvar has a "kind of cvar" name
+        !strcmp(kind,cvar_kind);               // name matches param
 }
 
 
-int link_symbols(LTV *module,LTV *compile_units,LTV *index)
+int link_symbols(LTV *module,LTV *index)
 {
     int status=0;
 
-    LTV *function=LTV_NULL,*variable=LTV_NULL,*type=LTV_NULL;
+    LTV *functions=LTV_VOID,*variables=LTV_VOID,*types=LTV_VOID;
 
     LTV *dedup_type(LTV *category,char *sym,LTV *type) {
+        attr_set(type,TYPE_SYMB,sym);
         return LT_put(category,sym,TAIL,type);
     }
 
@@ -742,25 +763,25 @@ int link_symbols(LTV *module,LTV *compile_units,LTV *index)
                 }
 
                 // generate ccomposite name and cagegory
-                char *type_name=type_name_get(*ltv);
-                char *base_name=type_name_get(base_ltv);
+                char *type_name=attr_get(*ltv,TYPE_NAME);
+                char *base_name=attr_get(base_ltv,TYPE_NAME);
                 char *composite_name=NULL;
                 switch(type_info->attr.tag) {
                     case DW_TAG_structure_type:
                         if (type_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(type_name),"struct~%s",type_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"struct~%s",type_name),(*ltv));
                         break;
                     case DW_TAG_union_type:
                         if (type_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(type_name),"union~%s",type_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"union~%s",type_name),(*ltv));
                         break;
                     case DW_TAG_enumeration_type:
                         if (type_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(type_name),"enum~%s",type_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"enum~%s",type_name),(*ltv));
                         break;
                     case DW_TAG_pointer_type:
                         if (base_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(base_name),"pointer~%s",base_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(base_name),"pointer~%s",base_name),(*ltv));
                     case DW_TAG_array_type:
                         if (base_name)
                         {
@@ -771,34 +792,34 @@ int link_symbols(LTV *module,LTV *compile_units,LTV *index)
                                     type_info->attr.bytesize=base_info->attr.bytesize * (subrange->attr.upper_bound+1);
                                     type_info->attr.flags|=TYPEF_BYTESIZE;
                                 }
-                                dedup_type(type,FORMATA(composite_name,strlen(base_name)+20,"array~%s~%d",base_name,subrange->attr.upper_bound+1),(*ltv));
+                                dedup_type(types,FORMATA(composite_name,strlen(base_name)+20,"array~%s~%d",base_name,subrange->attr.upper_bound+1),(*ltv));
                             }
                             else
-                                dedup_type(type,FORMATA(composite_name,strlen(base_name),"array~%s",base_name),(*ltv));
+                                dedup_type(types,FORMATA(composite_name,strlen(base_name),"array~%s",base_name),(*ltv));
                         }
                         break;
                     case DW_TAG_volatile_type:
                         if (base_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(base_name),"volatile~%s",base_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(base_name),"volatile~%s",base_name),(*ltv));
                         break;
                     case DW_TAG_const_type:
                         if (base_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(base_name),"const~%s",base_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(base_name),"const~%s",base_name),(*ltv));
                         break;
                     case DW_TAG_subprogram:
                     case DW_TAG_subroutine_type:
                         if (type_name)
-                            dedup_type(function,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
+                            dedup_type(functions,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
                         break;
                     case DW_TAG_base_type:
                     case DW_TAG_typedef:
                         if (type_name)
-                            dedup_type(type,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
+                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
                         break;
                     case DW_TAG_enumerator:
                     case DW_TAG_variable:
                         if (type_name)
-                            dedup_type(variable,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
+                            dedup_type(variables,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
                         break;
                     case DW_TAG_compile_unit:
                     case DW_TAG_subrange_type:
@@ -815,13 +836,45 @@ int link_symbols(LTV *module,LTV *compile_units,LTV *index)
     }
 
     STRY(ltv_traverse(index,preop,postop)!=NULL,"traversing module in link_base_types");
-    LT_put(module,"function",TAIL,function);
-    LT_put(module,"variable",TAIL,variable);
-    LT_put(module,"type",TAIL,type);
+    LT_put(module,"function",TAIL,functions);
+    LT_put(module,"variable",TAIL,variables);
+    LT_put(module,"type",TAIL,types);
  done:
     return status;
 }
 
+#if 0
+int link_cvars(LTV *module)
+{
+    int status=0;
+    LTV *types=LTV_get(module,type,HEAD,KEEP);
+
+    LTV *dedup_type(LTV *category,char *sym,LTV *type) {
+        return LT_put(category,sym,TAIL,type);
+    }
+
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        int status=0;
+        char *kind=NULL;
+        LTV *type=NULL;
+        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
+            if ((*ltv)->flags&LT_AVIS)
+                *flags|=LT_TRAVERSE_HALT;
+            if ((*ltv)->flags&LT_CVAR &&
+                (kind=attr_get((*ltv),CVAR_KIND)) &&
+                (type=LTV_get(types,kind,HEAD,KEEP)))
+                STRY(LTV_put((*ltv),CVAR_TYPE,type),"linking CVAR to it's base type");
+        }
+    done:
+        return status?NON_NULL:NULL;
+    }
+
+    STRY(!type,"validating module's type cache");
+    STRY(ltv_traverse(module,preop,NULL)!=NULL,"traversing module in link_base_types");
+ done:
+    return status;
+}
+#endif
 
 int curate_module(LTV *module)
 {
@@ -934,7 +987,7 @@ int curate_module(LTV *module)
                 char *name=get_diename(dbg,die); // name is allocated from heap...
                 STRY(link2parent(name),"linking die to parent");
                 if (name)
-                    STRY(!LT_put(type_info_ltv,TYPE_NAME,TAIL,LTV_new(name,-1,LT_OWN)),"naming type info"); // ...let the LTV own it.
+                    STRY(!attr_own(type_info_ltv,TYPE_NAME,name),"naming type info");
             done:
                 return status;
             }
@@ -962,7 +1015,7 @@ int curate_module(LTV *module)
 
     LTV_release(dependencies);
 
-    link_symbols(module,compile_units,index);
+    link_symbols(module,index);
 
     graph_types_to_file("/tmp/index.dot",index);
     LTV_release(index);
@@ -978,165 +1031,6 @@ int curate_module(LTV *module)
 
 
 
-
-
-
-
-int curate_module2(LTV *module)
-{
-    int status=0;
-    CU_DATA cu_data;
-
-    LTV *compile_units=LTV_VOID;
-    LTV *index=LTV_VOID;
-    LTV *dependencies=LTV_VOID;
-    int pass=0;
-
-    int init(Dwarf_Debug dbg,Dwarf_Die die) {
-        int work_op(LTV *parent,Dwarf_Die die) { // propagates parentage through the stateless DIE_OP calls
-            int status=0;
-            LTV *type_info_ltv=NULL;
-            TYPE_INFO *type_info=NULL;
-            TYPE_INFO *parent_type_info=parent?(TYPE_INFO *) parent->data:NULL;
-            char *type_info_id=NULL;
-
-            int sib_op(Dwarf_Debug dbg,Dwarf_Die die)   { return work_op(parent,die); }
-            int child_op(Dwarf_Debug dbg,Dwarf_Die die) { return work_op(type_info_ltv,die); }
-
-            int disqualify() {
-                switch (type_info->attr.tag) {
-                    case 0: // populate_type_info rejected it
-                    case DW_TAG_variable:
-                    case DW_TAG_subprogram:
-                        if (!(type_info->attr.flags&TYPEF_EXTERNAL))
-                            return true;
-                    default:
-                        break;
-                }
-                return false;
-            }
-
-            int link2parent(char *name) {
-                int status=0;
-                switch(type_info->attr.tag) {
-                    case DW_TAG_compile_unit:
-                        if (!LTV_empty(type_info_ltv) && name)
-                            STRY(!LT_put(compile_units,name,TAIL,type_info_ltv),"linking cu to module");
-                        break;
-                    case DW_TAG_subprogram:
-                    case DW_TAG_variable:
-                        if (parent && name)
-                            STRY(!LT_put(parent,name,TAIL,type_info_ltv),"linking extern subprogram/variable to parent");
-                        break;
-                    case DW_TAG_unspecified_parameters: // varargs
-                        if (parent)
-                            STRY(!LT_put(parent,"unspecified~parameters",TAIL,type_info_ltv),"linking unspecified parameters to parent");
-                        break;
-                    case DW_TAG_subrange_type:
-                        if (parent)
-                            STRY(!LT_put(parent,"subrange~type",TAIL,type_info_ltv),"linking subrange type to parent");
-                        break;
-                    default:
-                        if (parent && name)
-                            STRY(!LT_put(parent,name,TAIL,type_info_ltv),"linking type info to parent");
-                        break;
-                }
-            done:
-                return status;
-            }
-
-            int descend() {
-                int status=0;
-                STRY(!LT_put(index,type_info_id,TAIL,type_info_ltv),"indexing type info");
-                if (type_info->attr.tag==DW_TAG_compile_unit) {
-                    // Incremental load: Check to see if this CU needs to be loaded
-                    //   A) automatically,
-                    //   B) by request, or
-                    //   C) contains an unresolved die's base
-                    int contains_dependent() {
-                        LTI *lti=NULL;
-                        LTV *ltv=NULL;
-                        TYPE_INFO *base_info;
-                        if ((lti=LTI_first(dependencies)) && (ltv=LTV_peek(&lti->ltvs,HEAD))) {
-                            base_info=(TYPE_INFO *) ltv->data;
-                            if (base_info->base>cu_data.offset && base_info->base<cu_data.next_cu_header_offset)
-                                return true;
-                        }
-                        return false;
-                    }
-                    if (pass==0 || contains_dependent())
-                        STRY(traverse_child(dbg,die,child_op),"traversing child");
-                } else {
-                    STRY(traverse_child(dbg,die,child_op),"traversing child");
-
-                    if (type_info->attr.flags&TYPEF_BASE) {
-                        char *baseid=FORMATA(baseid,16,DIE_FORMAT,type_info->base);
-                        //LTV *base=LT_get(index,baseid,HEAD,KEEP);
-                        //if (base) // we can link base immediately
-                        //    LT_put(type_info_ltv,TYPE_BASE,HEAD,base);
-                        //else // we have to put it in the dependencies queue to try later
-                        if (!LT_get(index,baseid,HEAD,KEEP))
-                            LT_put(dependencies,baseid,TAIL,type_info_ltv);
-                    }
-
-                    LTI *lti=LTI_resolve(dependencies,type_info_id,false);
-                    if (lti) {
-                        void *link_base(CLL *lnk) {
-                            LTVR *ltvr=(LTVR *) lnk;
-                            LT_put(ltvr->ltv,TYPE_BASE,HEAD,type_info_ltv);
-                            LTVR_release(lnk);
-                        }
-                        CLL_map(&lti->ltvs,FWD,link_base);
-                        RBN_release(&dependencies->sub.ltis,&lti->rbn,LTI_release);
-                    }
-                }
-
-                char *name=get_diename(dbg,die); // name is allocated from heap...
-                //STRY(link2parent(name),"linking die to parent");
-                if (parent)
-                    type_info->parent=parent_type_info->id;
-                if (name)
-                    STRY(!LT_put(type_info_ltv,TYPE_NAME,TAIL,LTV_new(name,-1,LT_OWN)),"naming type info"); // ...let the LTV own it.
-            done:
-                return status;
-            }
-
-            STRY(!(type_info_ltv=CVAR_NEW(TYPE_INFO)),"allocating cu type info ltv");
-            type_info=(TYPE_INFO *) type_info_ltv->data;
-
-            STRY(populate_type_info(dbg,die,type_info_ltv,&cu_data),"populating die type info");
-            FORMATA(type_info_id,16,DIE_FORMAT,type_info->id);
-            if (disqualify())
-                LTV_release(type_info_ltv);
-            else
-                STRY(descend(),"processing type info");
-            STRY(traverse_sibling(dbg,die,sib_op),"traversing sibling");
-        done:
-            return status;
-        }
-        return work_op(NULL,die);
-    }
-
-    do {
-        STRY(traverse_cus(module,init,&cu_data),"traversing module compute units");
-        pass++;
-    } while (!LTV_empty(dependencies));
-
-    LTV_release(dependencies);
-
-    link_symbols(module,compile_units,index);
-
-    graph_types_to_file("/tmp/index.dot",index);
-    LTV_release(index);
-    LTV_release(compile_units);
-
-    graph_types_to_file("/tmp/module.dot",module);
-
-    //char *filename;
-    //graph_types_to_file(FORMATA(filename,256,"/tmp/CU/%x.dot",type_info),type_info_ltv);
- done:
-    return status;
-}
 
 
 
@@ -1176,116 +1070,15 @@ DICT_ITEM *Type_findBasic(DICT *dict,DICT_ITEM *typeitem,TYPE_INFO *type_info)
     return typeitem;
 }
 
-
-DICT_ITEM *Type_combine(TYPE_INFO *type_info,char *addr,char *name)
-{
-    type_info->addr=addr;
-    type_info->name=name;
-    return type_info->item;
-}
-
-#define COND_ADD_PARAM(PARAM,ROOT,LABEL)                              \
-    if (type_info.PARAM)                                              \
-    {                                                                 \
-        char *name = CONCATA(name,ROOT,"." LABEL);                    \
-        jli_install(type_info.PARAM,name);                            \
-    }
-
-
-void Type_install(DICT *dict,char *val,char *category,char *name,char *subname)
-{
-    char *newname,*p;
-    if (val && category && name && subname)
-    {
-        newname=FORMATA(p,256,"%s%s%s",category,name,subname);
-        if (!jli_lookup(dict,newname,strlen(newname)))
-            jli_install(dict,val,newname);
-    }
-}
-
-
-DICT_ITEM *Type_isaTypeItem(DICT *dict,char *type_id)
-{
-    if (type_id)
-    {
-        char *format=type_id[0]=='t'?"types.":"types.t";
-        char *isa_type=type_id? CONCATA(isa_type,format,type_id):NULL;
-        return isa_type? jli_getitem(dict,isa_type,strlen(isa_type),0):NULL;
-    }
-    return NULL;
-}
-
-#define TYPE_NAMEDICT "type_names."
-
-DICT_ITEM *Type_lookupName(DICT *dict,char *name)
-{
-    if (name)
-    {
-        char *typename=CONCATA(typename,TYPE_NAMEDICT,name);
-        ull *itemref=INTVAR(dict,typename,0);
-        return itemref?(DICT_ITEM *) *itemref:NULL;
-    }
-    else
-        return NULL;
-}
-
-
 long long *Type_getLocation(char *loc)
 {
     return STRTOLLP(loc);
 }
 
 
-void *Type_remapChildren(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-{
-    void *Type_remapChild(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-    {
-        DICT_ITEM *typeitem=Type_isaTypeItem(dict,item->name);
-        if (typeitem)
-            Type_install(dict,ulltostr("0x%llx",(ull) typeitem),(char *) data,".children.",item->data);
-        return NULL;
-    }
-
-    DICT_ITEM *children=jli_getitem(&item->dict,"children",8,1);
-    if (children)
-    {
-        char *p;
-        CONCATA(p,"types.",item->name);
-        dict_traverse(dict,&children->dict,Type_remapChild,p);
-        DELETE(dict_free(children)); // pop/dict_free/delete children
-    }
-    return NULL;
-}
 
 
-void *Type_mapEnum(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-{
-    void *Type_mapEnumeration(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-    {
-        TYPE_INFO *parent=(TYPE_INFO *) data;
-        ull *addr=STRTOULLP(item->data);
-        if (addr)
-        {
-            DICT_ITEM *typeitem=(DICT_ITEM *) *addr;
-            TYPE_INFO type_info;
-            Type_getTypeInfo(typeitem,&ZERO(type_info));
-            Type_install(&parent->item->dict,type_info.DW_AT_name,"values.",type_info.DW_AT_const_value,"");
-            Type_install(dict,type_info.DW_AT_const_value,ENUMS_PREFIX,type_info.DW_AT_name,"");
-        }
-        return NULL;
-    }
 
-    ull *addr=STRTOULLP(item->data);
-    if (addr)
-    {
-        TYPE_INFO type_info;
-        Type_getTypeInfo((DICT_ITEM *) *addr,&ZERO(type_info));
-        if (type_info.children)
-            dict_traverse(dict,&type_info.children->dict,Type_mapEnumeration,&type_info);
-    }
-
-    return NULL;
-}
 
 
 DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
@@ -1324,156 +1117,10 @@ DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
     return typeitem;
 }
 
-void Type_mapTypeInfoTypes(DICT *dict,TYPE_INFO *type_info)
-{
-    if (type_info->DW_AT_type &&
-        (type_info->nexttype=Type_isaTypeItem(dict,type_info->DW_AT_type)))
-        Type_install(dict,ulltostr("0x%llx",(ull) type_info->nexttype),"types.",type_info->type_id,".nexttype");
-}
-
-void Type_mapTypeInfoNames(DICT *dict,TYPE_INFO *type_info)
-{
-    char *format=NULL,*p=NULL;
-    int indirect=0;
-
-    if (!strcmp(type_info->category,"base_type")) format="%s";
-    else if (!strcmp(type_info->category,"typedef")) format="%s";
-    else if (!strcmp(type_info->category,"enumeration_type")) format="enum.%s";
-    else if (!strcmp(type_info->category,"structure_type")) format="struct.%s";
-    else if (!strcmp(type_info->category,"union_type")) format="union %s";
-    else if (!strcmp(type_info->category,"variable") && type_info->level==1) format="variable.%s";
-    else if (!strcmp(type_info->category,"subprogram") && type_info->level==1) format="subprogram.%s";
-    //else if (!strcmp(type_info->category,"subroutine_type") && Type_isaTypeItem(dict,type_info->DW_AT_type))
-    else
-    {
-        TYPE_INFO next_type_info;
-        Type_getTypeInfo(type_info->nexttype,&ZERO(next_type_info));
-        indirect=1;
-
-        if (!strcmp(type_info->category,"subroutine_type"))
-        {
-            format="function.%s";
-            type_info->DW_AT_name=type_info->nexttype?next_type_info.typename:"anonsub";
-        }
-        else if (!strcmp(type_info->category,"pointer_type"))
-        {
-            format="pointer.%s";
-            type_info->DW_AT_name=type_info->nexttype?next_type_info.typename:"void";
-        }
-        else if (!strcmp(type_info->category,"volatile_type"))
-        {
-            format="volatile.%s";
-            type_info->DW_AT_name=type_info->nexttype?next_type_info.typename:"anonvol";
-        }
-        else if (!strcmp(type_info->category,"const_type"))
-        {
-            format="const.%s";
-            type_info->DW_AT_name=type_info->nexttype?next_type_info.typename:"anonconst";
-        }
-        else if (!strcmp(type_info->category,"array_type"))
-        {
-            TYPE_INFO subrange_info,element_info;
-            DICT_ITEM *subrange_item=Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,0),&ZERO(subrange_info));
-            ull *upper_bound,*byte_size;
-            FORMATA(format,64,"array.%%s.[%s]",subrange_info.DW_AT_upper_bound);
-
-            if (next_type_info.typename && Type_findBasic(dict,type_info->nexttype,&ZERO(element_info)))
-            {
-                ull *upper_bound=STRTOULLP(subrange_info.DW_AT_upper_bound);
-                ull *byte_size=STRTOULLP(element_info.DW_AT_byte_size);
-                ull bs = upper_bound && byte_size? ((*byte_size)*((*upper_bound)+1)):0;
-
-                if (!type_info->DW_AT_byte_size)
-                    Type_install(dict,ulltostr("0x%llx",(ull)bs),"types.",type_info->type_id,".DW_AT_byte_size");
-
-                type_info->DW_AT_name=next_type_info.typename;
-            }
-        }
-    }
-
-    if (format)
-    {
-        char *itemstr=ulltostr("0x%llx",(ull) type_info->item);
-
-        if (type_info->DW_AT_name)
-        {
-            FORMATA(p,256,format,type_info->DW_AT_name);
-            Type_install(dict,p,"types.",type_info->type_id,".typename");
-            Type_install(dict,itemstr,TYPE_NAMEDICT,p,"");
-        }
-        else if (!indirect)
-        {
-            FORMATA(p,256,format,type_info->type_id);
-            Type_install(dict,p,"types.",type_info->type_id,".typename");
-            Type_install(dict,itemstr,TYPE_NAMEDICT,p,"");
-        }
-        else if (indirect)
-        {
-            Type_install(dict,"","unresolved.",itemstr,"");
-        }
-    }
-}
-
-void *Type_mapTypeInfo(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-{
-    TYPE_INFO type_info;
-
-    if (Type_getTypeInfo(item,&ZERO(type_info)))
-    {
-        Type_mapTypeInfoTypes(dict,&type_info);
-        Type_mapTypeInfoNames(dict,&type_info);
-    }
-    return NULL;
-}
-
-
-void *Type_mapUnresolved(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-{
-    TYPE_INFO type_info;
-    ull *addr=STRTOULLP(item->name);
-    if (addr)
-    {
-        Type_getTypeInfo((DICT_ITEM *) *addr,&ZERO(type_info));
-        Type_mapTypeInfoNames(dict,&type_info);
-    }
-    return NULL;
-}
-
-void Type_resolve(DICT *dict)
-{
-    DICT_ITEM *unresolved;
-    while ((unresolved=jli_getitem(dict,"unresolved",10,1)))
-    {
-        dict_traverse(dict,&unresolved->dict,Type_mapUnresolved,NULL);
-        DELETE(dict_free(unresolved));
-    }
-}
-
-
-void Type_permute(DICT *dict,char *name)
-{
-    DICT_ITEM *item = jli_getitem(dict,name,strlen(name),0);
-    if (item)
-    {
-        DICT_ITEM *enums=NULL;
-        DICT_ITEM *structs=NULL;
-        DICT_ITEM *unions=NULL;
-
-        printf("    Remapping Children...\n");
-        dict_traverse(dict,&item->dict,Type_remapChildren,"");
-        printf("    Mapping TypeInfo...\n");
-        dict_traverse(dict,&item->dict,Type_mapTypeInfo,"");
-        printf("    Resolving...\n");
-        Type_resolve(dict);
-        printf("    Mapping Enums...\n");
-        enums=jli_getitem(dict,"type_names.enum",15,0);
-        if (enums) dict_traverse(dict,&enums->dict,Type_mapEnum,"");
-    }
-}
 
 
 static char *Type_oformat[] = { "%s","%d","%d","%d","%lld","0x%x","0x%x","0x%x","0x%llx","%g","%g","%Lg" };
-static char *Type_iformat[] = { "%s","%i","%i","%i","%lli","%i","%i","%i","%lli","%g","%g","%Lg" };
+static char *Type_iformat[] = { "%s","%i","%i","%i","%lli",  "%i",  "%i",  "%i",  "%lli","%g","%g","%Lg" };
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 {

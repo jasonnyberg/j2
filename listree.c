@@ -20,9 +20,11 @@
 
 
 #define _GNU_SOURCE
+#define __USE_GNU // strndupa, stpcpy
 
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "util.h"
 #include "listree.h"
 #include "reflect.h"
@@ -553,14 +555,22 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
 
 LTV *LT_put(LTV *parent,char *name,int end,LTV *child)
 {
-    LTI *lti=LTI_resolve(parent,name,true);
-    return lti?LTV_enq(&lti->ltvs,child,end):NULL;
+    if (parent && name && child) {
+        LTI *lti=LTI_resolve(parent,name,true);
+        return lti?LTV_enq(&lti->ltvs,child,end):NULL;
+    }
+    else
+        return NULL;
 }
 
 LTV *LT_get(LTV *parent,char *name,int end,int pop)
 {
-    LTI *lti=LTI_resolve(parent,name,false);
-    return lti?(pop?LTV_deq(&lti->ltvs,end):LTV_peek(&lti->ltvs,end)):NULL;
+    if (parent && name) {
+        LTI *lti=LTI_resolve(parent,name,false);
+        return lti?(pop?LTV_deq(&lti->ltvs,end):LTV_peek(&lti->ltvs,end)):NULL;
+    }
+    else
+        return NULL;
 }
 
 
@@ -589,7 +599,7 @@ REF *REF_new(char *data,int len)
     if ((ref=refpop(repo)) || ((ref=NEW(REF)) && CLL_init(&ref->lnk)))
     {
         CLL_init(&ref->keys);
-        LTV_enq(&ref->keys,LTV_new(data+rev,len-rev,0),HEAD);
+        LTV_enq(&ref->keys,LTV_new(data+rev,len-rev,LT_DUP|LT_ESC),HEAD);
         CLL_init(&ref->root);
         ref->lti=NULL;
         ref->ltvr=NULL;
@@ -654,7 +664,7 @@ int REF_create(LTV *ltv,CLL *refs)
     int val()  { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
     int sep()  { return series(data,len,".",NULL,NULL);  }
 
-    unsigned tlen;
+    unsigned tlen,striplen;
     REF *ref=NULL;
 
     while (len) { // parse ref keys

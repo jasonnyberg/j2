@@ -278,9 +278,9 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
         } else if (!match) i++;
         return !depth && match;
     }
-    if (include) while (i<len) if (buf[i]=='\\') i++; else if (checkbal(!memchr(include,buf[i],inclen)?1:0)) break;
-    if (exclude) while (i<len) if (buf[i]=='\\') i++; else if (checkbal(memchr(exclude,buf[i],exclen)?1:0))  break;
-    if (balance) while (i<len) if (buf[i]=='\\') i++; else if (checkbal(1)) break;
+    if (include) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(!memchr(include,buf[i],inclen)?1:0)) break;
+    if (exclude) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(memchr(exclude,buf[i],exclen)?1:0))  break;
+    if (balance) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(1)) break;
     return i;
 }
 

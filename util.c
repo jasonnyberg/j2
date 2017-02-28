@@ -272,9 +272,9 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int checkbal(int match) {
         if (balance) {
             int minlen=MIN(len-i,ballen);
-            if      (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
-            else if (!strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen;
-            else if (depth || !match)                       i++;
+            if (depth && !strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen; // prefer close over open for bal[0]==bal[1]
+            else if     (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
+            else if     (depth || !match)                       i++;
         } else if (!match) i++;
         return !depth && match;
     }
@@ -306,26 +306,39 @@ char *balanced_readline(FILE *ifile,int *length) {
 
     while (nextline(&linelen)) {
         int i,comment=0;
+        char c;
         for (i=0; i<linelen; i++,(*length)++) {
-            if (!comment) switch (expr[*length]) {
-                case '\\': i++; (*length)++; break; // don't interpret next char
-                //case '#': comment++; break;
-                case '(': delimiter[++depth]=')'; break;
-                case '[': delimiter[++depth]=']'; break;
-                case '{': delimiter[++depth]='}'; break;
-                case '<': delimiter[++depth]='>'; break;
-                case ')': case ']': case '}': case '>':
-                    if (depth) {
-                        if (expr[*length]==delimiter[depth]) depth--;
-                        else {
-                            fprintf(stderr,"ERROR: Sequence unbalanced at \"%c\", offset %d\n",expr[*length],*length);
-                            free(expr); expr=NULL;
-                            *length=depth=0;
-                            goto done;
+            if (!comment) {
+                c=expr[*length];
+                switch (c) {
+                    case '\\': i++; (*length)++; break; // don't interpret next char
+                        //case '#': comment++; break;
+                    case '[': delimiter[++depth]=']'; break;
+                        //case '(': delimiter[++depth]=')'; break;
+                        //case '{': delimiter[++depth]='}'; break;
+                        //case '<': delimiter[++depth]='>'; break;
+                    case '`': // case '"': case '\'': // special class of same-start-and-finish delimiters
+                        if (depth && delimiter[depth]!=c) {
+                            delimiter[++depth]=c;
+                            break;
                         }
-                    }
-                    break;
-                default: break;
+                        // else fall through!!!
+                    case ']':
+                        //case ')':
+                        //case '}':
+                        //case '>':
+                        if (depth) {
+                            if (c==delimiter[depth]) depth--;
+                            else {
+                                fprintf(stderr,"ERROR: Sequence unbalanced at \"%c\", offset %d\n",c,*length);
+                                free(expr); expr=NULL;
+                                *length=depth=0;
+                                goto done;
+                            }
+                        }
+                        break;
+                    default: break;
+                }
             }
         }
         if (!depth)

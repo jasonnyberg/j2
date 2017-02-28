@@ -1,6 +1,4 @@
-[/tmp/d2e] #read
-reflection.module[../test/a.out].compile_unit[test.c]@mymodule
-[conditional! onpass! |
- onfail1! |
- onfail2!
-]
+[
+[build/jj] #import @reflection
+reflection@modules
+]/

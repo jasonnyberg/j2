@@ -35,122 +35,6 @@
 #include "util.h"
 #include "listree.h"
 #include "reflect.h"
-/*
- * [index]/[dependencies]
- *   "die_id"
- *     [type_info]
- *      "type~id"
- *        [die_id]
- *      "type~base"
- *        [die_id]
- *      "type~name"
- *        [name]
- *      "type~symb" (pass 2)
- *        [symbolic name]
- * [type]/[variable]/[function]
- *   "symbolic name"
- *     [type_info]...
- */
-
-#define TYPE_ID   "type id"   // a die's offset
-#define TYPE_BASE "type base" // a die's base's offset
-#define TYPE_HIER "type hier" // a die's parent offset
-
-#define TYPE_NAME "type name" // a die's type name
-#define TYPE_SYMB "type symb" // a die's composite name
-
-#define CVAR_KIND "cvar kind" // what kind of cvar is this (i.e. what to cast ltv->data to)
-#define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
-
-#define DIE_FORMAT "0x%x"     // format for a die's DOT-language element id
-#define CVAR_FORMAT "CVAR_%x" // format for a CVAR's DOT-language element id
-
-
-typedef enum
-{
-    TYPE_NONE    =    0x0,
-    TYPE_INT1S   = 1<<0x0,
-    TYPE_INT2S   = 1<<0x1,
-    TYPE_INT4S   = 1<<0x2,
-    TYPE_INT8S   = 1<<0x3,
-    TYPE_INT1U   = 1<<0x4,
-    TYPE_INT2U   = 1<<0x5,
-    TYPE_INT4U   = 1<<0x6,
-    TYPE_INT8U   = 1<<0x7,
-    TYPE_FLOAT4  = 1<<0x8,
-    TYPE_FLOAT8  = 1<<0x9,
-    TYPE_FLOAT12 = 1<<0xa,
-    TYPE_ADDR    = 1<<0xb,
-    TYPE_INTS    = TYPE_INT1S | TYPE_INT2S | TYPE_INT4S | TYPE_INT8S,
-    TYPE_INTU    = TYPE_INT1U | TYPE_INT2U | TYPE_INT4U | TYPE_INT8U,
-    TYPE_FLOAT   = TYPE_FLOAT4 | TYPE_FLOAT8 | TYPE_FLOAT12
-} TYPE_UTYPE;
-
-typedef union // keep members aligned with associated dutype enum
-{
-    TYPE_UTYPE dutype;
-    struct { TYPE_UTYPE dutype; unsigned char        val; } int1u;
-    struct { TYPE_UTYPE dutype; unsigned short       val; } int2u;
-    struct { TYPE_UTYPE dutype; unsigned long        val; } int4u;
-    struct { TYPE_UTYPE dutype; unsigned long long   val; } int8u;
-    struct { TYPE_UTYPE dutype; signed   char        val; } int1s;
-    struct { TYPE_UTYPE dutype; signed   short       val; } int2s;
-    struct { TYPE_UTYPE dutype; signed   long        val; } int4s;
-    struct { TYPE_UTYPE dutype; signed   long long   val; } int8s;
-    struct { TYPE_UTYPE dutype;          float       val; } float4;
-    struct { TYPE_UTYPE dutype;          double      val; } float8;
-    struct { TYPE_UTYPE dutype;          long double val; } float12;
-    struct { TYPE_UTYPE dutype;               void * val; } addr;
-} TYPE_UVALUE;
-
-typedef struct {
-    Dwarf_Off      offset;
-    Dwarf_Unsigned next_cu_header_offset;
-    Dwarf_Unsigned header_length;
-    Dwarf_Half     version_stamp;
-    Dwarf_Unsigned abbrev_offset;
-    Dwarf_Half     address_size;
-    Dwarf_Half     length_size;
-    Dwarf_Half     extension_size;
-} CU_DATA;
-
-typedef enum {
-    TYPEF_DQ         = 1<<0x0,
-    TYPEF_BASE       = 1<<0x1,
-    TYPEF_CONSTVAL   = 1<<0x2,
-    TYPEF_BYTESIZE   = 1<<0x3,
-    TYPEF_BITSIZE    = 1<<0x4,
-    TYPEF_BITOFFSET  = 1<<0x5,
-    TYPEF_ENCODING   = 1<<0x6,
-    TYPEF_UPPERBOUND = 1<<0x7,
-    TYPEF_LOWPC      = 1<<0x8,
-    TYPEF_MEMBERLOC  = 1<<0x9,
-    TYPEF_LOCATION   = 1<<0xa,
-    TYPEF_ADDR       = 1<<0xb,
-    TYPEF_EXTERNAL   = 1<<0xc
-} TYPE_FLAGS;
-
-typedef struct
-{
-    Dwarf_Off id; // global offset
-    Dwarf_Off base; // global offset
-    Dwarf_Off parent;
-    struct {
-    TYPE_FLAGS flags;
-    Dwarf_Half tag; // kind of item (base, struct, etc.
-    Dwarf_Signed const_value; // enum val
-    Dwarf_Unsigned bytesize;
-    Dwarf_Unsigned bitsize;
-    Dwarf_Unsigned bitoffset;
-    Dwarf_Unsigned encoding;
-    Dwarf_Unsigned upper_bound;
-    Dwarf_Unsigned low_pc;
-    Dwarf_Addr data_member_location;
-    Dwarf_Signed location; // ??
-    Dwarf_Bool external;
-    Dwarf_Unsigned addr; // from loclist
-    } attr;
-} TYPE_INFO;
 
 
 /////////////////////////////////////////////////////////////
@@ -163,6 +47,13 @@ char *attr_get(LTV *ltv,char *attr)
 {
     LTV *attr_ltv=LT_get(ltv,attr,TAIL,KEEP);
     return attr_ltv?attr_ltv->data:NULL;
+}
+
+void attr_del(LTV *ltv,char *attr)
+{
+    LTI *lti=LTI_resolve(ltv,attr,false);
+    if (lti)
+        RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release);
 }
 
 char *attr_deref(LTV *ltv,char *attr,LTV *index)
@@ -713,7 +604,7 @@ int preview_module(LTV *module) // just put the cu name under module
         int status=0;
         char *cu_name=NULL;
         STRY(!(cu_name=get_diename(dbg,die)),"looking up cu die name");
-        STRY(!LT_put(module,"compile~units",TAIL,LTV_new(cu_name,-1,LT_OWN)),"adding cu name to list of compute units");
+        STRY(!LT_put(module,"compile units",TAIL,LTV_new(cu_name,-1,LT_OWN)),"adding cu name to list of compute units");
     done:
         return status;
     }
@@ -735,91 +626,95 @@ int link_symbols(LTV *module,LTV *index)
 
     LTV *functions=LTV_VOID,*variables=LTV_VOID,*types=LTV_VOID;
 
-    LTV *dedup_type(LTV *category,char *sym,LTV *type) {
-        attr_set(type,TYPE_SYMB,sym);
-        return LT_put(category,sym,TAIL,type);
-    }
-
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
         int status=0;
         if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
             if ((*ltv)->flags&LT_AVIS)
-                *flags|=LT_TRAVERSE_HALT;
+                *flags|=LT_TRAVERSE_HALT; ///////////////////////////////////// FIXME: DOES NOT ALLOW POSTOP TO BE CALLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     done:
         return status?NON_NULL:NULL;
     }
 
-    void *postop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+    void *link_symb_name(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
         int status=0;
+
         if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
             if (ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
                 TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
                 LTV *base_ltv=NULL;
                 TYPE_INFO *base_info=NULL;
+                char *base_id=NULL;
                 if (type_info->attr.flags&TYPEF_BASE) { // link to base type
-                    char *base_id=FORMATA(base_id,32,DIE_FORMAT,type_info->base);
+                    base_id=FORMATA(base_id,32,DIE_FORMAT,type_info->base);
                     STRY(!(base_ltv=LT_get(index,base_id,HEAD,KEEP)),"looking up base die %x for %x",type_info->base,type_info->id);
                     base_info=(TYPE_INFO *) base_ltv->data;
                 }
 
-                // generate ccomposite name and cagegory
+                void categorize_symbolic(LTV *category,char *sym,LTV *type) {
+                    if (!LT_get(category,sym,HEAD,KEEP)) {
+                        attr_set(type,TYPE_SYMB,sym);
+                        LT_put(category,sym,TAIL,type);
+                    }
+                }
+
+                // generate composite name and cagegory
                 char *type_name=attr_get(*ltv,TYPE_NAME);
                 char *base_name=attr_get(base_ltv,TYPE_NAME);
                 char *composite_name=NULL;
                 switch(type_info->attr.tag) {
                     case DW_TAG_structure_type:
                         if (type_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"struct~%s",type_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"struct %s",type_name),(*ltv));
                         break;
                     case DW_TAG_union_type:
                         if (type_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"union~%s",type_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"union %s",type_name),(*ltv));
                         break;
                     case DW_TAG_enumeration_type:
                         if (type_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"enum~%s",type_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"enum %s",type_name),(*ltv));
                         break;
                     case DW_TAG_pointer_type:
                         if (base_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(base_name),"pointer~%s",base_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(base_name),"%s*",base_name),(*ltv));
                     case DW_TAG_array_type:
                         if (base_name)
                         {
-                            LTV *subrange_ltv=LT_get((*ltv),"subrange~type",HEAD,KEEP);
+                            LTV *subrange_ltv=LT_get((*ltv),"subrange type",HEAD,KEEP);
                             TYPE_INFO *subrange=subrange_ltv?(TYPE_INFO *) subrange_ltv->data:NULL;
                             if (subrange && subrange->attr.flags&TYPEF_UPPERBOUND) {
                                 if (base_info && base_info->attr.flags&TYPEF_BYTESIZE) {
                                     type_info->attr.bytesize=base_info->attr.bytesize * (subrange->attr.upper_bound+1);
                                     type_info->attr.flags|=TYPEF_BYTESIZE;
                                 }
-                                dedup_type(types,FORMATA(composite_name,strlen(base_name)+20,"array~%s~%d",base_name,subrange->attr.upper_bound+1),(*ltv));
+                                categorize_symbolic(types,FORMATA(composite_name,strlen(base_name)+20,"%s[%d]",base_name,subrange->attr.upper_bound+1),(*ltv));
                             }
                             else
-                                dedup_type(types,FORMATA(composite_name,strlen(base_name),"array~%s",base_name),(*ltv));
+                                categorize_symbolic(types,FORMATA(composite_name,strlen(base_name),"%s[]",base_name),(*ltv));
                         }
                         break;
                     case DW_TAG_volatile_type:
                         if (base_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(base_name),"volatile~%s",base_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(base_name),"volatile %s",base_name),(*ltv));
                         break;
                     case DW_TAG_const_type:
                         if (base_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(base_name),"const~%s",base_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(base_name),"const %s",base_name),(*ltv));
                         break;
                     case DW_TAG_subprogram:
                     case DW_TAG_subroutine_type:
                         if (type_name)
-                            dedup_type(functions,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
+                            categorize_symbolic(functions,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
                         break;
                     case DW_TAG_base_type:
                     case DW_TAG_typedef:
                         if (type_name)
-                            dedup_type(types,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
+                            categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
                         break;
                     case DW_TAG_enumerator:
                     case DW_TAG_variable:
                         if (type_name)
-                            dedup_type(variables,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
+                            categorize_symbolic(variables,FORMATA(composite_name,strlen(type_name),"%s",type_name),(*ltv));
                         break;
                     case DW_TAG_compile_unit:
                     case DW_TAG_subrange_type:
@@ -835,7 +730,31 @@ int link_symbols(LTV *module,LTV *index)
         return status?NON_NULL:NULL;
     }
 
-    STRY(ltv_traverse(index,preop,postop)!=NULL,"traversing module in link_base_types");
+    void *dedup(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        int status=0;
+        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
+            if (ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
+                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                if (type_info->attr.flags&TYPEF_BASE) { // link to base type
+                    LTV *base_ltv=NULL;
+                    char *base_id=FORMATA(base_id,32,DIE_FORMAT,type_info->base);
+                    STRY(!(base_ltv=LT_get(index,base_id,HEAD,KEEP)),"looking up base die %x for %x",type_info->base,type_info->id);
+                    char *base_symb=attr_get(base_ltv,TYPE_SYMB);
+                    LTV *symb_base=LT_get(types,base_symb,HEAD,KEEP);
+                    if (symb_base) {
+                        LT_put((*ltv),SYMB_BASE,TAIL,symb_base);
+                        attr_del((*ltv),TYPE_NAME);
+                        attr_del((*ltv),TYPE_BASE);
+                    }
+                }
+            }
+        }
+    done:
+        return status?NON_NULL:NULL;
+    }
+
+    STRY(ltv_traverse(index,preop,link_symb_name)!=NULL,"linking symbolic names");
+    //STRY(ltv_traverse(index,preop,dedup)!=NULL,"deduplicating symbolic names");
     LT_put(module,"function",TAIL,functions);
     LT_put(module,"variable",TAIL,variables);
     LT_put(module,"type",TAIL,types);
@@ -843,15 +762,12 @@ int link_symbols(LTV *module,LTV *index)
     return status;
 }
 
+
 #if 0
 int link_cvars(LTV *module)
 {
     int status=0;
     LTV *types=LTV_get(module,type,HEAD,KEEP);
-
-    LTV *dedup_type(LTV *category,char *sym,LTV *type) {
-        return LT_put(category,sym,TAIL,type);
-    }
 
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
         int status=0;
@@ -924,11 +840,11 @@ int curate_module(LTV *module)
                         break;
                     case DW_TAG_unspecified_parameters: // varargs
                         if (parent)
-                            STRY(!LT_put(parent,"unspecified~parameters",TAIL,type_info_ltv),"linking unspecified parameters to parent");
+                            STRY(!LT_put(parent,"unspecified parameters",TAIL,type_info_ltv),"linking unspecified parameters to parent");
                         break;
                     case DW_TAG_subrange_type:
                         if (parent)
-                            STRY(!LT_put(parent,"subrange~type",TAIL,type_info_ltv),"linking subrange type to parent");
+                            STRY(!LT_put(parent,"subrange type",TAIL,type_info_ltv),"linking subrange type to parent");
                         break;
                     default:
                         if (parent && name)

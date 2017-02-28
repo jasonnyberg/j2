@@ -35,26 +35,26 @@ extern int ltv_count,ltvr_count,lti_count;
 #define RBN struct rb_node
 
 typedef enum {
-    LT_NONE=0x0,
-    LT_DUP =1<<0x00, // bufdup'ed on LTV_new, not ref to existing buf
-    LT_OWN =1<<0x01, // handed malloc'ed buffer, responsible for freeing
-    LT_DEP =1<<0x02, // dependent upon another ltv's data
-    LT_ESC =1<<0x03, // strip escapes (changes buf contents and len!)
-    LT_RO  =1<<0x04, // disallow release
-    LT_BIN =1<<0x05, // data is binary/unprintable
-    LT_CVAR=1<<0x06, // LTV data is a C variable
-    LT_AVIS=1<<0x07, // absolute traversal visitation flag
-    LT_RVIS=1<<0x08, // recursive traversal visitation flag
-    LT_LIST=1<<0x09, // hold children in unlabeled list, rather than default rbtree
-    LT_ROOT=1<<0x0a, // root of a dict rather than a namespace
-    LT_NIL =1<<0x0b, // false
-    LT_NULL=1<<0x0c, // empty (as opposed to false)
-    LT_IMM =1<<0x0d, // immediate value, not a pointer
-    LT_WC  =1<<0x0e, // contains a wildcard character (note to repl)
-    LT_NAP =LT_IMM|LT_NIL|LT_NULL, // not a pointer
-    LT_FREE=LT_DUP|LT_OWN, // need to free data upon release
-    LT_NSTR=LT_NAP|LT_BIN|LT_CVAR, // not a string
-    LT_VOID=LT_NIL|LT_NULL, // a placeholder node, internal use only!
+    LT_NONE =0x0,
+    LT_DUP  =1<<0x00, // bufdup'ed on LTV_new, not ref to existing buf
+    LT_OWN  =1<<0x01, // handed malloc'ed buffer, responsible for freeing
+    LT_DEP  =1<<0x02, // dependent upon another ltv's data
+    LT_ESC  =1<<0x03, // strip escapes (changes buf contents and len!)
+    LT_BIN  =1<<0x04, // data is binary/unprintable
+    LT_CVAR =1<<0x05, // LTV data is a C variable
+    LT_NIL  =1<<0x06, // false
+    LT_NULL =1<<0x07, // empty (as opposed to false)
+    LT_IMM  =1<<0x08, // immediate value, not a pointer
+    LT_MACRO=1<<0x09, // 'macro'
+    LT_RO   =1<<0x0a, // META: disallow release
+    LT_AVIS =1<<0x0b, // META: absolute traversal visitation flag
+    LT_RVIS =1<<0x0c, // META: recursive traversal visitation flag
+    LT_LIST =1<<0x0d, // META: hold children in unlabeled list, rather than default rbtree
+    LT_NAP  =LT_IMM|LT_NIL|LT_NULL,         // not a pointer
+    LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
+    LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
+    LT_VOID =LT_NIL|LT_NULL,                // a placeholder node, internal use only!
+    LT_META =LT_RO|LT_AVIS|LT_RVIS|LT_LIST, // need to be preserved during LTV_renew
 } LTV_FLAGS;
 
 typedef struct {
@@ -90,6 +90,7 @@ extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
 extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
+extern LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
@@ -167,7 +168,7 @@ extern LTV *LT_put(LTV *parent,char *name,int end,LTV *child);
 extern LTV *LT_get(LTV *parent,char *name,int end,int pop);
 
 //////////////////////////////////////////////////
-// REF (Listree's "cli")
+// REF (Listree's text-based API)
 //////////////////////////////////////////////////
 typedef struct REF {
     CLL lnk;
@@ -181,7 +182,7 @@ typedef struct REF {
 #define REF_HEAD(cll) ((REF *) CLL_HEAD(cll))
 #define REF_TAIL(cll) ((REF *) CLL_TAIL(cll))
 
-extern int REF_create(LTV *ltv,CLL *refs);
+extern int REF_create(char *data,int len,CLL *refs);
 extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
 
 extern LTV *REF_reset(REF *ref,LTV *newroot);

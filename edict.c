@@ -247,7 +247,7 @@ void CONTEXT_free(CONTEXT *context)
     void tok_free(CLL *lnk) { TOK_free((TOK *) lnk); }
     CLL_release(&context->stack,LTVR_release);
     CLL_release(&context->toks,tok_free);
-    DELETE(context);
+    RELEASE(context);
 }
 
 //////////////////////////////////////////////////
@@ -334,13 +334,13 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 // parser
 //////////////////////////////////////////////////
 
-#define OPS "|&!%#@/+="
-#define MONO_OPS "()<>{}"
+#define EDICT_OPS "|&!%#@/+="
+#define EDICT_MONO_OPS "()<>{}"
 
 int parse_expr(TOK *tok)
 {
     int status=0;
-    char *data=NULL,*tdata=NULL;
+    char *data=NULL;
     int len=0,tlen=0;
     LTV *tokval=NULL;
 
@@ -348,7 +348,6 @@ int parse_expr(TOK *tok)
 
     TOK *append(TOK *tok,int type,char *data,int len,int adv) {
         TOK *subtok=TOK_new(type,LTV_new(data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
-        //TOK *subtok=TOK_new(type,LTV_new(data,len,LT_DUP)); // only LITs need to be duped
         if (!subtok) return NULL;
         advance(adv);
         return (TOK *) CLL_put(&tok->children,&subtok->lnk,TAIL);
@@ -358,7 +357,6 @@ int parse_expr(TOK *tok)
     STRY(!(tokval=tok_peek(tok)),"testing for tok ltvr value");
     STRY(tokval->flags&LT_NSTR,"testing for non-string tok ltvr value");
     STRY(!tokval->data,"testing for null tok ltvr data");
-
     data=tokval->data;
     len=tokval->len;
 
@@ -366,14 +364,14 @@ int parse_expr(TOK *tok)
         if (tlen=series(data,len,WHITESPACE,NULL,NULL)) // whitespace
             advance(tlen); // TODO: A) embed WS tokens, B) stash tail WS token at start of ops (discard intermediates), C) reinsert WS when ops done
         else if (tlen=series(data,len,NULL,NULL,"[]")) // lit
-            STRY(!append(tok,TOK_LIT, data+1,tlen-2,tlen),"appending lit");
-        else if (tlen=series(data,len,MONO_OPS,NULL,NULL)) // special, non-ganging op
+            STRY(!append(tok,TOK_LIT,data+1,tlen-2,tlen),"appending lit");
+        else if (tlen=series(data,len,EDICT_MONO_OPS,NULL,NULL)) // special, non-ganging op
             STRY(!append(tok,TOK_OPS,data,1,1),"appending %c",*data);
         else { // ANYTHING else is ops and/or ref
             TOK *ops=NULL;
-            tlen=series(data,len,OPS,NULL,NULL); // ops
+            tlen=series(data,len,EDICT_OPS,NULL,NULL); // ops
             STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
-            if ((tlen=series(data,len,NULL,WHITESPACE OPS MONO_OPS,"[]"))) // ref
+            if ((tlen=series(data,len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS,"[]"))) // ref
                 STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
         }
     }
@@ -395,10 +393,10 @@ int eval_push(CONTEXT *context,TOK *tok) { // engine pops
     return status;
 }
 
-int edict_resolve(CONTEXT *context,TOK *ref_tok,int insert) { // may need to insert after a failed resolve!
+int edict_resolve(CONTEXT *context,CLL *ref,int insert) { // may need to insert after a failed resolve!
     int status=0;
-    STRY(!ref_tok,"validating ref tok");
-    void *dict_resolve(CLL *lnk) { return REF_resolve(((LTVR *) lnk)->ltv,&ref_tok->children,insert)?NULL:NON_NULL; } // if lookup failed, continue map by returning NULL
+    STRY(!context || !ref,"validating args");
+    void *dict_resolve(CLL *lnk) { return REF_resolve(((LTVR *) lnk)->ltv,ref,insert)?NULL:NON_NULL; } // if lookup failed, continue map by returning NULL
     status=!CLL_map(&context->dict,FWD,dict_resolve);
  done:
     return status;
@@ -444,7 +442,23 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         LTV *ref_ltv=tok_peek(ref_tok);
         wildcard=LTV_wildcard(ref_ltv);
         STRY((assignment && wildcard),"testing for assignment-to-wildcard");
-        STRY(REF_create(ref_ltv,&ref_tok->children),"creating REF"); // ref tok children are LT REFs, not TOKs!
+        STRY(REF_create(ref_ltv->data,ref_ltv->len,&ref_tok->children),"creating REF"); // ref tok children are REFs!!!
+        void *resolve_macro(CLL *cll) {
+            int status=0;
+            REF *ref=(REF *) cll;
+            LTV *ltv=LTV_peek(&ref->keys,HEAD);
+            if (series(ltv->data,ltv->len,NULL,NULL,"``")==ltv->len) { // macro
+                CLL ref;
+                CLL_init(&ref);
+                STRY(REF_create(ltv->data+1,ltv->len-2,&ref),"creating REF"); // ref tok children are LT REFs, not TOKs!
+                STRY(edict_resolve(context,&ref,false),"resolving macro");
+                LTV *res_ltv=REF_ltv(REF_HEAD(&ref));
+                LTV_renew(ltv,res_ltv->data,res_ltv->len,LT_DUP);
+            }
+        done:
+            return status?NON_NULL:NULL;
+        }
+        STRY(CLL_map(&ref_tok->children,FWD,resolve_macro)!=NULL,"resolving ref macros");
         ref_head=REF_HEAD(&ref_tok->children);
     }
 
@@ -502,7 +516,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
         int dump(char *label) {
             int status=0;
-            edict_resolve(context,ref_tok,false);
+            edict_resolve(context,&ref_tok->children,false);
             LTI *lti=REF_lti(ref_head);
             if (lti) {
                 CLL *ltvs=&lti->ltvs;
@@ -540,7 +554,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
     int deref() {
         int status=0;
-        if (edict_resolve(context,ref_tok,false) || !REF_ltv(ref_head)) // if lookup failed, push copy to stack
+        if (edict_resolve(context,&ref_tok->children,false) || !REF_ltv(ref_head)) // if lookup failed, push copy to stack
             STRY(!stack_push(context,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
 	else
             STRY(!stack_push(context,REF_ltv(ref_head)),"pushing resolved ref to stack");
@@ -551,7 +565,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int assign() { // resolve refs needs to not worry about last ltv, just the lti is important.
         int status=0;
         LTV *tos=NULL;
-        TRYCATCH(edict_resolve(context,ref_tok,true),0,exception,"resolving ref for assign");
+        TRYCATCH(edict_resolve(context,&ref_tok->children,true),0,exception,"resolving ref for assign");
         TRYCATCH(!(tos=stack_peek(context)),0,exception,"peeking anon");
         TRYCATCH(REF_assign(ref_head,tos),0,exception,"assigning anon to ref");
         stack_pop(context); // succeeded, detach anon from stack
@@ -567,7 +581,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int remove() {
         int status=0;
         if (ref_head) {
-	    TRYCATCH(edict_resolve(context,ref_tok,false),0,done,"resolving ref for remove");
+	    TRYCATCH(edict_resolve(context,&ref_tok->children,false),0,done,"resolving ref for remove");
             STRY(REF_remove(ref_head),"performing ref remove");
         } else {
             LTV_release(stack_pop(context));
@@ -600,7 +614,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         TOK *map_tok=NULL;
 
         if (ref_head) { // prep ref for iteration
-	    STRY(edict_resolve(context,ref_tok,false),"resolving ref for deref");
+	    STRY(edict_resolve(context,&ref_tok->children,false),"resolving ref for deref");
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
             if (pop)
                 map_tok->flags|=TOK_POP;

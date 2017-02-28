@@ -85,6 +85,19 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
     return lti;
 }
 
+// release old data if present and configure with new data if present
+LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
+{
+    flags|=ltv->flags&LT_META; // need to preserve the original metaflags
+    if (ltv->data && ltv->flags&LT_FREE && !(ltv->flags&LT_NAP))
+        RELEASE(ltv->data);
+    ltv->len=(len<0 && !(flags&LT_NSTR))?strlen((char *) data):len;
+    ltv->data=data;
+    if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
+    if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
+    ltv->flags=flags;
+    return ltv;
+}
 
 // get a new LTV and prepare for insertion
 LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
@@ -97,12 +110,8 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
         if ((ltv=(LTV *) CLL_get(repo,POP,TAIL)) || (ltv=NEW(LTV))) {
             ZERO(*ltv);
             ltv_count++;
-            ltv->len=(len<0 && !(flags&LT_NSTR))?strlen((char *) data):len;
-            ltv->data=data;
-            if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
-            if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
             if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
-            ltv->flags=flags;
+            LTV_renew(ltv,data,len,flags);
         }
     }
     return ltv;
@@ -111,7 +120,7 @@ LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 void LTV_free(LTV *ltv)
 {
     if (ltv) {
-        if (ltv->flags&LT_FREE && !(ltv->flags&LT_NAP)) DELETE(ltv->data);
+        LTV_renew(ltv,NULL,0,0);
         ZERO(*ltv);
         CLL_put(&ltv_repo,ltv->repo,HEAD);
         ltv_count--;
@@ -184,7 +193,7 @@ LTI *LTI_new(char *name,int len)
 void LTI_free(LTI *lti)
 {
     if (lti) {
-        DELETE(lti->name);
+        RELEASE(lti->name);
         ZERO(*lti);
         CLL_put(&lti_repo,lti->repo,HEAD);
         lti_count--;
@@ -537,9 +546,69 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     listree_traverse(ltvs,preop,NULL);
 }
 
+
+void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
+    int i=0;
+    int halt=0;
+
+    void lti2dot(LTV *ltv,LTI *lti) {
+        fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse color=blue]\n",lti,lti->name);
+        fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,lti);
+    }
+
+    void lti_ltvr2dot(LTI *lti,LTVR *ltvr) { fprintf(ofile,"\"LTI%x\" -> \"LTV%x\" [color=purple]\n",lti,ltvr->ltv); }
+    void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { fprintf(ofile,"\"LTV%x\" -> \"LTV%x\" [color=red]\n",ltv,ltvr->ltv); }
+
+    void ltv2dot(LTVR *ltvr,LTV *ltv,int depth,int *flags) {
+        if (ltv->flags&LT_AVIS) { // don't re-descend already represented nodes
+            *flags|=LT_TRAVERSE_HALT;
+            return;
+        }
+
+        if (ltv->len && !(ltv->flags&LT_NSTR)) {
+            fprintf(ofile,"\"LTV%x\" [style=filled shape=box color=%s label=\"",ltv,!strncmp(ltv->data,"int",ltv->len)?"red":"orange");
+            fstrnprint(ofile,ltv->data,ltv->len);
+            fprintf(ofile,"\"]\n");
+        }
+        else if (ltv->flags&LT_CVAR)
+            fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data); // FIXME: invoke reflection
+        else if (ltv->flags&LT_IMM)
+            fprintf(ofile,"\"LTV%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
+        else if (ltv->flags==LT_VOID)
+            fprintf(ofile,"\"LTV%x\" [label=\"\" shape=point style=filled color=purple]\n",ltv);
+        else if (ltv->flags&LT_NULL)
+            fprintf(ofile,"\"LTV%x\" [label=\"NULL\" shape=box style=filled]\n",ltv);
+        else if (ltv->flags&LT_NIL)
+            fprintf(ofile,"\"LTV%x\" [label=\"NIL\" shape=box style=filled]\n",ltv);
+        else
+            fprintf(ofile,"\"LTV%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
+    }
+
+    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        if ((*lti) && !(*ltvr)) {
+            if (maxdepth && depth>=maxdepth)
+                *flags|=LT_TRAVERSE_HALT;
+            else
+                lti2dot(*ltv,*lti);
+        }
+        else if ((*ltvr) && !(*ltv))
+            lti_ltvr2dot(*lti,*ltvr);
+        else if ((*ltv) && !(*lti)) {
+            if (!(*ltvr) || (*ltvr)->ltv==(*ltv))
+                ltv2dot(*ltvr,*ltv,depth,flags);
+            else
+                ltv_ltvr2dot(*ltv,*ltvr);
+        }
+        return NULL;
+    }
+
+    listree_traverse(ltvs,preop,NULL);
+}
+
+
 void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
-    ltvs2dot(ofile,ltvs,maxdepth,label);
+    ltvs2dot_simple(ofile,ltvs,maxdepth,label);
     fprintf(ofile,"}\n");
 }
 
@@ -649,14 +718,11 @@ void REF_free(CLL *lnk)
 
 ///////////////////////////////////////////////////////
 
-int REF_create(LTV *ltv,CLL *refs)
+int REF_create(char *data,int len,CLL *refs)
 {
     int status=0;
-    STRY(!ltv || !refs,"validating params");
+    STRY(!data || !len || !refs,"validating params");
     STRY(REF_delete(refs),"clearing any refs");
-
-    char *data=ltv->data;
-    int len=ltv->len;
 
     int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 

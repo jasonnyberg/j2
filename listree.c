@@ -466,12 +466,13 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     void *lnk2dot(CLL *lnk,int last) {
         fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
         fprintf(ofile,"\"%x\" -> \"%x\" [color=brown %s]\n",lnk->lnk[TAIL],lnk,last?"constraint=false":"");
+        return NULL;
     }
 
     void *ltvr2dot(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
-        lnk2dot(lnk,false);
         fprintf(ofile,"\"%x\" -> \"%x\" [color=purple len=0.1]\n",lnk,ltvr->ltv);
+        return lnk2dot(lnk,false);
     }
 
     void cll2dot(CLL *cll,char *label) {

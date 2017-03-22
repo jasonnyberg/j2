@@ -630,7 +630,7 @@ int link_symbols(LTV *module,LTV *index)
         int status=0;
         if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
             if ((*ltv)->flags&LT_AVIS)
-                *flags|=LT_TRAVERSE_HALT; ///////////////////////////////////// FIXME: DOES NOT ALLOW POSTOP TO BE CALLED!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+                *flags|=LT_TRAVERSE_HALT; ///////////////////////////////////// FIXME: DOES NOT ALLOW POSTOP TO BE CALLED?????!!!!!!!!!!
     done:
         return status?NON_NULL:NULL;
     }

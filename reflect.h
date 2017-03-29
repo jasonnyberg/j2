@@ -43,17 +43,18 @@
  */
 
 #define TYPE_ID   "type id"   // a die's offset
-#define TYPE_BASE "type base" // a die's base's offset
+#define TYPE_BASE "type base" // a die's base's ltv
 #define TYPE_NAME "type name" // a die's type name
 #define TYPE_SYMB "type symb" // a die's composite name
-#define SYMB_BASE "symb base" // link to base's composite name
 
 #define CVAR_KIND "cvar kind" // what kind of cvar is this (i.e. what to cast ltv->data to)
 #define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
 
-#define DIE_FORMAT "0x%x"     // format for a die's DOT-language element id
-#define CVAR_FORMAT "CVAR_%x" // format for a CVAR's DOT-language element id
+#define DIE_FORMAT "%s"       // format for a die's DOT-language element id
+#define CVAR_FORMAT "CVAR_%s" // format for a CVAR's DOT-language element id
 
+#define TYPE_IDLEN 12
+#define DWARF_ID(str,global_offset) snprintf((str),TYPE_IDLEN,"%08x",(global_offset))
 
 typedef enum
 {
@@ -93,7 +94,8 @@ typedef union // keep members aligned with associated dutype enum
 } TYPE_UVALUE;
 
 typedef struct {
-    Dwarf_Off      offset;
+    char           offset_str[TYPE_IDLEN];
+    char           next_cu_header_offset_str[TYPE_IDLEN];
     Dwarf_Unsigned next_cu_header_offset;
     Dwarf_Unsigned header_length;
     Dwarf_Half     version_stamp;
@@ -116,28 +118,30 @@ typedef enum {
     TYPEF_MEMBERLOC  = 1<<0x9,
     TYPEF_LOCATION   = 1<<0xa,
     TYPEF_ADDR       = 1<<0xb,
-    TYPEF_EXTERNAL   = 1<<0xc
+    TYPEF_EXTERNAL   = 1<<0xc,
+    TYPEF_SYMBOLIC   = 1<<0xd
 } TYPE_FLAGS;
+
 
 typedef struct
 {
-    Dwarf_Off id; // global offset
-    Dwarf_Off base; // global offset
-    Dwarf_Off parent;
+    char id_str[TYPE_IDLEN];     // global offset as a string
+    char base_str[TYPE_IDLEN];   // global offset as a string
+    //char parent[TYPE_IDLEN]; // global offset as a string
     struct {
-    TYPE_FLAGS flags;
-    Dwarf_Half tag; // kind of item (base, struct, etc.
-    Dwarf_Signed const_value; // enum val
-    Dwarf_Unsigned bytesize;
-    Dwarf_Unsigned bitsize;
-    Dwarf_Unsigned bitoffset;
-    Dwarf_Unsigned encoding;
-    Dwarf_Unsigned upper_bound;
-    Dwarf_Unsigned low_pc;
-    Dwarf_Addr data_member_location;
-    Dwarf_Signed location; // ??
-    Dwarf_Bool external;
-    Dwarf_Unsigned addr; // from loclist
+        TYPE_FLAGS flags;
+        Dwarf_Half tag; // kind of item (base, struct, etc.
+        Dwarf_Signed const_value; // enum val
+        Dwarf_Unsigned bytesize;
+        Dwarf_Unsigned bitsize;
+        Dwarf_Unsigned bitoffset;
+        Dwarf_Unsigned encoding;
+        Dwarf_Unsigned upper_bound;
+        Dwarf_Unsigned low_pc;
+        Dwarf_Addr data_member_location;
+        Dwarf_Signed location; // ??
+        Dwarf_Unsigned addr; // from loclist
+        Dwarf_Bool external;
     } attr;
 } TYPE_INFO;
 

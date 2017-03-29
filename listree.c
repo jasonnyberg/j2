@@ -67,19 +67,15 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
 {
     LTI *lti=NULL;
     if (rbr && name) {
-        if (series(name,len,NULL,"*?",NULL)<len) { // contains wildcard, do not insert
-            for (lti=(LTI *) rb_first(rbr); lti && fnmatch_len(name,len,lti->name,-1); lti=LTI_next(lti));
-        } else {
-            RBN *parent=NULL,**rbn = &rbr->rb_node;
-            while (*rbn) {
-                int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
-                if (!result) return (LTI *) *rbn; // found it!
-                else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
-            }
-            if (insert && (lti=LTI_new(name,len))) {
-                rb_link_node(&lti->rbn,parent,rbn); // add
-                rb_insert_color(&lti->rbn,rbr); // rebalance
-            }
+        RBN *parent=NULL,**rbn = &rbr->rb_node;
+        while (*rbn) {
+            int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
+            if (!result) return (LTI *) *rbn; // found it!
+            else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
+        }
+        if (insert && (lti=LTI_new(name,len))) {
+            rb_link_node(&lti->rbn,parent,rbn); // add
+            rb_insert_color(&lti->rbn,rbr); // rebalance
         }
     }
     return lti;
@@ -229,6 +225,14 @@ void LTI_release(RBN *rbn) {
 // Tag Team of traverse methods for LT elements
 //////////////////////////////////////////////////
 
+// add to preop to avoid repeat visits in listree traverse
+void *listree_acyclic(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+    if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv)))
+        if ((*ltv)->flags&LT_AVIS)
+            *flags|=LT_TRAVERSE_HALT;
+    return NULL;
+}
+
 void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
 {
     int depth=0,flags=0,cleanup=0;
@@ -282,7 +286,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
 
         if (!ltv) goto done;
         LTI *child=NULL;
-        if (cleanup) // remove absolute visited flag
+        if (cleanup) // only descends (and cleans up) LTVs w/absolute visited flag
             return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS))? LTV_map(ltv,FWD,LTI_traverse,LTVR_traverse):NULL;
         else if (!(ltv->flags&LT_RVIS)) {
             if (preop && (rval=preop(&child,&parent,&ltv,depth,&flags))) goto done;
@@ -344,7 +348,7 @@ LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
 
 LTI *LTI_resolve(LTV *ltv,char *name,int insert)
 {
-    LTV *nameltv=LTV_new(name,-1,0);
+    LTV *nameltv=LTV_new(name,-1,LT_NOWC);
     LTI *lti=LTI_lookup(ltv,nameltv,insert);
     LTV_free(nameltv);
     return lti;
@@ -412,6 +416,8 @@ LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,NUL
 
 int LTV_wildcard(LTV *ltv)
 {
+    if (ltv->flags&LT_NOWC)
+        return false;
     int tlen=series(ltv->data,ltv->len,NULL,"*?",NULL);
     return tlen < ltv->len;
 }
@@ -461,7 +467,6 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 
 void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
-    int halt=0;
 
     void *lnk2dot(CLL *lnk,int last) {
         fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
@@ -498,14 +503,15 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         }
 
         if (ltv->len && !(ltv->flags&LT_NSTR)) {
-            fprintf(ofile,"\"%x\" [style=filled shape=box color=orange label=\"",ltv);
+            fprintf(ofile,"\"%x\" [style=filled shape=box color=gray95 label=\"",ltv);
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
         }
         else if (ltv->flags&LT_CVAR)
-            fprintf(ofile,"\"%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data); // FIXME: invoke reflection
+            fprintf(ofile,"\"%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
+                dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
-            fprintf(ofile,"\"%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
+            fprintf(ofile,"\"%x\" [label=\"%x (imm)\" shape=box style=filled]\n",ltv,ltv->data);
         else if (ltv->flags==LT_VOID)
             fprintf(ofile,"\"%x\" [label=\"\" shape=point style=filled color=purple]\n",ltv);
         else if (ltv->flags&LT_NULL)
@@ -550,10 +556,9 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
 void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
-    int halt=0;
 
     void lti2dot(LTV *ltv,LTI *lti) {
-        fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse color=blue]\n",lti,lti->name);
+        fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse color=red4]\n",lti,lti->name);
         fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,lti);
     }
 
@@ -567,12 +572,13 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         }
 
         if (ltv->len && !(ltv->flags&LT_NSTR)) {
-            fprintf(ofile,"\"LTV%x\" [style=filled shape=box color=%s label=\"",ltv,!strncmp(ltv->data,"int",ltv->len)?"red":"orange");
+            fprintf(ofile,"\"LTV%x\" [shape=box color=navy label=\"",ltv);
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
         }
         else if (ltv->flags&LT_CVAR)
-            fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data); // FIXME: invoke reflection
+            fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
+                dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
         else if (ltv->flags==LT_VOID)

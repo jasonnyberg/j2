@@ -46,10 +46,11 @@ typedef enum {
     LT_NULL =1<<0x07, // empty (as opposed to false)
     LT_IMM  =1<<0x08, // immediate value, not a pointer
     LT_MACRO=1<<0x09, // 'macro'
-    LT_RO   =1<<0x0a, // META: disallow release
-    LT_AVIS =1<<0x0b, // META: absolute traversal visitation flag
-    LT_RVIS =1<<0x0c, // META: recursive traversal visitation flag
-    LT_LIST =1<<0x0d, // META: hold children in unlabeled list, rather than default rbtree
+    LT_NOWC =1<<0x0a, // do not do wildcard matching
+    LT_RO   =1<<0x0b, // META: disallow release
+    LT_AVIS =1<<0x0c, // META: absolute traversal visitation flag
+    LT_RVIS =1<<0x0d, // META: recursive traversal visitation flag
+    LT_LIST =1<<0x0e, // META: hold children in unlabeled list, rather than default rbtree
     LT_NAP  =LT_IMM|LT_NIL|LT_NULL,         // not a pointer
     LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
     LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
@@ -115,14 +116,30 @@ enum { LT_TRAVERSE_HALT=1<<0, LT_TRAVERSE_SKIP=1<<1, LT_TRAVERSE_REVERSE=1<<2 };
 typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
 void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop);
 void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
+extern void *listree_acyclic(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
 /*
-// lti/ltvr/ltv AND PARENT (if present) are passed in
-void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-    if      (*lti && !*ltvr) return lti(*ltv,*lti,depth,flags);
-    else if (*ltvr && !*ltv) return ltvr(*lti,*ltvr,depth,flags);
-    else if (*ltv && !*lti)  return ltv(*ltvr,*ltv,depth,flags); // PARENT IS LIST-FORM LTV IF ltvr->ltv!=ltv!!!
+// sample usage: (lti/ltvr/ltv AND PARENT (if present) are passed in)
+void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+    int status=0;
+    void *rval=NULL;
+    listree_acyclic(lti,ltvr,ltv,depth,flags); // terminate loops (optional!)
+    if ((*lti) && !(*ltvr)) {
+        if (maxdepth && depth>=maxdepth)
+            *flags|=LT_TRAVERSE_HALT; // terminate at depth (define maxdepth in enclosing scope)
+        else
+            STRY(!(rval=process_lti(*ltv,*lti)),"processing lti (ltv is parent)");
+    }
+    else if ((*ltvr) && !(*ltv))
+        STRY(!(rval=process_lti_ltvr(*lti,*ltvr)),"processing ltvr (lti is parent)");;
+    else if ((*ltv) && !(*lti)) {
+        if (!(*ltvr) || (*ltvr)->ltv==(*ltv))
+            STRY(!(rval=process_ltv(*ltvr,*ltv,depth,flags)),"processing ltv (ltvr is parent)");
+        else
+            STRY(!(rval=process_ltv_ltvr(*ltv,*ltvr)),"processing ltvr (ltv is parent)");
+    }
+    return rval;
 }
-listree_traverse(ltv,op,NULL); // preop or postop can be NULL
+listree_traverse(ltv,preop,NULL); // preop or postop can be NULL
 */
 
 //////////////////////////////////////////////////

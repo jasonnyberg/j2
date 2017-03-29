@@ -239,7 +239,7 @@ int fnmatch_len(char *pat,int plen,char *str,int slen)
     if (plen==-1)
         plen=strlen(pat);
     if (slen==-1)
-        slen=strlen(pat);
+        slen=strlen(str);
     char peos=pat[plen],seos=str[slen];
     pat[plen]=str[slen]=0;
     result=fnmatch(pat,str,FNM_EXTMATCH);

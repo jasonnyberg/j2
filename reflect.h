@@ -124,22 +124,19 @@ typedef struct
 {
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
-    //char parent[TYPE_IDLEN]; // global offset as a string
-    struct {
-        TYPE_FLAGS flags;
-        Dwarf_Half tag; // kind of item (base, struct, etc.
-        Dwarf_Signed const_value; // enum val
-        Dwarf_Unsigned bytesize;
-        Dwarf_Unsigned bitsize;
-        Dwarf_Unsigned bitoffset;
-        Dwarf_Unsigned encoding;
-        Dwarf_Unsigned upper_bound;
-        Dwarf_Unsigned low_pc;
-        Dwarf_Addr data_member_location;
-        Dwarf_Signed location; // ??
-        Dwarf_Unsigned addr; // from loclist
-        Dwarf_Bool external;
-    } attr;
+    TYPE_FLAGS flags;
+    Dwarf_Half tag; // kind of item (base, struct, etc.
+    Dwarf_Signed const_value; // enum val
+    Dwarf_Unsigned bytesize;
+    Dwarf_Unsigned bitsize;
+    Dwarf_Unsigned bitoffset;
+    Dwarf_Unsigned encoding;
+    Dwarf_Unsigned upper_bound;
+    Dwarf_Unsigned low_pc;
+    Dwarf_Addr data_member_location;
+    Dwarf_Signed location; // ??
+    Dwarf_Unsigned addr; // from loclist
+    Dwarf_Bool external;
 } TYPE_INFO;
 
 

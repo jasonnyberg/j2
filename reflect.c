@@ -294,6 +294,7 @@ void graph_types_to_file(char *filename,LTV *ltv) {
     LTV_enq(&ltvs,ltv,HEAD);
     fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile,&ltvs,0,filename);
+    //ltvs2dot(ofile,&ltvs,0,filename);
     fprintf(ofile,"}\n");
     LTV_deq(&ltvs,HEAD);
     fclose(ofile);
@@ -717,15 +718,11 @@ int link_symbols(LTV *module,LTV *index)
         return status;
     }
 
-    void *link_symb_name(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
-            LTI *base=NULL;
-            if ((*ltv)->flags&LT_AVIS)
-                *flags|=LT_TRAVERSE_HALT;
-            if (ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
-                (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
-                derive_symbolic_name(*ltv);
-            }
+    void *link_symb_name(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
+            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
+            derive_symbolic_name(*ltv);
         }
         return NULL;
     }
@@ -746,22 +743,19 @@ int traverse_types(char *filename,LTV *module)
     int status=0;
     FILE *ofile=fopen(filename,"w");
 
-    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
-            if ((*ltv)->flags&LT_AVIS)
-                *flags|=LT_TRAVERSE_HALT;
-            if (ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
-                (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
-                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
-                fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_NAME));
-                if (type_info->flags&TYPEF_BASE)
-                    fprintf(ofile,"\"%s\" -> \"%s\"\n",type_info->id_str,type_info->base_str);
-            }
+    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
+            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
+            TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+            fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_NAME));
+            if (type_info->flags&TYPEF_BASE)
+                fprintf(ofile,"\"%s\" -> \"%s\"\n",type_info->id_str,type_info->base_str);
         }
         return NULL;
     }
 
-    fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    fprintf(ofile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
     STRY(ltv_traverse(LT_get(module,"function",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
     STRY(ltv_traverse(LT_get(module,"variable",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
     STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");

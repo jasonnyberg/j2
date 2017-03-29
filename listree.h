@@ -112,35 +112,20 @@ extern void LTI_release(RBN *rbn);
 //////////////////////////////////////////////////
 // Combined pre-, in-, and post-fix LT traversal
 //////////////////////////////////////////////////
-enum { LT_TRAVERSE_HALT=1<<0, LT_TRAVERSE_SKIP=1<<1, LT_TRAVERSE_REVERSE=1<<2 };
-typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
+typedef enum {
+    LT_TRAVERSE_LTI=1<<0,      // LTOBJ_OP is for an LTI
+    LT_TRAVERSE_LTV=1<<1,      // LTOBJ_OP is for an LTV
+    LT_TRAVERSE_LTI_LTVR=1<<2, // LTOBJ_OP is for an LTVR from an LTI (normal case)
+    LT_TRAVERSE_LTV_LTVR=1<<3, // LTOBJ_OP is for an LTVR from a list-form LTV
+    LT_TRAVERSE_LTVR=LT_TRAVERSE_LTI_LTVR|LT_TRAVERSE_LTV_LTVR,
+    LT_TRAVERSE_TYPE=LT_TRAVERSE_LTI|LT_TRAVERSE_LTV|LT_TRAVERSE_LTVR,
+    LT_TRAVERSE_HALT=1<<4,     // LTOBJ_OP can set to signal no further traversal from this node
+    LT_TRAVERSE_REVERSE=1<<5,  // LTOBJ_OP can set to traverse the "next level" in reverse order
+} LT_TRAVERSE_FLAGS;
+typedef void *(*LTOBJ_OP)(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags);
 void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop);
 void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
-extern void *listree_acyclic(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags);
-/*
-// sample usage: (lti/ltvr/ltv AND PARENT (if present) are passed in)
-void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-    int status=0;
-    void *rval=NULL;
-    listree_acyclic(lti,ltvr,ltv,depth,flags); // terminate loops (optional!)
-    if ((*lti) && !(*ltvr)) {
-        if (maxdepth && depth>=maxdepth)
-            *flags|=LT_TRAVERSE_HALT; // terminate at depth (define maxdepth in enclosing scope)
-        else
-            STRY(!(rval=process_lti(*ltv,*lti)),"processing lti (ltv is parent)");
-    }
-    else if ((*ltvr) && !(*ltv))
-        STRY(!(rval=process_lti_ltvr(*lti,*ltvr)),"processing ltvr (lti is parent)");;
-    else if ((*ltv) && !(*lti)) {
-        if (!(*ltvr) || (*ltvr)->ltv==(*ltv))
-            STRY(!(rval=process_ltv(*ltvr,*ltv,depth,flags)),"processing ltv (ltvr is parent)");
-        else
-            STRY(!(rval=process_ltv_ltvr(*ltv,*ltvr)),"processing ltvr (ltv is parent)");
-    }
-    return rval;
-}
-listree_traverse(ltv,preop,NULL); // preop or postop can be NULL
-*/
+extern void *listree_acyclic(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags);
 
 //////////////////////////////////////////////////
 // Dictionary

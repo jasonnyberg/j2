@@ -880,18 +880,9 @@ int curate_module(LTV *module)
     } while (!LTV_empty(dependencies));
 
     LTV_release(dependencies);
-
-    graph_types_to_file("/tmp/index.dot",index);
-
     link_symbols(module,index);
-
     LTV_release(index);
     LTV_release(compile_units);
-
-    graph_types_to_file("/tmp/module.dot",module);
-
-    //char *filename;
-    //graph_types_to_file(FORMATA(filename,256,"/tmp/CU/%x.dot",type_info),type_info_ltv);
  done:
     return status;
 }

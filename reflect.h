@@ -31,27 +31,24 @@
  *     [type_info]
  *      "type~id"
  *        [die_id]
- *      "type~base"
- *        [die_id]
  *      "type~name"
  *        [name]
- *      "type~symb" (pass 2)
- *        [symbolic name]
+ *      "type~base"
+ *        [base cvar]
  * [type]/[variable]/[function]
  *   "symbolic name"
  *     [type_info]...
  */
 
 #define TYPE_ID   "type id"   // a die's offset
-#define TYPE_BASE "type base" // a die's base's ltv
 #define TYPE_NAME "type name" // a die's type name
-#define TYPE_SYMB "type symb" // a die's composite name
+#define TYPE_BASE "type base" // a die's base's ltv
 
 #define CVAR_KIND "cvar kind" // what kind of cvar is this (i.e. what to cast ltv->data to)
 #define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
 
-#define DIE_FORMAT "%s"       // format for a die's DOT-language element id
-#define CVAR_FORMAT "CVAR_%s" // format for a CVAR's DOT-language element id
+#define DIE_FORMAT "\"%s\""       // format for a die's DOT-language element id
+#define CVAR_FORMAT "\"CVAR_%s\"" // format for a CVAR's DOT-language element id
 
 #define TYPE_IDLEN 12
 #define DWARF_ID(str,global_offset) snprintf((str),TYPE_IDLEN,"%08x",(global_offset))

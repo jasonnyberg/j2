@@ -194,7 +194,7 @@ int dot_cu_data(FILE *ofile,CU_DATA *cu_data)
 {
     int status=0;
     STRY(!cu_data,"validating cu data");
-    fprintf(ofile,"\"" CVAR_FORMAT "\" [shape=record label=\"{");
+    fprintf(ofile,CVAR_FORMAT " [shape=record label=\"{");
     print_cu_data(ofile,cu_data);
     fprintf(ofile,"}\"");
     fprintf(ofile,"]\n");
@@ -230,7 +230,7 @@ int print_type_info(FILE *ofile,TYPE_INFO *type_info)
 int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
 {
     int status=0;
-    fprintf(ofile,"\"" CVAR_FORMAT "\" [shape=record label=\"{",type_info);
+    fprintf(ofile,CVAR_FORMAT " [shape=record label=\"{",type_info);
     print_type_info(ofile,type_info);
     fprintf(ofile,"}\"");
     if (type_info->attr.flags&TYPEF_DQ)
@@ -281,7 +281,7 @@ int dot_cvar(FILE *ofile,LTV *ltv)
         dot_type_info(ofile,(TYPE_INFO *) ltv->data);
     else if (!strcmp(cvar_kind,"CU_DATA"))
         dot_cu_data(ofile,(CU_DATA *) ltv->data);
-    fprintf(ofile,"\"LTV%x\" -> \"" CVAR_FORMAT "\"\n",ltv,ltv->data); // link ltv to type_info
+    fprintf(ofile,"\"LTV%x\" -> " CVAR_FORMAT " [color=red]\n",ltv,ltv->data); // link ltv to type_info
  done:
     return status;
 }
@@ -289,26 +289,13 @@ int dot_cvar(FILE *ofile,LTV *ltv)
 
 void graph_types_to_file(char *filename,LTV *ltv) {
     FILE *ofile=fopen(filename,"w");
-
-    void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
-        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
-            if ((*ltv)->flags&LT_AVIS)
-                *flags|=LT_TRAVERSE_HALT;
-            else if ((*ltv)->flags&LT_CVAR)
-                dot_cvar(ofile,(*ltv));
-        }
-        return NULL;
-    }
-
     CLL ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs,ltv,HEAD);
     fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile,&ltvs,0,filename);
-    listree_traverse(&ltvs,preop,NULL);
     fprintf(ofile,"}\n");
     LTV_deq(&ltvs,HEAD);
-
     fclose(ofile);
 }
 
@@ -637,16 +624,17 @@ int link_symbols(LTV *module,LTV *index)
             type_info->attr.flags|=TYPEF_SYMBOLIC;
             attr_del(ltv,TYPE_NAME);
             attr_set(ltv,TYPE_NAME,sym);
-            if (!LT_get(category,sym,HEAD,KEEP))
+            if (category && !LT_get(category,sym,HEAD,KEEP))
                 LT_put(category,sym,TAIL,ltv);
 
             // dedup
             if (base_symb) { // to get here, base must already be installed in "types"
                 LTV *symb_base=LT_get(types,base_symb,HEAD,KEEP);
-                if (symb_base) {
+                if (symb_base && symb_base!=base_ltv) { // may already be correct
+                    TYPE_INFO *new_base=(TYPE_INFO *) symb_base->data;
                     attr_del(ltv,TYPE_BASE);
-                    if (symb_base!=ltv)
-                        LT_put(ltv,TYPE_BASE,TAIL,symb_base);
+                    LT_put(ltv,TYPE_BASE,TAIL,symb_base);
+                    strncpy(type_info->base_str,new_base->id_str,TYPE_IDLEN);
                 }
             }
         }
@@ -706,7 +694,7 @@ int link_symbols(LTV *module,LTV *index)
             case DW_TAG_typedef:
                 if (type_name)
                     categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
-                else if (base_symb)
+                else if (base_symb) // anonymous typedef
                     categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
                 break;
             case DW_TAG_enumerator:
@@ -719,6 +707,9 @@ int link_symbols(LTV *module,LTV *index)
             case DW_TAG_member:
             case DW_TAG_formal_parameter:
             case DW_TAG_unspecified_parameters: // varargs
+                if (type_name) // still want to dedup!
+                    categorize_symbolic(NULL,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                break;
             default: // no name
                 break;
         }
@@ -737,7 +728,7 @@ int link_symbols(LTV *module,LTV *index)
         return NULL;
     }
 
-    STRY(ltv_traverse(index,link_symb_name,link_symb_name)!=NULL,"linking symbolic names"); // 
+    STRY(ltv_traverse(index,link_symb_name,link_symb_name)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
     LT_put(module,"function",TAIL,functions);
     LT_put(module,"variable",TAIL,variables);
     LT_put(module,"type",TAIL,types);
@@ -745,6 +736,36 @@ int link_symbols(LTV *module,LTV *index)
     graph_types_to_file("/tmp/types.dot",types);
 
  done:
+    return status;
+}
+
+int traverse_types(char *filename,LTV *module)
+{
+    int status=0;
+    FILE *ofile=fopen(filename,"w");
+
+    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,int *flags) {
+        if ((*ltv) && !(*lti) && (!(*ltvr) || (*ltvr)->ltv==(*ltv))) {
+            if ((*ltv)->flags&LT_AVIS)
+                *flags|=LT_TRAVERSE_HALT;
+            if (ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
+                (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
+                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_NAME));
+                if (type_info->attr.flags&TYPEF_BASE)
+                    fprintf(ofile,"\"%s\" -> \"%s\"\n",type_info->id_str,type_info->base_str);
+            }
+        }
+        return NULL;
+    }
+
+    fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    STRY(ltv_traverse(LT_get(module,"function",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
+    STRY(ltv_traverse(LT_get(module,"variable",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
+    STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
+    fprintf(ofile,"}\n");
+ done:
+    fclose(ofile);
     return status;
 }
 
@@ -881,6 +902,7 @@ int curate_module(LTV *module)
 
     LTV_release(dependencies);
     link_symbols(module,index);
+    traverse_types("/tmp/simple.dot",module);
     LTV_release(index);
     LTV_release(compile_units);
  done:

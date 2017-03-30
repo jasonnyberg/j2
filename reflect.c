@@ -56,6 +56,7 @@ void attr_del(LTV *ltv,char *attr)
         RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release);
 }
 
+// look up an attribute in one LTV, and look up it's value within another LTV.
 char *attr_deref(LTV *ltv,char *attr,LTV *index)
 {
     char *attr_val=attr_get(ltv,attr);
@@ -259,9 +260,11 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
 }
 
 
-int print_cvar(FILE *ofile,LTV *ltv)
+int ref_print_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
+    //LTV *cvar_type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
+    
     char *cvar_kind=NULL;
     STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
     if (!strcmp(cvar_kind,"TYPE_INFO"))
@@ -272,7 +275,7 @@ int print_cvar(FILE *ofile,LTV *ltv)
     return status;
 }
 
-int dot_cvar(FILE *ofile,LTV *ltv)
+int ref_dot_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
     char *cvar_kind=NULL;
@@ -292,7 +295,7 @@ void graph_types_to_file(char *filename,LTV *ltv) {
     CLL ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs,ltv,HEAD);
-    fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    fprintf(ofile,"digraph iftree\n{\ngraph [rankdir=LR /*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile,&ltvs,0,filename);
     //ltvs2dot(ofile,&ltvs,0,filename);
     fprintf(ofile,"}\n");
@@ -579,7 +582,7 @@ char *get_diename(Dwarf_Debug dbg,Dwarf_Die die)
 }
 
 
-int preview_module(LTV *module) // just put the cu name under module
+int ref_preview_module(LTV *module) // just put the cu name under module
 {
     int op(Dwarf_Debug dbg,Dwarf_Die die) {
         int status=0;
@@ -603,7 +606,7 @@ int ltv_is_cvar_kind(LTV *ltv,char *kind)
 int link_symbols(LTV *module,LTV *index)
 {
     int status=0;
-    LTV *functions=LTV_VOID,*variables=LTV_VOID,*types=LTV_VOID;
+    LTV *globals=LTV_VOID,*types=LTV_VOID;
 
     int derive_symbolic_name(LTV *ltv)
     {
@@ -660,8 +663,7 @@ int link_symbols(LTV *module,LTV *index)
                     categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"(%s)*",base_symb));
                 break;
             case DW_TAG_array_type:
-                if (base_symb)
-                {
+                if (base_symb) {
                     LTV *subrange_ltv=LT_get(ltv,"subrange type",HEAD,KEEP);
                     TYPE_INFO *subrange=subrange_ltv?(TYPE_INFO *) subrange_ltv->data:NULL;
                     if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
@@ -685,8 +687,8 @@ int link_symbols(LTV *module,LTV *index)
                 break;
             case DW_TAG_subprogram:
             case DW_TAG_subroutine_type:
-                if (type_name)
-                    categorize_symbolic(functions,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                if (type_name) // global!
+                    categorize_symbolic(globals,FORMATA(composite_name,strlen(type_name),"%s",type_name));
                 break;
             case DW_TAG_base_type:
                 if (type_name)
@@ -700,8 +702,8 @@ int link_symbols(LTV *module,LTV *index)
                 break;
             case DW_TAG_enumerator:
             case DW_TAG_variable:
-                if (type_name)
-                    categorize_symbolic(variables,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                if (type_name) // global!
+                    categorize_symbolic(globals,FORMATA(composite_name,strlen(type_name),"%s",type_name));
                 break;
             case DW_TAG_compile_unit:
             case DW_TAG_subrange_type:
@@ -728,8 +730,7 @@ int link_symbols(LTV *module,LTV *index)
     }
 
     STRY(ltv_traverse(index,link_symb_name,link_symb_name)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
-    LT_put(module,"function",TAIL,functions);
-    LT_put(module,"variable",TAIL,variables);
+    LT_put(module,"global",TAIL,globals);
     LT_put(module,"type",TAIL,types);
 
     graph_types_to_file("/tmp/types.dot",types);
@@ -743,10 +744,23 @@ int traverse_types(char *filename,LTV *module)
     int status=0;
     FILE *ofile=fopen(filename,"w");
 
+    LTV *types=LT_get(module,"type",HEAD,KEEP); // stash it so we can do lookups in it while traversing
+
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
-            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
+            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types when found
+
+            // link cvars to their types
+            char *cvar_kind=attr_get((*ltv),CVAR_KIND);
+            LTV *cvar_type=LT_get(types,cvar_kind,HEAD,KEEP);
+            if (cvar_type) {
+                LT_put((*ltv),CVAR_TYPE,HEAD,cvar_type);
+                // FIXME: delete CVAR_KIND attribute after reflection can handle dumping of CVAR data
+                //attr_del((*ltv),CVAR_KIND);
+            }
+
+            // simple dump of just typenames linked to their base types
             TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
             fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_NAME));
             if (type_info->flags&TYPEF_BASE)
@@ -756,9 +770,7 @@ int traverse_types(char *filename,LTV *module)
     }
 
     fprintf(ofile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
-    STRY(ltv_traverse(LT_get(module,"function",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
-    STRY(ltv_traverse(LT_get(module,"variable",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
-    STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing types");
+    STRY(ltv_traverse(module,traverse_types,NULL)!=NULL,"traversing globals");
     fprintf(ofile,"}\n");
  done:
     fclose(ofile);
@@ -766,7 +778,7 @@ int traverse_types(char *filename,LTV *module)
 }
 
 
-int curate_module(LTV *module)
+int ref_curate_module(LTV *module)
 {
     int status=0;
     CU_DATA cu_data;
@@ -908,90 +920,45 @@ int curate_module(LTV *module)
 
 
 
-
-
-
-
-#if 0
-void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data);
-void Type_dumpType(DICT *dict,char *name,char *addr,char *prefix);
-void Type_dumpVar(DICT *dict,char *name,char *prefix);
-
-
-
-typedef struct
+LTV *ref_find_basic(LTV *type)
 {
-    DICT_ITEM *typeitem;
-    char *addr;
-} TYPE_VAR;
+    int status=0;
 
-
-
-
-DICT_ITEM *Type_findBasic(DICT *dict,DICT_ITEM *typeitem,TYPE_INFO *type_info)
-{
-    while (typeitem && type_info && Type_getTypeInfo(typeitem,type_info))
-    {
-        if (!strcmp(type_info->category,"base_type") ||
-            !strcmp(type_info->category,"enumeration_type") ||
-            !strcmp(type_info->category,"structure_type") ||
-            !strcmp(type_info->category,"union_type") ||
-            !strcmp(type_info->category,"pointer_type") ||
-            !strcmp(type_info->category,"array_type"))
-            break;
-
-        typeitem=type_info->nexttype;
-    }
-
-    return typeitem;
-}
-
-long long *Type_getLocation(char *loc)
-{
-    return STRTOLLP(loc);
-}
-
-
-
-
-
-
-
-DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
-{
-    void *Type_findMemberByName(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-    {
-        ull *addr=STRTOULLP(item->data);
-        if (addr)
-        {
-            DICT_ITEM *typeitem=(DICT_ITEM *) *addr;
-            char *member=(char *) data;
-            int memberlen=hdict_delimit(member,strlen(member));
-            char *name=SU_lookup(&typeitem->dict,"DW_AT_name");
-            if (name && strlen(name)==memberlen && !strncmp(name,member,memberlen))
-                return typeitem;
+    void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
+            TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+            switch (type_info->tag) {
+                case DW_TAG_pointer_type:
+                case DW_TAG_array_type:
+                case DW_TAG_structure_type:
+                case DW_TAG_union_type:
+                case DW_TAG_enumeration_type:
+                case DW_TAG_base_type:
+                case DW_TAG_enumerator:
+                case DW_TAG_subprogram:
+                case DW_TAG_subroutine_type:
+                    return (*ltv);
+                default:
+                    (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
+            }
         }
         return NULL;
     }
 
-    void *Type_findMemberByIndex(DICT *dict,char *name)
-    {
-        DICT_ITEM *item=jli_getitem(dict,name,strlen(name),0);
-        ull *addr=item?STRTOULLP(item->data):NULL;
-        return addr?(void *) *addr:NULL;
-    }
-
-    DICT_ITEM *children=NULL;
-
-    if (typeitem && (children=SU_subitem(&typeitem->dict,"children")))
-    {
-        typeitem=member?
-            dict_traverse(dict,&children->dict,Type_findMemberByName,(void *) member):
-            Type_findMemberByIndex(&children->dict,(char *) ulltostr("%llu",(ull)n));
-    }
-
-    return typeitem;
+    return (LTV *) ltv_traverse(type,op,NULL);
 }
+
+LTV *ref_get_child(LTV *type,char *member)
+{
+    LT_get(type,member,HEAD,KEEP);
+}
+
+LTV *ref_get_element(LTV *type,int index)
+{
+    // see Type_getChild/Type_findMemberByIndex
+}
+
+
 
 
 
@@ -1078,6 +1045,105 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
         }                                                                       \
     }
 
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+#if 0
+void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data);
+void Type_dumpType(DICT *dict,char *name,char *addr,char *prefix);
+void Type_dumpVar(DICT *dict,char *name,char *prefix);
+
+
+
+typedef struct
+{
+    DICT_ITEM *typeitem;
+    char *addr;
+} TYPE_VAR;
+
+
+
+// DONE
+DICT_ITEM *Type_findBasic(DICT *dict,DICT_ITEM *typeitem,TYPE_INFO *type_info)
+{
+    while (typeitem && type_info && Type_getTypeInfo(typeitem,type_info))
+    {
+        if (!strcmp(type_info->category,"base_type") ||
+            !strcmp(type_info->category,"enumeration_type") ||
+            !strcmp(type_info->category,"structure_type") ||
+            !strcmp(type_info->category,"union_type") ||
+            !strcmp(type_info->category,"pointer_type") ||
+            !strcmp(type_info->category,"array_type"))
+            break;
+
+        typeitem=type_info->nexttype;
+    }
+
+    return typeitem;
+}
+
+long long *Type_getLocation(char *loc)
+{
+    return STRTOLLP(loc);
+}
+
+
+
+
+
+
+
+DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
+{
+    void *Type_findMemberByName(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
+    {
+        ull *addr=STRTOULLP(item->data);
+        if (addr)
+        {
+            DICT_ITEM *typeitem=(DICT_ITEM *) *addr;
+            char *member=(char *) data;
+            int memberlen=hdict_delimit(member,strlen(member));
+            char *name=SU_lookup(&typeitem->dict,"DW_AT_name");
+            if (name && strlen(name)==memberlen && !strncmp(name,member,memberlen))
+                return typeitem;
+        }
+        return NULL;
+    }
+
+    void *Type_findMemberByIndex(DICT *dict,char *name)
+    {
+        DICT_ITEM *item=jli_getitem(dict,name,strlen(name),0);
+        ull *addr=item?STRTOULLP(item->data):NULL;
+        return addr?(void *) *addr:NULL;
+    }
+
+    DICT_ITEM *children=NULL;
+
+    if (typeitem && (children=SU_subitem(&typeitem->dict,"children")))
+    {
+        typeitem=member?
+            dict_traverse(dict,&children->dict,Type_findMemberByName,(void *) member):
+            Type_findMemberByIndex(&children->dict,(char *) ulltostr("%llu",(ull)n));
+    }
+
+    return typeitem;
+}
+
+
 TYPE_UTYPE Type_getUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
 {
     ZERO(*uval);
@@ -1131,14 +1197,11 @@ TYPE_UTYPE Type_getUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
 }
 
 #define PUTUVAL(member,type,uval)                                               \
-    {                                                                           \
-        *(typeof(uval->member.val) *) addr = uval->member.val;                  \
-    }
+    do { *(typeof(uval->member.val) *) addr = uval->member.val; } while(0)
 
 #define PUTUBITS(member,type,uval,bsize,boffset,issigned)                       \
-    {                                                                           \
-        if (bsize && boffset)                                                   \
-        {                                                                       \
+    do {                                                                        \
+        if (bsize && boffset) {                                                 \
             TYPE_UVALUE tuval;                                                  \
             GETUVAL(member,type,(&tuval));                                      \
             int shift = (sizeof(uval->member.val)*8)-(*bsize)-(*boffset);       \
@@ -1146,9 +1209,8 @@ TYPE_UTYPE Type_getUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
             uval->member.val = (uval->member.val << shift) & mask;              \
             uval->member.val |= tuval.member.val & ~mask;                       \
         }                                                                       \
-                                                                                \
         PUTUVAL(member,type,uval);                                              \
-    }
+    } while(0)
 
 int Type_putUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
 {

@@ -435,7 +435,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 fstrnprint(ofile,indent,depth*4);
                 if (pre) fprintf(ofile,"%s",pre);
                 else fprintf(ofile,"[");
-                if      ((*ltv)->flags&LT_CVAR)            print_cvar(ofile,(*ltv));
+                if      ((*ltv)->flags&LT_CVAR)            ref_print_cvar(ofile,(*ltv));
                 else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"IMM 0x%x",(*ltv)->data);
                 else if (((*ltv)->flags&LT_VOID)==LT_VOID) fprintf(ofile,"<void>");
                 else if ((*ltv)->flags&LT_NULL)            fprintf(ofile,"<null>");
@@ -506,7 +506,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         }
         else if (ltv->flags&LT_CVAR)
             fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
-                dot_cvar(ofile,ltv); // invoke reflection
+                ref_dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"%x (imm)\" shape=box style=filled]\n",ltv,ltv->data);
         else if (ltv->flags==LT_VOID)
@@ -576,7 +576,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         }
         else if (ltv->flags&LT_CVAR)
             fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
-                dot_cvar(ofile,ltv); // invoke reflection
+                ref_dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
         else if (ltv->flags==LT_VOID)

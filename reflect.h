@@ -141,10 +141,10 @@ typedef struct
 
 
 
-extern int print_cvar(FILE *ofile,LTV *ltv);
-extern int dot_cvar(FILE *ofile,LTV *ltv);
-extern int curate_module(LTV *mod_ltv);
-extern int preview_module(LTV *mod_ltv);
+extern int ref_print_cvar(FILE *ofile,LTV *ltv);
+extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
+extern int ref_curate_module(LTV *mod_ltv);
+extern int ref_preview_module(LTV *mod_ltv);
 
 #if 0
 extern long long *Type_getLocation(char *loc);

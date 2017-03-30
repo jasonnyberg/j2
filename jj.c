@@ -20,10 +20,4 @@
 
 #include "edict.h"
 
-int main(int argc, char *argv[])
-{
-    switch(argc) {
-        case 2: return edict(argv[1]);
-        default: return edict("[bootstrap.edict] #read");
-    }
-}
+int main(int argc, char *argv[]) { edict(argc,argv); }

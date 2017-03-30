@@ -23,7 +23,7 @@
 // Edict
 //////////////////////////////////////////////////
 
-extern int edict(char *buf);
+extern int edict(int argc,char *argv[]);
 
 /*
 extern LTV *edict_add(RBR *rbr,LTV *ltv);

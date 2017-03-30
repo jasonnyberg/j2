@@ -259,12 +259,23 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
     return status;
 }
 
+int dump_cvar(FILE *ofile,LTV *ltv)
+{
+    int status=0;
+    LTV *cvar_type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
+    char *basename=attr_get(cvar_type,TYPE_NAME);
+    if (basename)
+        printf(CODE_RED "cvar basename: %s\n" CODE_RESET,basename);
+    return status;
+}
+
 
 int ref_print_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
-    //LTV *cvar_type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
-    
+
+    dump_cvar(ofile,ltv); // use reflection!!!!!
+
     char *cvar_kind=NULL;
     STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
     if (!strcmp(cvar_kind,"TYPE_INFO"))

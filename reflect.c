@@ -36,6 +36,11 @@
 #include "listree.h"
 #include "reflect.h"
 
+char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf);
+TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf);
+TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval);
+int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval);
+
 
 /////////////////////////////////////////////////////////////
 
@@ -207,11 +212,10 @@ int dot_cu_data(FILE *ofile,CU_DATA *cu_data)
 int print_type_info(FILE *ofile,TYPE_INFO *type_info)
 {
     int status=0;
-    const char *str=NULL;
     fprintf(ofile,"TYPE_INFO %s",type_info->id_str);
+    const char *str=NULL;
     dwarf_get_TAG_name(type_info->tag,&str);
     fprintf(ofile,"|%s",str+7);
-    if (type_info->flags&TYPEF_DQ)         fprintf(ofile,"|dq");
     if (type_info->flags&TYPEF_BASE)       fprintf(ofile,"|base %s",        type_info->base_str);
     if (type_info->flags&TYPEF_CONSTVAL)   fprintf(ofile,"|constval %u",    type_info->const_value);
     if (type_info->flags&TYPEF_BYTESIZE)   fprintf(ofile,"|bytesize %u",    type_info->bytesize);
@@ -225,6 +229,7 @@ int print_type_info(FILE *ofile,TYPE_INFO *type_info)
     if (type_info->flags&TYPEF_ADDR)       fprintf(ofile,"|addr 0x%x",      type_info->addr);
     if (type_info->flags&TYPEF_EXTERNAL)   fprintf(ofile,"|external %u",    type_info->external);
     if (type_info->flags&TYPEF_SYMBOLIC)   fprintf(ofile,"|symbolic");
+    if (type_info->flags&TYPEF_DQ)         fprintf(ofile,"|dq");
     return status;
 }
 
@@ -259,13 +264,114 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
     return status;
 }
 
-int dump_cvar(FILE *ofile,LTV *ltv)
+
+LTV *ref_find_basic(LTV *type);
+
+LTV *ref_create_cvar(LTV *type,void *data)
 {
     int status=0;
-    LTV *cvar_type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
-    char *basename=attr_get(cvar_type,TYPE_NAME);
-    if (basename)
-        printf(CODE_RED "cvar basename: %s\n" CODE_RESET,basename);
+    LTV *basic_type,*cvar;
+    STRY(!(basic_type=ref_find_basic(type)),"resolving basic type");
+    TYPE_INFO *type_info=(TYPE_INFO *) basic_type->data;
+    int size=type_info->bytesize;
+    if (data)
+        STRY(!(cvar=LTV_new(data,size,LT_CVAR)),"allocating cvar ltv");
+    else
+        STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN)),"wrapping data with cvar ltv");
+    LT_put(cvar,CVAR_TYPE,HEAD,type);
+ done:
+    return status?NULL:cvar;
+}
+
+void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
+{
+    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
+            return op((*ltv),flags);
+        return NULL;
+    }
+    return ltv_traverse(ltv,traverse_types,NULL);
+}
+
+int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
+{
+    int status=0;
+    LTV *type;
+    STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"validating cvar via type");
+    CLL queue;
+    CLL_init(&queue);
+    LTV_enq(&queue,ref_create_cvar(type,cvar->data),TAIL); // copy cvar so we don't mess with it
+
+    int process_type_info(LTV *cvar) {
+        int status=0;
+        LTV *type=NULL;
+
+        void *cint_op(LTV *ltv,LT_TRAVERSE_FLAGS *flags) {
+            int status=0;
+            TRYCATCH(ltv==type,0,done,"skipping parent ltv");
+            char *type_name;
+            LTV *type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
+            if (type && (type_name=attr_get(type,TYPE_NAME)) && !strcmp(type_name,"TYPE_INFO")) { // we only want to process TYPE_INFO-type cvars
+                *flags|=LT_TRAVERSE_HALT;
+                TYPE_INFO *type_info=(TYPE_INFO *) ltv->data;
+                switch (type_info->tag) {
+                    case DW_TAG_member:
+                        LTV_enq(&queue,ref_create_cvar(ltv,cvar->data+type_info->data_member_location),TAIL);
+                        break;
+                    default:
+                        fprintf(ofile,"    child tag %d unimplemented\n",type_info->tag);
+                        break;
+                }
+                return status?NON_NULL:NULL;
+            }
+        done:
+            return status?NON_NULL:NULL;
+        }
+
+        STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"looking up cvar type");
+        TYPE_INFO *type_info=(TYPE_INFO *) type->data;
+
+        char *name=attr_get(type,TYPE_NAME);
+        const char *str=NULL;
+        dwarf_get_TAG_name(type_info->tag,&str);
+        fprintf(ofile,"%s %s\n",str+7,name);
+
+        switch(type_info->tag) {
+            case DW_TAG_union_type:
+            case DW_TAG_structure_type:
+                cvar_map(type,cint_op); // traverse type hierarchy
+                break;
+            case DW_TAG_pointer_type:
+                LTV_enq(&queue,ref_create_cvar(LT_get(type,TYPE_BASE,HEAD,KEEP),*(char **) cvar->data),HEAD);
+                break;
+            case DW_TAG_array_type:
+                fprintf(ofile,"    array unimplemented\n");
+                break;
+            case DW_TAG_enumeration_type:
+                fprintf(ofile,"    enum unimplemented\n");
+                break;
+            case DW_TAG_enumerator:
+            case DW_TAG_base_type: {
+                TYPE_UVALUE uval;
+                char buf2[64];
+                if (Type_getUVAL(cvar,&uval))
+                    fprintf(ofile,"%s\n\n",Type_pushUVAL(&uval,buf2));
+                break;
+            }
+            default:
+                LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data),HEAD);
+                break;
+        }
+    done:
+        return status;
+    }
+
+    while ((cvar=LTV_deq(&queue,HEAD))) {
+        process_type_info(cvar);
+        LTV_release(cvar);
+    }
+
+ done:
     return status;
 }
 
@@ -273,15 +379,16 @@ int dump_cvar(FILE *ofile,LTV *ltv)
 int ref_print_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
-
-    dump_cvar(ofile,ltv); // use reflection!!!!!
-
     char *cvar_kind=NULL;
     STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
     if (!strcmp(cvar_kind,"TYPE_INFO"))
         print_type_info(ofile,(TYPE_INFO *) ltv->data);
     else if (!strcmp(cvar_kind,"CU_DATA"))
         print_cu_data(ofile,(CU_DATA *) ltv->data);
+
+    printf("\n");
+    ref_dump_cvar(ofile,ltv,0); // use reflection!!!!!
+
  done:
     return status;
 }
@@ -402,7 +509,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
                 IF_OK(dwarf_formsdata(*attr,&type_info->low_pc,&error),type_info->flags|=TYPEF_LOWPC);
                 break;
             case DW_AT_data_member_location: // sdata
-                IF_OK(dwarf_formaddr(*attr,&type_info->data_member_location,&error),type_info->flags|=TYPEF_MEMBERLOC);
+                IF_OK(dwarf_formsdata(*attr,&type_info->data_member_location,&error),type_info->flags|=TYPEF_MEMBERLOC);
                 break;
             case DW_AT_const_value: // sdata
                 IF_OK(dwarf_formsdata(*attr,&type_info->const_value,&error),type_info->flags|=TYPEF_CONSTVAL);
@@ -936,32 +1043,20 @@ LTV *ref_find_basic(LTV *type)
     int status=0;
 
     void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
+        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
             TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
-            switch (type_info->tag) {
-                case DW_TAG_pointer_type:
-                case DW_TAG_array_type:
-                case DW_TAG_structure_type:
-                case DW_TAG_union_type:
-                case DW_TAG_enumeration_type:
-                case DW_TAG_base_type:
-                case DW_TAG_enumerator:
-                case DW_TAG_subprogram:
-                case DW_TAG_subroutine_type:
-                    return (*ltv);
-                default:
-                    (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
-            }
+            if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
+                return (*ltv);
+            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
         }
         return NULL;
     }
-
     return (LTV *) ltv_traverse(type,op,NULL);
 }
 
 LTV *ref_get_child(LTV *type,char *member)
 {
-    LT_get(type,member,HEAD,KEEP);
+    return LT_get(type,member,HEAD,KEEP);
 }
 
 LTV *ref_get_element(LTV *type,int index)
@@ -970,27 +1065,21 @@ LTV *ref_get_element(LTV *type,int index)
 }
 
 
-
-
-
-static char *Type_oformat[] = { "%s","%d","%d","%d","%lld","0x%x","0x%x","0x%x","0x%llx","%g","%g","%Lg" };
-static char *Type_iformat[] = { "%s","%i","%i","%i","%lli",  "%i",  "%i",  "%i",  "%lli","%g","%g","%Lg" };
-
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 {
     switch(uval->dutype)
     {
-        case TYPE_INT1S:   sprintf(buf,Type_oformat[uval->dutype],uval->int1s.val); break;
-        case TYPE_INT2S:   sprintf(buf,Type_oformat[uval->dutype],uval->int2s.val); break;
-        case TYPE_INT4S:   sprintf(buf,Type_oformat[uval->dutype],uval->int4s.val); break;
-        case TYPE_INT8S:   sprintf(buf,Type_oformat[uval->dutype],uval->int8s.val); break;
-        case TYPE_INT1U:   sprintf(buf,Type_oformat[uval->dutype],uval->int1u.val); break;
-        case TYPE_INT2U:   sprintf(buf,Type_oformat[uval->dutype],uval->int2u.val); break;
-        case TYPE_INT4U:   sprintf(buf,Type_oformat[uval->dutype],uval->int4u.val); break;
-        case TYPE_INT8U:   sprintf(buf,Type_oformat[uval->dutype],uval->int8u.val); break;
-        case TYPE_FLOAT4:  sprintf(buf,Type_oformat[uval->dutype],uval->float4.val); break;
-        case TYPE_FLOAT8:  sprintf(buf,Type_oformat[uval->dutype],uval->float8.val); break;
-        case TYPE_FLOAT12: sprintf(buf,Type_oformat[uval->dutype],uval->float12.val); break;
+        case TYPE_INT1S:   sprintf(buf,"%d",    uval->int1s.val);   break;
+        case TYPE_INT2S:   sprintf(buf,"%d",    uval->int2s.val);   break;
+        case TYPE_INT4S:   sprintf(buf,"%d",    uval->int4s.val);   break;
+        case TYPE_INT8S:   sprintf(buf,"%lld",  uval->int8s.val);   break;
+        case TYPE_INT1U:   sprintf(buf,"0x%x",  uval->int1u.val);   break;
+        case TYPE_INT2U:   sprintf(buf,"0x%x",  uval->int2u.val);   break;
+        case TYPE_INT4U:   sprintf(buf,"0x%x",  uval->int4u.val);   break;
+        case TYPE_INT8U:   sprintf(buf,"0x%llx",uval->int8u.val);   break;
+        case TYPE_FLOAT4:  sprintf(buf,"%g",    uval->float4.val);  break;
+        case TYPE_FLOAT8:  sprintf(buf,"%g",    uval->float8.val);  break;
+        case TYPE_FLOAT12: sprintf(buf,"%Lg",   uval->float12.val); break;
         default:           buf[0]=0; break;
     }
     return buf;
@@ -1001,17 +1090,17 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
     int tVar;
     switch(uval->dutype)
     {
-        case TYPE_INT1S:   sscanf(buf,Type_iformat[uval->dutype],&tVar);uval->int1s.val=tVar; break;
-        case TYPE_INT2S:   sscanf(buf,Type_iformat[uval->dutype],&tVar);uval->int2s.val=tVar; break;
-        case TYPE_INT4S:   sscanf(buf,Type_iformat[uval->dutype],&tVar);uval->int4s.val=tVar; break;
-        case TYPE_INT8S:   sscanf(buf,Type_iformat[uval->dutype],&uval->int8s.val); break;
-        case TYPE_INT1U:   sscanf(buf,Type_iformat[uval->dutype],&tVar);uval->int1u.val=tVar; break;
-        case TYPE_INT2U:   sscanf(buf,Type_iformat[uval->dutype],&tVar);uval->int2u.val=tVar; break;
-        case TYPE_INT4U:   sscanf(buf,Type_iformat[uval->dutype],&tVar);uval->int4u.val=tVar; break;
-        case TYPE_INT8U:   sscanf(buf,Type_iformat[uval->dutype],&uval->int8u.val); break;
-        case TYPE_FLOAT4:  sscanf(buf,Type_iformat[uval->dutype],&uval->float4.val); break;
-        case TYPE_FLOAT8:  sscanf(buf,Type_iformat[uval->dutype],&uval->float8.val); break;
-        case TYPE_FLOAT12: sscanf(buf,Type_iformat[uval->dutype],&uval->float12.val); break;
+        case TYPE_INT1S:   sscanf(buf,"%i",  &tVar);uval->int1s.val=tVar; break;
+        case TYPE_INT2S:   sscanf(buf,"%i",  &tVar);uval->int2s.val=tVar; break;
+        case TYPE_INT4S:   sscanf(buf,"%i",  &tVar);uval->int4s.val=tVar; break;
+        case TYPE_INT8S:   sscanf(buf,"%lli",&uval->int8s.val);           break;
+        case TYPE_INT1U:   sscanf(buf,"%i",  &tVar);uval->int1u.val=tVar; break;
+        case TYPE_INT2U:   sscanf(buf,"%i",  &tVar);uval->int2u.val=tVar; break;
+        case TYPE_INT4U:   sscanf(buf,"%i",  &tVar);uval->int4u.val=tVar; break;
+        case TYPE_INT8U:   sscanf(buf,"%lli",&uval->int8u.val);           break;
+        case TYPE_FLOAT4:  sscanf(buf,"%g",  &uval->float4.val);          break;
+        case TYPE_FLOAT8:  sscanf(buf,"%g",  &uval->float8.val);          break;
+        case TYPE_FLOAT12: sscanf(buf,"%Lg", &uval->float12.val);         break;
         default:           buf[0]=0; break;
     }
     return uval;
@@ -1037,25 +1126,145 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
     }
 
 #define GETUVAL(member,type,uval)                                               \
-    {                                                                           \
+    do {                                                                        \
         uval->member.dutype = type;                                             \
-        uval->member.val = *(typeof(uval->member.val) *) addr;                  \
-    }
+        uval->member.val = *(typeof(uval->member.val) *) cvar->data;            \
+    } while(0)
 
 #define GETUBITS(member,type,uval,bsize,boffset,issigned)                       \
-    {                                                                           \
+    do {                                                                        \
         GETUVAL(member,type,uval);                                              \
-                                                                                \
-        if (bsize && boffset)                                                   \
-        {                                                                       \
-            int shift = (sizeof(uval->member.val)*8)-(*bsize)-(*boffset);       \
-            typeof(uval->member.val) mask = (1<<*bsize)-1;                      \
+        if (bsize) {                                                            \
+            int shift = (sizeof(uval->member.val)*8)-(bsize)-(boffset);         \
+            typeof(uval->member.val) mask = (1<<bsize)-1;                       \
             uval->member.val = (uval->member.val >> shift) & mask;              \
-            if (issigned && (uval->member.val & (1<<*bsize-1)))                 \
+            if (issigned && (uval->member.val & (1<<bsize-1)))                  \
                 uval->member.val |= ~mask;                                      \
         }                                                                       \
+    } while(0)
+
+
+
+TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
+{
+    int status=0;
+    LTV *type=NULL;
+    STRY(!cvar || !uval,"validating params");
+    STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"retrieving cvar type");
+    TYPE_INFO *type_info=(TYPE_INFO *) type->data;
+
+    ull size=type_info->bytesize;
+    ull bitsize=type_info->bitsize;
+    ull bitoffset=type_info->bitoffset;
+    ull encoding;
+    switch (type_info->tag) {
+        case DW_TAG_enumeration_type: encoding=5;                   break;
+        case DW_TAG_pointer_type:     encoding=7;                   break;
+        case DW_TAG_base_type:        encoding=type_info->encoding; break;
+        default: goto done;
     }
 
+    BZERO(*uval);
+    switch (encoding)
+    {
+        case DW_ATE_float:
+            if (size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
+            if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
+            if (size==12) GETUVAL(float12,TYPE_FLOAT12,uval);
+            break;
+        case DW_ATE_signed:
+        case DW_ATE_signed_char:
+            if (size==1) GETUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
+            if (size==2) GETUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
+            if (size==4) GETUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
+            if (size==8) GETUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
+            break;
+        case DW_ATE_unsigned:
+        case DW_ATE_unsigned_char:
+            if (size==1) GETUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
+            if (size==2) GETUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
+            if (size==4) GETUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
+            if (size==8) GETUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
+            break;
+        default:
+            break;
+    }
+ done:
+    return uval->dutype;
+}
+
+#define PUTUVAL(member,type,uval)                                               \
+    do { *(typeof(uval->member.val) *) cvar->data = uval->member.val; } while(0)
+
+#define PUTUBITS(member,type,uval,bsize,boffset,issigned)                       \
+    do {                                                                        \
+        if (bsize) {                                                            \
+            TYPE_UVALUE tuval;                                                  \
+            GETUVAL(member,type,(&tuval));                                      \
+            int shift = (sizeof(uval->member.val)*8)-(bsize)-(boffset);         \
+            typeof(uval->member.val) mask = ((1<<bsize)-1) << shift;            \
+            uval->member.val = (uval->member.val << shift) & mask;              \
+            uval->member.val |= tuval.member.val & ~mask;                       \
+        }                                                                       \
+        PUTUVAL(member,type,uval);                                              \
+    } while(0)
+
+int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
+{
+    int status=0;
+    LTV *type=NULL;
+    STRY(!cvar || !uval,"validating params");
+    STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"retrieving cvar type");
+    TYPE_INFO *type_info=(TYPE_INFO *) type->data;
+
+    ull size=type_info->bytesize;
+    ull bitsize=type_info->bitsize;
+    ull bitoffset=type_info->bitoffset;
+    ull encoding;
+    switch (type_info->tag) {
+        case DW_TAG_enumeration_type: encoding=5;                   break;
+        case DW_TAG_pointer_type:     encoding=7;                   break;
+        case DW_TAG_base_type:        encoding=type_info->encoding; break;
+        default: goto done;
+    }
+
+    switch (encoding) {
+        case 4: // float
+            if (size==4)  PUTUVAL(float4, TYPE_FLOAT4, uval);
+            if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
+            if (size==12) PUTUVAL(float12,TYPE_FLOAT12,uval);
+            break;
+        case 5: // signed int
+        case 6: // signed char
+            if (size==1)  PUTUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
+            if (size==2)  PUTUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
+            if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
+            if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
+            break;
+        case 7: // unsigned int
+        case 8: // unsigned char
+            if (size==1)  PUTUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
+            if (size==2)  PUTUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
+            if (size==4)  PUTUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
+            if (size==8)  PUTUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
+            break;
+        default:
+            break;
+    }
+ done:
+    return status;
+}
+
+
+int Type_isBitField(TYPE_INFO *type_info) { return (type_info->bitsize || type_info->bitoffset); }
+#define TYPE_INFO_NAME(p,ti)                                          \
+    (((p)=Type_isBitField(ti)?                                        \
+      FORMATA((p),256,"%s:%s:%s",attr_get((ti),TYPE_NAME),            \
+              (ti)->DW_AT_bit_size,                                   \
+              (ti)->DW_AT_bit_offset)                                 \
+      :                                                               \
+      attr_get((ti),TYPE_NAME)),                                      \
+     (p))
 
 
 
@@ -1078,15 +1287,11 @@ void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data);
 void Type_dumpType(DICT *dict,char *name,char *addr,char *prefix);
 void Type_dumpVar(DICT *dict,char *name,char *prefix);
 
-
-
 typedef struct
 {
     DICT_ITEM *typeitem;
     char *addr;
 } TYPE_VAR;
-
-
 
 // DONE
 DICT_ITEM *Type_findBasic(DICT *dict,DICT_ITEM *typeitem,TYPE_INFO *type_info)
@@ -1111,11 +1316,6 @@ long long *Type_getLocation(char *loc)
 {
     return STRTOLLP(loc);
 }
-
-
-
-
-
 
 
 DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
@@ -1153,138 +1353,6 @@ DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
 
     return typeitem;
 }
-
-
-TYPE_UTYPE Type_getUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
-{
-    ZERO(*uval);
-    ull *size,*encoding,*bit_size,*bit_offset;
-
-    if (addr && type_info && uval)
-    {
-        if ((!strcmp(type_info->category,"base_type") &&
-             (size=STRTOULLP(type_info->DW_AT_byte_size)) &&
-             (encoding=STRTOULLP(type_info->DW_AT_encoding))) ||
-            (!strcmp(type_info->category,"enumeration_type") &&
-             (size=STRTOULLP(type_info->DW_AT_byte_size)) &&
-             (encoding=STRTOULLP("7"))) ||
-            (!strcmp(type_info->category,"pointer_type") &&
-             (size=STRTOULLP(type_info->DW_AT_byte_size)) &&
-             (encoding=STRTOULLP("7"))))
-        {
-            ull *bit_size=STRTOULLP(type_info->DW_AT_bit_size);
-            ull *bit_offset=STRTOULLP(type_info->DW_AT_bit_offset);
-
-            switch (*encoding)
-            {
-                case DW_ATE_float:
-                    if (*size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
-                    if (*size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
-                    if (*size==12) GETUVAL(float12,TYPE_FLOAT12,uval);
-                    break;
-                case DW_ATE_signed:
-                case DW_ATE_signed_char:
-                    if (*size==1) GETUBITS(int1s,TYPE_INT1S,uval,bit_size,bit_offset,1);
-                    if (*size==2) GETUBITS(int2s,TYPE_INT2S,uval,bit_size,bit_offset,1);
-                    if (*size==4) GETUBITS(int4s,TYPE_INT4S,uval,bit_size,bit_offset,1);
-                    if (*size==8) GETUBITS(int8s,TYPE_INT8S,uval,bit_size,bit_offset,1);
-                    break;
-                case DW_ATE_unsigned:
-                case DW_ATE_unsigned_char:
-                    if (*size==1) GETUBITS(int1u,TYPE_INT1U,uval,bit_size,bit_offset,0);
-                    if (*size==2) GETUBITS(int2u,TYPE_INT2U,uval,bit_size,bit_offset,0);
-                    if (*size==4) GETUBITS(int4u,TYPE_INT4U,uval,bit_size,bit_offset,0);
-                    if (*size==8) GETUBITS(int8u,TYPE_INT8U,uval,bit_size,bit_offset,0);
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        return uval->dutype;
-    }
-
-    return TYPE_NONE;
-}
-
-#define PUTUVAL(member,type,uval)                                               \
-    do { *(typeof(uval->member.val) *) addr = uval->member.val; } while(0)
-
-#define PUTUBITS(member,type,uval,bsize,boffset,issigned)                       \
-    do {                                                                        \
-        if (bsize && boffset) {                                                 \
-            TYPE_UVALUE tuval;                                                  \
-            GETUVAL(member,type,(&tuval));                                      \
-            int shift = (sizeof(uval->member.val)*8)-(*bsize)-(*boffset);       \
-            typeof(uval->member.val) mask = ((1<<*bsize)-1) << shift;           \
-            uval->member.val = (uval->member.val << shift) & mask;              \
-            uval->member.val |= tuval.member.val & ~mask;                       \
-        }                                                                       \
-        PUTUVAL(member,type,uval);                                              \
-    } while(0)
-
-int Type_putUVAL(TYPE_INFO *type_info,void *addr,TYPE_UVALUE *uval)
-{
-    int status=0;
-    ull *size,*encoding,*bit_size,*bit_offset;
-
-    if (addr && type_info && uval)
-    {
-        if ((!strcmp(type_info->category,"base_type") &&
-             (size=STRTOULLP(type_info->DW_AT_byte_size)) &&
-             (encoding=STRTOULLP(type_info->DW_AT_encoding))) ||
-            (!strcmp(type_info->category,"enumeration_type") &&
-             (size=STRTOULLP(type_info->DW_AT_byte_size)) &&
-             (encoding=STRTOULLP("7"))) ||
-            (!strcmp(type_info->category,"pointer_type") &&
-             (size=STRTOULLP(type_info->DW_AT_byte_size)) &&
-             (encoding=STRTOULLP("7"))))
-        {
-            ull *bit_size=STRTOULLP(type_info->DW_AT_bit_size);
-            ull *bit_offset=STRTOULLP(type_info->DW_AT_bit_offset);
-
-            switch (*encoding)
-            {
-                case 4: // float
-                    if (*size==4)  PUTUVAL(float4,TYPE_FLOAT4,uval);
-                    if (*size==8)  PUTUVAL(float8,TYPE_FLOAT8,uval);
-                    if (*size==12) PUTUVAL(float12,TYPE_FLOAT12,uval);
-                    status=1;
-                    break;
-                case 5: // signed int
-                case 6: // signed char
-                    if (*size==1) PUTUBITS(int1s,TYPE_INT1S,uval,bit_size,bit_offset,1);
-                    if (*size==2) PUTUBITS(int2s,TYPE_INT2S,uval,bit_size,bit_offset,1);
-                    if (*size==4) PUTUBITS(int4s,TYPE_INT4S,uval,bit_size,bit_offset,1);
-                    if (*size==8) PUTUBITS(int8s,TYPE_INT8S,uval,bit_size,bit_offset,1);
-                    status=1;
-                    break;
-                case 7: // unsigned int
-                case 8: // unsigned char
-                    if (*size==1) PUTUBITS(int1u,TYPE_INT1U,uval,bit_size,bit_offset,0);
-                    if (*size==2) PUTUBITS(int2u,TYPE_INT2U,uval,bit_size,bit_offset,0);
-                    if (*size==4) PUTUBITS(int4u,TYPE_INT4U,uval,bit_size,bit_offset,0);
-                    if (*size==8) PUTUBITS(int8u,TYPE_INT8U,uval,bit_size,bit_offset,0);
-                    status=1;
-                    break;
-                default:
-                    break;
-            }
-        }
-    }
-
-    return status;
-}
-
-int Type_isBitField(TYPE_INFO *type_info) { return (type_info->DW_AT_bit_size || type_info->DW_AT_bit_offset); }
-
-#define TYPE_INFO_NAME(p,ti) (((p)=Type_isBitField(ti)?                       \
-                               FORMATA((p),256,"%s:%s:%s",(ti).typename,      \
-                                       (ti)->DW_AT_bit_size,                  \
-                                       (ti)->DW_AT_bit_offset)                \
-                               :                                              \
-                               (ti).typename),                                \
-                              (p))
 
 
 

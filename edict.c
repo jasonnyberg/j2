@@ -504,10 +504,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
 
         int cvar() {
             int status=0;
-            LTV *type, *cvar;
+            LTV *type,*cvar;
             STRY(!(type=stack_pop(context)),"popping type");
-            int size = 100; // TODO: figure this out
-            STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN | LT_BIN | LT_LIST)),"allocating cvar ltv"); // very special node!
+            STRY(!(cvar=ref_create_cvar(type,NULL)),"creating cvar");
             STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
             STRY(!stack_push(context,cvar),"pushing cvar");
         done:
@@ -539,7 +538,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
                 if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
                 else if (!strnncmp(key->data,key->len,"cus",-1))    STRY(preview(),"importing module preview");
                 else if (!strnncmp(key->data,key->len,"import",-1)) STRY(import(),"importing dwarf module");
-                else if (!strnncmp(key->data,key->len,"cvar",-1))   STRY(cvar(),"creating cvar");
+                else if (!strnncmp(key->data,key->len,"new",-1))    STRY(cvar(),"creating cvar");
                 else if (!strnncmp(key->data,key->len,"error",-1))  STRY(error(),"evaluating \"#error\"");
                 else if (!strnncmp(key->data,key->len,"throw",-1))  STRY(throw(NON_NULL),"evaluating \"#throw\"");
                 else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");

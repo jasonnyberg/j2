@@ -41,7 +41,7 @@ typedef enum {
     LT_DEP  =1<<0x02, // dependent upon another ltv's data
     LT_ESC  =1<<0x03, // strip escapes (changes buf contents and len!)
     LT_BIN  =1<<0x04, // data is binary/unprintable
-    LT_CVAR =1<<0x05, // LTV data is a C variable
+    LT_CVAR =1<<0x05|LT_BIN, // LTV data is a C variable
     LT_NIL  =1<<0x06, // false
     LT_NULL =1<<0x07, // empty (as opposed to false)
     LT_IMM  =1<<0x08, // immediate value, not a pointer

@@ -291,21 +291,16 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
 
         void *type_info_op(LTV *ltv,LT_TRAVERSE_FLAGS *flags) {
             int status=0;
-            TRYCATCH(ltv==type,0,done,"skipping parent ltv");
-            char *type_name;
-            LTV *type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
-            if (type && type->flags&LT_TYPE) { // we only want to process TYPE_INFO-type cvars
-                *flags|=LT_TRAVERSE_HALT;
-                TYPE_INFO *type_info=(TYPE_INFO *) ltv->data;
-                switch (type_info->tag) {
-                    case DW_TAG_member:
-                        LTV_enq(&queue,ref_create_cvar(ltv,cvar->data+type_info->data_member_location),TAIL);
-                        break;
-                    default:
-                        fprintf(ofile,"    child tag %d unimplemented\n",type_info->tag);
-                        break;
-                }
-                return status?NON_NULL:NULL;
+            TRYCATCH(!(ltv->flags&LT_TYPE) || ltv==type,0,done,"skipping non-TYPE_INFO and parent-type ltvs");
+            *flags|=LT_TRAVERSE_HALT;
+            TYPE_INFO *type_info=(TYPE_INFO *) ltv->data;
+            switch (type_info->tag) {
+                case DW_TAG_member:
+                    LTV_enq(&queue,ref_create_cvar(LT_get(ltv,TYPE_BASE,HEAD,KEEP),cvar->data+type_info->data_member_location),TAIL);
+                    break;
+                default:
+                    fprintf(ofile,"    child tag %d unimplemented\n",type_info->tag);
+                    break;
             }
         done:
             return status?NON_NULL:NULL;

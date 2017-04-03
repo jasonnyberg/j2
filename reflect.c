@@ -31,6 +31,7 @@
 
 #include <dwarf.h>
 #include <libdwarf.h>
+#include <dlfcn.h> // dlopen/dlsym/dlclose
 
 #include "util.h"
 #include "listree.h"
@@ -44,8 +45,8 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval);
 
 /////////////////////////////////////////////////////////////
 
-LTV *attr_set(LTV *ltv,char *attr,char *name) { return LT_put(ltv,attr,TAIL,LTV_new(name,-1,LT_DUP)); }
-LTV *attr_own(LTV *ltv,char *attr,char *name) { return LT_put(ltv,attr,TAIL,LTV_new(name,-1,LT_OWN)); }
+LTV *attr_set(LTV *ltv,char *attr,char *val) { return LT_put(ltv,attr,TAIL,LTV_new(val,-1,LT_DUP)); }
+LTV *attr_own(LTV *ltv,char *attr,char *val) { return LT_put(ltv,attr,TAIL,LTV_new(val,-1,LT_OWN)); }
 LTV *attr_imm(LTV *ltv,char *attr,long long imm)    { return LT_put(ltv,attr,TAIL,LTV_new((void *) imm,0,LT_IMM)); }
 
 char *attr_get(LTV *ltv,char *attr)
@@ -68,22 +69,6 @@ char *attr_deref(LTV *ltv,char *attr,LTV *index)
     if (attr_val)
         return attr_get(index,attr_val);
 }
-
-/////////////////////////////////////////////////////////////
-
-char *cvar_kind_get(LTV *ltv)
-{
-    // replace w/attr_get
-    LTV *cvar_kind_ltv=LT_get(ltv,CVAR_KIND,HEAD,KEEP);
-    return cvar_kind_ltv?cvar_kind_ltv->data:NULL;
-}
-
-// replace w/attr_set
-LTV *cvar_kind_set(LTV *ltv,char *name) { return LT_put(ltv,CVAR_KIND,HEAD,LTV_new(name,-1,LT_NONE))?ltv:NULL; }
-
-#define CVAR_NEW(kind) cvar_kind_set(LTV_new(NEW(kind),sizeof(kind),LT_OWN | LT_CVAR),#kind)
-#define CVAR_DUP(kind,orig) cvar_kind_set(LTV_new(&orig,sizeof(kind),LT_DUP | LT_CVAR),#kind)
-#define CVAR_REF(kind,data) cvar_kind_set(LTV_new(&data,sizeof(kind),LT_CVAR),#kind)
 
 /////////////////////////////////////////////////////////////
 //
@@ -130,19 +115,17 @@ int traverse_sibling(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op)
     return status;
 }
 
-int traverse_cus(LTV *mod_ltv,DIE_OP op,CU_DATA *cu_data)
+int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data)
 {
     int status=0;
     Dwarf_Debug dbg;
     Dwarf_Error error;
 
-    int read_cu_list()
-    {
+    int read_cu_list() {
         CU_DATA cu_data_local;
         if (!cu_data) cu_data=&cu_data_local; // allow caller to not care
 
-        while (1)
-        {
+        while (1) {
             TRY(dwarf_next_cu_header_b(dbg,
                                        &cu_data->header_length,
                                        &cu_data->version_stamp,
@@ -163,8 +146,7 @@ int traverse_cus(LTV *mod_ltv,DIE_OP op,CU_DATA *cu_data)
     }
 
     int filedesc = -1;
-    char *filename=FORMATA(filename,mod_ltv->len,"%s",mod_ltv->data);
-    STRY((filedesc=open(filename,O_RDONLY))<0,"opening dward2edict input file %s",filename);
+    STRY((filedesc=open(filename,O_RDONLY))<0,"opening dwarf2edict input file %s",filename);
     TRYCATCH(dwarf_init(filedesc,DW_DLC_READ,NULL,NULL,&dbg,&error),status,close_file,"initializing dwarf reader");
     TRYCATCH(read_cu_list(),status,close_dwarf,"reading cu list");
  close_dwarf:
@@ -229,6 +211,7 @@ int print_type_info(FILE *ofile,TYPE_INFO *type_info)
     if (type_info->flags&TYPEF_ADDR)       fprintf(ofile,"|addr 0x%x",      type_info->addr);
     if (type_info->flags&TYPEF_EXTERNAL)   fprintf(ofile,"|external %u",    type_info->external);
     if (type_info->flags&TYPEF_SYMBOLIC)   fprintf(ofile,"|symbolic");
+    if (type_info->dladdr)                 fprintf(ofile,"|dladdr 0x%x",    type_info->dladdr);
     if (type_info->flags&TYPEF_DQ)         fprintf(ofile,"|dq");
     return status;
 }
@@ -270,14 +253,14 @@ LTV *ref_find_basic(LTV *type);
 LTV *ref_create_cvar(LTV *type,void *data)
 {
     int status=0;
-    LTV *basic_type,*cvar;
-    STRY(!(basic_type=ref_find_basic(type)),"resolving basic type");
+    LTV *basic_type=NULL,*cvar=NULL;
+    TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
     TYPE_INFO *type_info=(TYPE_INFO *) basic_type->data;
     int size=type_info->bytesize;
     if (data)
-        STRY(!(cvar=LTV_new(data,size,LT_CVAR)),"allocating cvar ltv");
+        STRY(!(cvar=LTV_new(data,size,LT_BIN|LT_CVAR)),"allocating cvar ltv");
     else
-        STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_CVAR | LT_OWN)),"wrapping data with cvar ltv");
+        STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_OWN|LT_BIN|LT_CVAR)),"wrapping data with cvar ltv");
     LT_put(cvar,CVAR_TYPE,HEAD,type);
  done:
     return status?NULL:cvar;
@@ -306,12 +289,12 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
         int status=0;
         LTV *type=NULL;
 
-        void *cint_op(LTV *ltv,LT_TRAVERSE_FLAGS *flags) {
+        void *type_info_op(LTV *ltv,LT_TRAVERSE_FLAGS *flags) {
             int status=0;
             TRYCATCH(ltv==type,0,done,"skipping parent ltv");
             char *type_name;
             LTV *type=LT_get(ltv,CVAR_TYPE,HEAD,KEEP);
-            if (type && (type_name=attr_get(type,TYPE_NAME)) && !strcmp(type_name,"TYPE_INFO")) { // we only want to process TYPE_INFO-type cvars
+            if (type && type->flags&LT_TYPE) { // we only want to process TYPE_INFO-type cvars
                 *flags|=LT_TRAVERSE_HALT;
                 TYPE_INFO *type_info=(TYPE_INFO *) ltv->data;
                 switch (type_info->tag) {
@@ -334,28 +317,34 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
         char *name=attr_get(type,TYPE_NAME);
         const char *str=NULL;
         dwarf_get_TAG_name(type_info->tag,&str);
-        fprintf(ofile,"%s %s\n",str+7,name);
+        fprintf(ofile," %s \"%s\",",str+7,name);
 
         switch(type_info->tag) {
             case DW_TAG_union_type:
             case DW_TAG_structure_type:
-                cvar_map(type,cint_op); // traverse type hierarchy
+                cvar_map(type,type_info_op); // traverse type hierarchy
                 break;
-            case DW_TAG_pointer_type:
-                LTV_enq(&queue,ref_create_cvar(LT_get(type,TYPE_BASE,HEAD,KEEP),*(char **) cvar->data),HEAD);
+            case DW_TAG_pointer_type: {
+                LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
+                if (base_type)
+                    LTV_enq(&queue,ref_create_cvar(base_type,*(void **) cvar->data),HEAD);
                 break;
+            }
             case DW_TAG_array_type:
-                fprintf(ofile,"    array unimplemented\n");
+                fprintf(ofile," (array unimplemented)");
                 break;
             case DW_TAG_enumeration_type:
-                fprintf(ofile,"    enum unimplemented\n");
+                fprintf(ofile," (enum unimplemented)");
                 break;
             case DW_TAG_enumerator:
-            case DW_TAG_base_type: {
+                fprintf(ofile,"enumerator!!!\n");
+                break;
+            case DW_TAG_base_type:
+            {
                 TYPE_UVALUE uval;
                 char buf2[64];
                 if (Type_getUVAL(cvar,&uval))
-                    fprintf(ofile,"%s\n\n",Type_pushUVAL(&uval,buf2));
+                    fprintf(ofile," %s",Type_pushUVAL(&uval,buf2));
                 break;
             }
             default:
@@ -363,6 +352,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
                 break;
         }
     done:
+        fprintf(ofile,"\n");
         return status;
     }
 
@@ -379,16 +369,10 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
 int ref_print_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
-    char *cvar_kind=NULL;
-    STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
-    if (!strcmp(cvar_kind,"TYPE_INFO"))
+    if (ltv->flags&LT_TYPE) // special case
         print_type_info(ofile,(TYPE_INFO *) ltv->data);
-    else if (!strcmp(cvar_kind,"CU_DATA"))
-        print_cu_data(ofile,(CU_DATA *) ltv->data);
-
-    printf("\n");
-    ref_dump_cvar(ofile,ltv,0); // use reflection!!!!!
-
+    else
+        ref_dump_cvar(ofile,ltv,0); // use reflection!!!!!
  done:
     return status;
 }
@@ -396,13 +380,9 @@ int ref_print_cvar(FILE *ofile,LTV *ltv)
 int ref_dot_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
-    char *cvar_kind=NULL;
-    STRY(!(cvar_kind=attr_get(ltv,CVAR_KIND)),"getting cvar type name");
-    if (!strcmp(cvar_kind,"TYPE_INFO"))
+    if (ltv->flags&LT_TYPE)
         dot_type_info(ofile,(TYPE_INFO *) ltv->data);
-    else if (!strcmp(cvar_kind,"CU_DATA"))
-        dot_cu_data(ofile,(CU_DATA *) ltv->data);
-    fprintf(ofile,"\"LTV%x\" -> " CVAR_FORMAT " [color=red]\n",ltv,ltv->data); // link ltv to type_info
+    fprintf(ofile,"\"LTV%x\" -> " CVAR_FORMAT " [color=purple]\n",ltv,ltv->data); // link ltv to type_info
  done:
     return status;
 }
@@ -686,7 +666,6 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
     return status;
 }
 
-
 char *get_diename(Dwarf_Debug dbg,Dwarf_Die die)
 {
     int status=0;
@@ -710,21 +689,15 @@ int ref_preview_module(LTV *module) // just put the cu name under module
     done:
         return status;
     }
-    return traverse_cus(module,op,NULL);
+    char *filename=FORMATA(filename,module->len,"%s",module->data);
+    return traverse_cus(filename,op,NULL);
 }
 
-int ltv_is_cvar_kind(LTV *ltv,char *kind)
-{
-    char *cvar_kind=NULL;
-    return ltv->flags&LT_CVAR &&               // ltv is a cvar
-        (cvar_kind=attr_get(ltv,CVAR_KIND)) && // cvar has a "kind of cvar" name
-        !strcmp(kind,cvar_kind);               // name matches param
-}
-
-int link_symbols(LTV *module,LTV *index)
+int resolve_symbols(LTV *module,char *dlname,LTV *index)
 {
     int status=0;
-    LTV *globals=LTV_VOID,*types=LTV_VOID;
+    LTV *types=LTV_VOID,*global_types=LTV_VOID,*globals=LTV_VOID;
+    void *dlhandle=NULL;
 
     int derive_symbolic_name(LTV *ltv)
     {
@@ -746,17 +719,21 @@ int link_symbols(LTV *module,LTV *index)
             type_info->flags|=TYPEF_SYMBOLIC;
             attr_del(ltv,TYPE_NAME);
             attr_set(ltv,TYPE_NAME,sym);
-            if (category && !LT_get(category,sym,HEAD,KEEP))
+            if (category && !LT_get(category,sym,HEAD,KEEP)) { // if not a dup, place item into category
                 LT_put(category,sym,TAIL,ltv);
-
-            // dedup
-            if (base_symb) { // to get here, base must already be installed in "types"
-                LTV *symb_base=LT_get(types,base_symb,HEAD,KEEP);
-                if (symb_base && symb_base!=base_ltv) { // may already be correct
-                    TYPE_INFO *new_base=(TYPE_INFO *) symb_base->data;
-                    attr_del(ltv,TYPE_BASE);
-                    LT_put(ltv,TYPE_BASE,TAIL,symb_base);
-                    strncpy(type_info->base_str,new_base->id_str,TYPE_IDLEN);
+                if (category==global_types) { // dynamically link globals
+                    if (!type_info->dladdr) {
+                        type_info->dladdr=dlsym(dlhandle,sym);
+                        LT_put(globals,sym,HEAD,ref_create_cvar(ltv,type_info->dladdr));
+                    }
+                } else if (base_symb) { // dedup types (not global types) to get here, base must already be installed in "types"
+                    LTV *symb_base=LT_get(types,base_symb,HEAD,KEEP);
+                    if (symb_base && symb_base!=base_ltv) { // may already be correct
+                        TYPE_INFO *new_base=(TYPE_INFO *) symb_base->data;
+                        attr_del(ltv,TYPE_BASE);
+                        LT_put(ltv,TYPE_BASE,TAIL,symb_base);
+                        strncpy(type_info->base_str,new_base->id_str,TYPE_IDLEN);
+                    }
                 }
             }
         }
@@ -803,12 +780,8 @@ int link_symbols(LTV *module,LTV *index)
                 if (base_symb)
                     categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"const %s",base_symb));
                 break;
-            case DW_TAG_subprogram:
-            case DW_TAG_subroutine_type:
-                if (type_name) // global!
-                    categorize_symbolic(globals,FORMATA(composite_name,strlen(type_name),"%s",type_name));
-                break;
             case DW_TAG_base_type:
+            case DW_TAG_enumerator:
                 if (type_name)
                     categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
                 break;
@@ -818,10 +791,14 @@ int link_symbols(LTV *module,LTV *index)
                 else if (base_symb) // anonymous typedef
                     categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
                 break;
-            case DW_TAG_enumerator:
+            case DW_TAG_subprogram:
+            case DW_TAG_subroutine_type:
+                if (type_name) // GLOBAL!
+                    categorize_symbolic(global_types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                break;
             case DW_TAG_variable:
-                if (type_name) // global!
-                    categorize_symbolic(globals,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                if (type_name) // GLOBAL!
+                    categorize_symbolic(global_types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
                 break;
             case DW_TAG_compile_unit:
             case DW_TAG_subrange_type:
@@ -838,18 +815,21 @@ int link_symbols(LTV *module,LTV *index)
         return status;
     }
 
-    void *link_symb_name(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    void *resolve_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
-        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
+        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
             (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
             derive_symbolic_name(*ltv);
         }
         return NULL;
     }
 
-    STRY(ltv_traverse(index,link_symb_name,link_symb_name)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
-    LT_put(module,"global",TAIL,globals);
+    STRY(!(dlhandle=dlopen(dlname,RTLD_LAZY)),"opening module for dynamic linking");
+    STRY(!LT_put(module,MOD_HDL,HEAD,LTV_new(dlhandle,0,LT_BIN)),"stashing module handle");
+    STRY(ltv_traverse(index,resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
     LT_put(module,"type",TAIL,types);
+    LT_put(module,"global_type",TAIL,global_types);
+    LT_put(module,"global",TAIL,globals);
 
     graph_types_to_file("/tmp/types.dot",types);
 
@@ -862,23 +842,9 @@ int traverse_types(char *filename,LTV *module)
     int status=0;
     FILE *ofile=fopen(filename,"w");
 
-    LTV *types=LT_get(module,"type",HEAD,KEEP); // stash it so we can do lookups in it while traversing
-
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        listree_acyclic(lti,ltvr,ltv,depth,flags);
-        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) { // finesse: flags won't match if listree_acyclic set LT_TRAVERSE_HALT
-            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types when found
-
-            // link cvars to their types
-            char *cvar_kind=attr_get((*ltv),CVAR_KIND);
-            LTV *cvar_type=LT_get(types,cvar_kind,HEAD,KEEP);
-            if (cvar_type) {
-                LT_put((*ltv),CVAR_TYPE,HEAD,cvar_type);
-                // FIXME: delete CVAR_KIND attribute after reflection can handle dumping of CVAR data
-                //attr_del((*ltv),CVAR_KIND);
-            }
-
-            // simple dump of just typenames linked to their base types
+        listree_acyclic(lti,ltvr,ltv,depth,flags); // finesse: traverse flags below won't match if listree_acyclic sets LT_TRAVERSE_HALT
+        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR && !((*ltv)->flags&LT_TYPE)) {
             TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
             fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_NAME));
             if (type_info->flags&TYPEF_BASE)
@@ -887,8 +853,9 @@ int traverse_types(char *filename,LTV *module)
         return NULL;
     }
 
+    // simple dump of just typenames linked to their base types
     fprintf(ofile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
-    STRY(ltv_traverse(module,traverse_types,NULL)!=NULL,"traversing globals");
+    STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing module");
     fprintf(ofile,"}\n");
  done:
     fclose(ofile);
@@ -896,7 +863,7 @@ int traverse_types(char *filename,LTV *module)
 }
 
 
-int ref_curate_module(LTV *module)
+int ref_curate_module(LTV *module,char *altname)
 {
     int status=0;
     CU_DATA cu_data;
@@ -1006,7 +973,7 @@ int ref_curate_module(LTV *module)
                 return status;
             }
 
-            STRY(!(type_info_ltv=CVAR_NEW(TYPE_INFO)),"allocating cu type info ltv");
+            STRY(!(type_info_ltv=LTV_new(NEW(TYPE_INFO),sizeof(TYPE_INFO),LT_OWN|LT_BIN|LT_CVAR|LT_TYPE)),"creating TYPE_INFO-type CVAR");
             type_info=(TYPE_INFO *) type_info_ltv->data;
 
             STRY(populate_type_info(dbg,die,type_info_ltv,&cu_data),"populating die type info");
@@ -1021,13 +988,14 @@ int ref_curate_module(LTV *module)
         return work_op(NULL,die);
     }
 
+    char *filename=altname?altname:FORMATA(filename,module->len,"%s",module->data);
     do {
-        STRY(traverse_cus(module,init,&cu_data),"traversing module compute units");
+        STRY(traverse_cus(filename,init,&cu_data),"traversing module compute units");
         pass++;
     } while (!LTV_empty(dependencies));
 
     LTV_release(dependencies);
-    link_symbols(module,index);
+    resolve_symbols(module,altname?NULL:filename,index); // dlopen wants NULL for "this" module
     traverse_types("/tmp/simple.dot",module);
     LTV_release(index);
     LTV_release(compile_units);
@@ -1040,18 +1008,13 @@ int ref_curate_module(LTV *module)
 
 LTV *ref_find_basic(LTV *type)
 {
-    int status=0;
-
-    void *op(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV) && ltv_is_cvar_kind((*ltv),"TYPE_INFO")) {
-            TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
-            if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
-                return (*ltv);
-            (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
-        }
-        return NULL;
-    }
-    return (LTV *) ltv_traverse(type,op,NULL);
+    TYPE_INFO *type_info=NULL;
+    do {
+        type_info=(TYPE_INFO *) type->data;
+        if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
+            return type;
+    } while (type=LT_get(type,TYPE_BASE,HEAD,KEEP));
+    return NULL;
 }
 
 LTV *ref_get_child(LTV *type,char *member)
@@ -1069,10 +1032,10 @@ char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 {
     switch(uval->dutype)
     {
-        case TYPE_INT1S:   sprintf(buf,"%d",    uval->int1s.val);   break;
-        case TYPE_INT2S:   sprintf(buf,"%d",    uval->int2s.val);   break;
-        case TYPE_INT4S:   sprintf(buf,"%d",    uval->int4s.val);   break;
-        case TYPE_INT8S:   sprintf(buf,"%lld",  uval->int8s.val);   break;
+        case TYPE_INT1S:   sprintf(buf,"0x%x",  uval->int1s.val);   break;
+        case TYPE_INT2S:   sprintf(buf,"0x%x",  uval->int2s.val);   break;
+        case TYPE_INT4S:   sprintf(buf,"0x%x",  uval->int4s.val);   break;
+        case TYPE_INT8S:   sprintf(buf,"0x%llx",uval->int8s.val);   break;
         case TYPE_INT1U:   sprintf(buf,"0x%x",  uval->int1u.val);   break;
         case TYPE_INT2U:   sprintf(buf,"0x%x",  uval->int2u.val);   break;
         case TYPE_INT4U:   sprintf(buf,"0x%x",  uval->int4u.val);   break;

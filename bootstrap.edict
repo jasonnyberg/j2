@@ -1,3 +1,4 @@
+[build/libedict.so] #import @edict edict@module
 [preloads.edict] #read
 [[stdin] #read | read_stdin!] @read_stdin
 read_stdin!

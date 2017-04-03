@@ -488,7 +488,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             int status=0;
             LTV *mod_ltv=NULL;
             STRY(!(mod_ltv=stack_peek(context)),"peeking dwarf import filename");
-            STRY(ref_curate_module(mod_ltv),"importing module");
+            STRY(ref_curate_module(mod_ltv,NULL),"importing module");
         done:
             return status;
         }
@@ -849,10 +849,7 @@ int edict(int argc,char *argv[])
     try_reset();
     STRY(!(edict=NEW(EDICT)),"allocating edict");
     STRY(edict_init(edict),"initializing edict");
-
-    char *buf=NULL;
-    STRY(edict_eval(edict,FORMATA(buf,strlen(argv[0]),"[%s] #import @module",argv[0])),"initializing reflection");
-
+    
     switch(argc) {
         case 2:  STRY(edict_eval(edict,argv[1]),"evaluating argv[1]"); break;
         default: STRY(edict_eval(edict,("[bootstrap.edict] #read")),"bootstrapping edict"); break;

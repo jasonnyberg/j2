@@ -1,6 +1,5 @@
 build
 cscope*
-test
 .cproject
 .idea/
 .project

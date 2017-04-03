@@ -40,15 +40,17 @@
  *     [type_info]...
  */
 
+#define MOD_HDL   "mod hdl"   // a module's dynamic linker handle
+
 #define TYPE_ID   "type id"   // a die's offset
 #define TYPE_NAME "type name" // a die's type name
 #define TYPE_BASE "type base" // a die's base's ltv
 
-#define CVAR_KIND "cvar kind" // what kind of cvar is this (i.e. what to cast ltv->data to)
+#define CVAR_SYMB "cvar symb" // what kind of cvar is this (i.e. what to cast ltv->data to)
 #define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
 
 #define DIE_FORMAT "\"%s\""       // format for a die's DOT-language element id
-#define CVAR_FORMAT "\"CVAR_%s\"" // format for a CVAR's DOT-language element id
+#define CVAR_FORMAT "\"CVAR_%x\"" // format for a CVAR's DOT-language element id
 
 #define TYPE_IDLEN 12
 #define DWARF_ID(str,global_offset) snprintf((str),TYPE_IDLEN,"%08x",(global_offset))
@@ -137,6 +139,7 @@ typedef struct
     Dwarf_Signed location; // ??
     Dwarf_Unsigned addr; // from loclist
     Dwarf_Bool external;
+    void *dladdr; // address resolved via dynamic linker
 } TYPE_INFO;
 
 
@@ -144,7 +147,7 @@ typedef struct
 extern LTV *ref_create_cvar(LTV *type,void *data);
 extern int ref_print_cvar(FILE *ofile,LTV *ltv);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
-extern int ref_curate_module(LTV *mod_ltv);
+extern int ref_curate_module(LTV *mod_ltv,char *altname);
 extern int ref_preview_module(LTV *mod_ltv);
 
 

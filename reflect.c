@@ -248,14 +248,51 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
 }
 
 
-LTV *ref_find_basic(LTV *type);
+LTV *ref_find_basic(LTV *type)
+{
+    TYPE_INFO *type_info=NULL;
+    do {
+        type_info=(TYPE_INFO *) type->data;
+        if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
+            return type;
+    } while (type=LT_get(type,TYPE_BASE,HEAD,KEEP));
+    return NULL;
+}
 
-LTV *ref_create_cvar(LTV *type,void *data)
+LTV *ref_get_child(LTV *type,char *member)
+{
+    if (type->flags&LT_TYPE) {
+        LTV *subtype=LT_get(type,member,HEAD,KEEP);
+        if (subtype->flags&LT_TYPE)
+            return subtype;
+    }
+    return NULL;
+}
+
+LTV *ref_get_element(LTV *type,int index)
+{
+    // see Type_getChild/Type_findMemberByIndex
+}
+
+LTV *ref_create_cvar(LTV *type,void *data,char *member)
 {
     int status=0;
     LTV *basic_type=NULL,*cvar=NULL;
     TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
     TYPE_INFO *type_info=(TYPE_INFO *) basic_type->data;
+
+    switch(type_info->tag) {
+        case DW_TAG_structure_type:
+        case DW_TAG_union_type:
+            if (member)
+                return ref_create_cvar(ref_get_child(basic_type,member),data,NULL);
+            break;
+        case DW_TAG_member:
+            return ref_create_cvar(LT_get(type,TYPE_BASE,HEAD,KEEP),data+type_info->data_member_location,NULL);
+        default:
+            break;
+    }
+
     int size=type_info->bytesize;
     if (data)
         STRY(!(cvar=LTV_new(data,size,LT_BIN|LT_CVAR)),"allocating cvar ltv");
@@ -283,7 +320,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
     STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"validating cvar via type");
     CLL queue;
     CLL_init(&queue);
-    LTV_enq(&queue,ref_create_cvar(type,cvar->data),TAIL); // copy cvar so we don't mess with it
+    LTV_enq(&queue,ref_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
 
     int process_type_info(LTV *cvar) {
         int status=0;
@@ -296,7 +333,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
             TYPE_INFO *type_info=(TYPE_INFO *) ltv->data;
             switch (type_info->tag) {
                 case DW_TAG_member:
-                    LTV_enq(&queue,ref_create_cvar(LT_get(ltv,TYPE_BASE,HEAD,KEEP),cvar->data+type_info->data_member_location),TAIL);
+                    LTV_enq(&queue,ref_create_cvar(LT_get(ltv,TYPE_BASE,HEAD,KEEP),cvar->data+type_info->data_member_location,NULL),TAIL);
                     break;
                 default:
                     fprintf(ofile,"    child tag %d unimplemented\n",type_info->tag);
@@ -322,7 +359,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
             case DW_TAG_pointer_type: {
                 LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
                 if (base_type)
-                    LTV_enq(&queue,ref_create_cvar(base_type,*(void **) cvar->data),HEAD);
+                    LTV_enq(&queue,ref_create_cvar(base_type,*(void **) cvar->data,NULL),HEAD);
                 break;
             }
             case DW_TAG_array_type:
@@ -343,7 +380,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
                 break;
             }
             default:
-                LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data),HEAD);
+                LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
                 break;
         }
     done:
@@ -719,7 +756,7 @@ int resolve_symbols(LTV *module,char *dlname,LTV *index)
                 if (category==global_types) { // dynamically link globals
                     if (!type_info->dladdr) {
                         type_info->dladdr=dlsym(dlhandle,sym);
-                        LT_put(globals,sym,HEAD,ref_create_cvar(ltv,type_info->dladdr));
+                        LT_put(globals,sym,HEAD,ref_create_cvar(ltv,type_info->dladdr,NULL));
                     }
                 } else if (base_symb) { // dedup types (not global types) to get here, base must already be installed in "types"
                     LTV *symb_base=LT_get(types,base_symb,HEAD,KEEP);
@@ -996,30 +1033,6 @@ int ref_curate_module(LTV *module,char *altname)
     LTV_release(compile_units);
  done:
     return status;
-}
-
-
-
-
-LTV *ref_find_basic(LTV *type)
-{
-    TYPE_INFO *type_info=NULL;
-    do {
-        type_info=(TYPE_INFO *) type->data;
-        if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
-            return type;
-    } while (type=LT_get(type,TYPE_BASE,HEAD,KEEP));
-    return NULL;
-}
-
-LTV *ref_get_child(LTV *type,char *member)
-{
-    return LT_get(type,member,HEAD,KEEP);
-}
-
-LTV *ref_get_element(LTV *type,int index)
-{
-    // see Type_getChild/Type_findMemberByIndex
 }
 
 

@@ -506,7 +506,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             int status=0;
             LTV *type,*cvar;
             STRY(!(type=stack_pop(context)),"popping type");
-            STRY(!(cvar=ref_create_cvar(type,NULL)),"creating cvar");
+            STRY(!(cvar=ref_create_cvar(type,NULL,NULL)),"creating cvar");
             STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
             STRY(!stack_push(context,cvar),"pushing cvar");
         done:
@@ -516,12 +516,15 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int dump(char *label) {
             int status=0;
             edict_resolve(context,&ref_tok->children,false);
-            LTI *lti=REF_lti(ref_head);
-            if (lti) {
+            LTV *cvar=NULL;
+            LTI *lti=NULL;
+            if ((lti=REF_lti(ref_head))) {
                 CLL *ltvs=&lti->ltvs;
                 graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
                 print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
             }
+            else if ((cvar=REF_ltv(ref_head)) && cvar->flags&LT_CVAR)
+                ref_print_cvar(stdout,cvar);
         done:
             return status;
         }

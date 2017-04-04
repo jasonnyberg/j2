@@ -42,7 +42,6 @@
 
 #define MOD_HDL   "mod hdl"   // a module's dynamic linker handle
 
-#define TYPE_ID   "type id"   // a die's offset
 #define TYPE_NAME "type name" // a die's type name
 #define TYPE_BASE "type base" // a die's base's ltv
 
@@ -144,7 +143,7 @@ typedef struct
 
 
 
-extern LTV *ref_create_cvar(LTV *type,void *data);
+extern LTV *ref_create_cvar(LTV *type,void *data,char *member);
 extern int ref_print_cvar(FILE *ofile,LTV *ltv);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
 extern int ref_curate_module(LTV *mod_ltv,char *altname);

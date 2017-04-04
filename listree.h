@@ -181,6 +181,7 @@ typedef struct REF {
     CLL root;   // LTV being queried
     LTI *lti;   // name lookup result
     LTVR *ltvr; // value lookup result
+    LTV *cvar;  // cvar deref result
     int reverse;
 } REF;
 

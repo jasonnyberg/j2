@@ -688,6 +688,7 @@ REF *REF_new(char *data,int len)
         CLL_init(&ref->root);
         ref->lti=NULL;
         ref->ltvr=NULL;
+        ref->cvar=NULL;
         ref->reverse=rev;
         ref_count++;
     }
@@ -712,6 +713,7 @@ LTV *REF_reset(REF *ref,LTV *newroot)
     }
     ref->lti=NULL;
     ref->ltvr=NULL;
+    LTV_release(ref->cvar);
     CLL_release(&ref->root,LTVR_release);
     if (newroot)
         LTV_enq(&ref->root,newroot,HEAD);
@@ -792,27 +794,28 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
 
         STRY(!root,"validating root");
         root=REF_reset(ref,root); // clean up ref if root changed
-
-        if (root->flags&LT_CVAR) {
-            // attempt lookup within cvar
-            // if (complete)
-            //     goto done;
+        
+        if (root->flags&LT_CVAR) { // attempt lookup within cvar
+            char *buf=NULL;
+            STRY(!(ref->cvar=ref_create_cvar(LT_get(root,CVAR_TYPE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))),
+                 "dereferencing cvar member %s",name);
+            root=ref->cvar;
+        } else {
+            if (!ref->lti) { // resolve lti
+                if ((status=!(ref->lti=LTI_lookup(root,name,insert))))
+                    goto done; // return failure, but don't log it
+            }
+            if (!ref->ltvr) { // resolve ltv(r)
+                TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
+                CATCH(!ref->ltvr && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
+            }
+            root=ref->ltvr->ltv;
         }
-
-        if (!ref->lti) { // resolve lti
-            if ((status=!(ref->lti=LTI_lookup(root,name,insert))))
-                goto done; // return failure, but don't log it
-        }
-        if (!ref->ltvr) { // resolve ltv(r)
-            TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
-            CATCH(!ref->ltvr && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
-        }
-        root=ref->ltvr->ltv;
 
         goto done; // success!
 
         install_placeholder:
-            STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_VOID:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
+        STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_VOID:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
 
         done:
         return status?NON_NULL:NULL;
@@ -843,20 +846,24 @@ int REF_iterate(CLL *refs,int remove)
         LTV *name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&name_ltvr);
         LTVR *val=(LTVR *) CLL_next(&ref->keys,&name_ltvr->lnk,FWD); // val will be next key
 
-        LTV *next_ltv=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr);
-        if (remove)
-            LTVR_release(&ref_ltvr->lnk);
-        if (next_ltv)
-            return ref;
-
-        if (LTV_wildcard(name)) {
-            LTV *root=REF_root(ref);
-            LTI *lti=ref->lti;
-            for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti)); // find next lti
-            if (CLL_EMPTY(&lti->ltvs)) // if LTI is pruneable
-                RBN_release(&root->sub.ltis,&lti->rbn,LTI_release); // prune it
-            if (ref->lti!=NULL)
+        if (ref->cvar) {
+            // iterate cvar
+        } else {
+            LTV *next_ltv=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr);
+            if (remove)
+                LTVR_release(&ref_ltvr->lnk);
+            if (next_ltv)
                 return ref;
+
+            if (LTV_wildcard(name)) {
+                LTV *root=REF_root(ref);
+                LTI *lti=ref->lti;
+                for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti)); // find next lti
+                if (CLL_EMPTY(&lti->ltvs)) // if LTI is pruneable
+                    RBN_release(&root->sub.ltis,&lti->rbn,LTI_release); // prune it
+                if (ref->lti!=NULL)
+                    return ref;
+            }
         }
 
         REF_reset(ref,NULL);
@@ -892,10 +899,18 @@ int REF_remove(REF *ref)
     return status;
 }
 
-LTI *REF_lti(REF *ref)   { return ref?ref->lti:NULL; }
-LTVR *REF_ltvr(REF *ref) { return ref?ref->ltvr:NULL; }
-LTV *REF_ltv(REF *ref)   { return ref && ref->ltvr?ref->ltvr->ltv:NULL; }
 LTV *REF_key(REF *ref)   { return LTV_peek(&ref->keys,HEAD); }
+LTI *REF_lti(REF *ref)   { return ref?ref->lti: NULL; }
+LTVR *REF_ltvr(REF *ref) { return ref?ref->ltvr:NULL; }
+LTV *REF_ltv(REF *ref)   {
+    if (!ref)
+        return NULL;
+    else if (ref->cvar)
+        return ref->cvar;
+    else if (ref->ltvr)
+        return ref->ltvr->ltv;
+    else return NULL;
+}
 
 void REF_print(FILE *ofile,REF *ref,char *label)
 {

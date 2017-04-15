@@ -507,7 +507,6 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             LTV *type,*cvar;
             STRY(!(type=stack_pop(context)),"popping type");
             STRY(!(cvar=ref_create_cvar(type,NULL,NULL)),"creating cvar");
-            STRY(!LTV_enq(&(cvar->sub.ltvs),type,HEAD),"pushing type into cvar");
             STRY(!stack_push(context,cvar),"pushing cvar");
         done:
             return status;
@@ -538,16 +537,16 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             LTV *key=REF_key(ref_head);
             char *buf=NULL;
             if (key) {
-                if      (!strnncmp(key->data,key->len,"read",-1))   STRY(readfrom(),"starting input stream");
-                else if (!strnncmp(key->data,key->len,"cus",-1))    STRY(preview(),"importing module preview");
-                else if (!strnncmp(key->data,key->len,"import",-1)) STRY(import(),"importing dwarf module");
-                else if (!strnncmp(key->data,key->len,"new",-1))    STRY(cvar(),"creating cvar");
-                else if (!strnncmp(key->data,key->len,"error",-1))  STRY(error(),"evaluating \"#error\"");
-                else if (!strnncmp(key->data,key->len,"throw",-1))  STRY(throw(NON_NULL),"evaluating \"#throw\"");
+                if      (!strnncmp(key->data,key->len,"read",-1))    STRY(readfrom(),"starting input stream");
+                else if (!strnncmp(key->data,key->len,"preview",-1)) STRY(preview(),"importing module preview");
+                else if (!strnncmp(key->data,key->len,"import",-1))  STRY(import(),"importing dwarf module");
+                else if (!strnncmp(key->data,key->len,"new",-1))     STRY(cvar(),"creating cvar");
+                else if (!strnncmp(key->data,key->len,"error",-1))   STRY(error(),"evaluating \"#error\"");
+                else if (!strnncmp(key->data,key->len,"throw",-1))   STRY(throw(NON_NULL),"evaluating \"#throw\"");
                 else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");
             }
         } else {
-            edict_graph_to_file("/tmp/jj.dot",context->edict);
+            //edict_graph_to_file("/tmp/jj.dot",context->edict);
             print_ltvs(stdout,CODE_BLUE,&context->stack,CODE_RESET "\n",0);
         }
     done:

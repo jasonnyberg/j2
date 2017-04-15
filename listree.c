@@ -794,7 +794,7 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
 
         STRY(!root,"validating root");
         root=REF_reset(ref,root); // clean up ref if root changed
-        
+
         if (root->flags&LT_CVAR) { // attempt lookup within cvar
             char *buf=NULL;
             STRY(!(ref->cvar=ref_create_cvar(LT_get(root,CVAR_TYPE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))),
@@ -883,8 +883,13 @@ int REF_iterate(CLL *refs,int remove)
 int REF_assign(REF *ref,LTV *ltv)
 {
     int status=0;
-    STRY(!ref->lti,"validating ref lti");
-    STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
+    LTV *ref_ltv=REF_ltv(ref);
+    if (ref_ltv && ref_ltv->flags&LT_CVAR)
+        STRY(!ref_assign_cvar(ref_ltv,ltv),"assigning to cvar");
+    else {
+        STRY(!ref->lti,"validating ref lti");
+        STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
+    }
     done:
     return status;
 }

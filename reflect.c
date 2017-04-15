@@ -277,28 +277,41 @@ LTV *ref_get_element(LTV *type,int index)
 LTV *ref_create_cvar(LTV *type,void *data,char *member)
 {
     int status=0;
-    LTV *basic_type=NULL,*cvar=NULL;
+    LTV *basic_type=NULL,*member_type=NULL,*cvar=NULL;
     TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
     TYPE_INFO *type_info=(TYPE_INFO *) basic_type->data;
 
     switch(type_info->tag) {
         case DW_TAG_structure_type:
         case DW_TAG_union_type:
-            if (member)
-                return ref_create_cvar(ref_get_child(basic_type,member),data,NULL);
+            if (member) {
+                STRY(!(member_type=ref_get_child(basic_type,member)),"retrieving cvar member");
+                TYPE_INFO *member_type_info=(TYPE_INFO *) member_type->data;
+                return ref_create_cvar(member_type,data+member_type_info->data_member_location,NULL);
+            }
             break;
-        case DW_TAG_member:
-            return ref_create_cvar(LT_get(type,TYPE_BASE,HEAD,KEEP),data+type_info->data_member_location,NULL);
         default:
             break;
     }
 
     int size=type_info->bytesize;
     if (data)
-        STRY(!(cvar=LTV_new(data,size,LT_BIN|LT_CVAR)),"allocating cvar ltv");
+        STRY(!(cvar=LTV_new(data,size,LT_BIN|LT_CVAR)),"creating reference cvar");
     else
-        STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_OWN|LT_BIN|LT_CVAR)),"wrapping data with cvar ltv");
+        STRY(!(cvar=LTV_new((void *) mymalloc(size),size,LT_OWN|LT_BIN|LT_CVAR)),"creating allocated cvar");
     LT_put(cvar,CVAR_TYPE,HEAD,type);
+ done:
+    return status?NULL:cvar;
+}
+
+LTV *ref_assign_cvar(LTV *cvar,LTV *ltv)
+{
+    int status=0;
+    LTV *type=NULL;
+    TYPE_UVALUE uval;
+    Type_getUVAL(cvar,&uval);
+    if (uval.base.dutype)
+        STRY(Type_putUVAL(cvar,Type_pullUVAL(&uval,ltv->data)),"converting text value to cvar");
  done:
     return status?NULL:cvar;
 }
@@ -333,7 +346,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
             TYPE_INFO *type_info=(TYPE_INFO *) ltv->data;
             switch (type_info->tag) {
                 case DW_TAG_member:
-                    LTV_enq(&queue,ref_create_cvar(LT_get(ltv,TYPE_BASE,HEAD,KEEP),cvar->data+type_info->data_member_location,NULL),TAIL);
+                    LTV_enq(&queue,ref_create_cvar(ltv,cvar->data+type_info->data_member_location,NULL),TAIL);
                     break;
                 default:
                     fprintf(ofile,"    child tag %d unimplemented\n",type_info->tag);
@@ -371,12 +384,19 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
             case DW_TAG_enumerator:
                 fprintf(ofile,"enumerator!!!\n");
                 break;
-            case DW_TAG_base_type:
-            {
+            case DW_TAG_member:
+                if (type_info->flags&TYPEF_BYTESIZE) {
+                    print_type_info(ofile,type_info);
+                    // and fall thru case!!!
+                } else {
+                    LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                    break;
+                }
+            case DW_TAG_base_type: {
                 TYPE_UVALUE uval;
-                char buf2[64];
+                char buf[64];
                 if (Type_getUVAL(cvar,&uval))
-                    fprintf(ofile," %s",Type_pushUVAL(&uval,buf2));
+                    fprintf(ofile," %s",Type_pushUVAL(&uval,buf));
                 break;
             }
             default:
@@ -547,6 +567,9 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
             case DW_AT_encoding: // DW_ATE_unsigned, etc.
                 IF_OK(dwarf_formudata(*attr,&type_info->encoding,&error),type_info->flags|=TYPEF_ENCODING);
                 break;
+            case DW_AT_GNU_vector: // "The main difference between a regular array and the vector variant is that vectors are passed by value to functions."
+                type_info->flags|=TYPEF_VECTOR; // an attribute of an array
+                break;
             case DW_AT_sibling:
             case DW_AT_high_pc:
             case DW_AT_decl_line:
@@ -569,7 +592,6 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
             case DW_AT_GNU_tail_call:
             case DW_AT_GNU_call_site_value:
             case 8473: // an attribute that has no definition or name in current dwarf.h
-
             case DW_AT_specification: // C++?
             case DW_AT_object_pointer: // C++
             case DW_AT_pure: // C++
@@ -577,7 +599,6 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
             case DW_AT_accessibility:
             case DW_AT_ranges:
             case DW_AT_explicit:
-
                 break;
             default:
                 printf(CODE_RED "Unrecognized attr 0x%x\n",vshort);
@@ -713,16 +734,18 @@ char *get_diename(Dwarf_Debug dbg,Dwarf_Die die)
 
 int ref_preview_module(LTV *module) // just put the cu name under module
 {
+    CU_DATA cu_data;
     int op(Dwarf_Debug dbg,Dwarf_Die die) {
         int status=0;
         char *cu_name=NULL;
         STRY(!(cu_name=get_diename(dbg,die)),"looking up cu die name");
+        printf("%s\n",cu_name);
         STRY(!LT_put(module,"compile units",TAIL,LTV_new(cu_name,-1,LT_OWN)),"adding cu name to list of compute units");
     done:
         return status;
     }
-    char *filename=FORMATA(filename,module->len,"%s",module->data);
-    return traverse_cus(filename,op,NULL);
+    char *filename=PRINTA(filename,module->len,module->data);
+    return traverse_cus(filename,op,&cu_data);
 }
 
 int resolve_symbols(LTV *module,char *dlname,LTV *index)
@@ -863,11 +886,24 @@ int resolve_symbols(LTV *module,char *dlname,LTV *index)
     LT_put(module,"global_type",TAIL,global_types);
     LT_put(module,"global",TAIL,globals);
 
-    graph_types_to_file("/tmp/types.dot",types);
+    //graph_types_to_file("/tmp/types.dot",types);
 
  done:
     return status;
 }
+
+
+
+// FIXME: USE dwarf_offdie_b TO DO ON-DEMAND TYPE RESOLUTION
+/* dwarf_offdie_b() new October 2011 */
+/*  Finding die given global (not CU-relative) offset.
+    Applies to debug_info (is_info true) or debug_types (is_info false). */
+int dwarf_offdie_b(Dwarf_Debug /*dbg*/,
+                       Dwarf_Off        /*offset*/,
+                       Dwarf_Bool       /*is_info*/,
+                       Dwarf_Die*       /*return_die*/,
+                       Dwarf_Error*     /*error*/);
+
 
 int traverse_types(char *filename,LTV *module)
 {
@@ -1028,7 +1064,7 @@ int ref_curate_module(LTV *module,char *altname)
 
     LTV_release(dependencies);
     resolve_symbols(module,altname?NULL:filename,index); // dlopen wants NULL for "this" module
-    traverse_types("/tmp/simple.dot",module);
+    //traverse_types("/tmp/simple.dot",module);
     LTV_release(index);
     LTV_release(compile_units);
  done:
@@ -1038,7 +1074,7 @@ int ref_curate_module(LTV *module,char *altname)
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 {
-    switch(uval->dutype)
+    switch(uval->base.dutype)
     {
         case TYPE_INT1S:   sprintf(buf,"0x%x",  uval->int1s.val);   break;
         case TYPE_INT2S:   sprintf(buf,"0x%x",  uval->int2s.val);   break;
@@ -1059,7 +1095,7 @@ char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
 {
     int tVar;
-    switch(uval->dutype)
+    switch(uval->base.dutype)
     {
         case TYPE_INT1S:   sscanf(buf,"%i",  &tVar);uval->int1s.val=tVar; break;
         case TYPE_INT2S:   sscanf(buf,"%i",  &tVar);uval->int2s.val=tVar; break;
@@ -1082,16 +1118,16 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
     {                                                                           \
         switch (uval.dutype)                                                    \
         {                                                                       \
-            case TYPE_INT1S: var=(typeof(var)) uval.int1s.val; break;           \
-            case TYPE_INT2S: var=(typeof(var)) uval.int2s.val; break;           \
-            case TYPE_INT4S: var=(typeof(var)) uval.int4s.val; break;           \
-            case TYPE_INT8S: var=(typeof(var)) uval.int8s.val; break;           \
-            case TYPE_INT1U: var=(typeof(var)) uval.int1u.val; break;           \
-            case TYPE_INT2U: var=(typeof(var)) uval.int2u.val; break;           \
-            case TYPE_INT4U: var=(typeof(var)) uval.int4u.val; break;           \
-            case TYPE_INT8U: var=(typeof(var)) uval.int8u.val; break;           \
-            case TYPE_FLOAT4: var=(typeof(var)) uval.float4.val; break;         \
-            case TYPE_FLOAT8: var=(typeof(var)) uval.float8.val; break;         \
+            case TYPE_INT1S:   var=(typeof(var)) uval.int1s.val; break;         \
+            case TYPE_INT2S:   var=(typeof(var)) uval.int2s.val; break;         \
+            case TYPE_INT4S:   var=(typeof(var)) uval.int4s.val; break;         \
+            case TYPE_INT8S:   var=(typeof(var)) uval.int8s.val; break;         \
+            case TYPE_INT1U:   var=(typeof(var)) uval.int1u.val; break;         \
+            case TYPE_INT2U:   var=(typeof(var)) uval.int2u.val; break;         \
+            case TYPE_INT4U:   var=(typeof(var)) uval.int4u.val; break;         \
+            case TYPE_INT8U:   var=(typeof(var)) uval.int8u.val; break;         \
+            case TYPE_FLOAT4:  var=(typeof(var)) uval.float4.val; break;        \
+            case TYPE_FLOAT8:  var=(typeof(var)) uval.float8.val; break;        \
             case TYPE_FLOAT12: var=(typeof(var)) uval.float12.val; break;       \
         }                                                                       \
     }
@@ -1121,7 +1157,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
     int status=0;
     LTV *type=NULL;
     STRY(!cvar || !uval,"validating params");
-    STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"retrieving cvar type");
+    STRY(!(type=ref_find_basic(LT_get(cvar,CVAR_TYPE,HEAD,KEEP))),"retrieving cvar basic type");
     TYPE_INFO *type_info=(TYPE_INFO *) type->data;
 
     ull size=type_info->bytesize;
@@ -1129,6 +1165,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
     ull bitoffset=type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
+        case DW_TAG_member:           encoding=5;                   break; // bitfield
         case DW_TAG_enumeration_type: encoding=5;                   break;
         case DW_TAG_pointer_type:     encoding=7;                   break;
         case DW_TAG_base_type:        encoding=type_info->encoding; break;
@@ -1139,29 +1176,29 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
     switch (encoding)
     {
         case DW_ATE_float:
-            if (size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
-            if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
-            if (size==12) GETUVAL(float12,TYPE_FLOAT12,uval);
+            if      (size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
+            else if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
+            else if (size==12) GETUVAL(float12,TYPE_FLOAT12,uval);
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
-            if (size==1) GETUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
-            if (size==2) GETUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
-            if (size==4) GETUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
-            if (size==8) GETUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
+            if      (size==1)  GETUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
+            else if (size==2)  GETUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
+            else if (size==4)  GETUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
+            else if (size==8)  GETUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
             break;
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
-            if (size==1) GETUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
-            if (size==2) GETUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
-            if (size==4) GETUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
-            if (size==8) GETUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
+            if      (size==1)  GETUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
+            else if (size==2)  GETUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
+            else if (size==4)  GETUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
+            else if (size==8)  GETUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
             break;
         default:
             break;
     }
  done:
-    return uval->dutype;
+    return uval->base.dutype;
 }
 
 #define PUTUVAL(member,type,uval)                                               \
@@ -1185,7 +1222,7 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
     int status=0;
     LTV *type=NULL;
     STRY(!cvar || !uval,"validating params");
-    STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"retrieving cvar type");
+    STRY(!(type=ref_find_basic(LT_get(cvar,CVAR_TYPE,HEAD,KEEP))),"retrieving cvar basic type");
     TYPE_INFO *type_info=(TYPE_INFO *) type->data;
 
     ull size=type_info->bytesize;
@@ -1193,6 +1230,7 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
     ull bitoffset=type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
+        case DW_TAG_member:           encoding=5;                   break; // bitfield
         case DW_TAG_enumeration_type: encoding=5;                   break;
         case DW_TAG_pointer_type:     encoding=7;                   break;
         case DW_TAG_base_type:        encoding=type_info->encoding; break;
@@ -1201,23 +1239,23 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
 
     switch (encoding) {
         case 4: // float
-            if (size==4)  PUTUVAL(float4, TYPE_FLOAT4, uval);
-            if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
-            if (size==12) PUTUVAL(float12,TYPE_FLOAT12,uval);
+            if      (size==4)  PUTUVAL(float4, TYPE_FLOAT4, uval);
+            else if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
+            else if (size==12) PUTUVAL(float12,TYPE_FLOAT12,uval);
             break;
         case 5: // signed int
         case 6: // signed char
-            if (size==1)  PUTUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
-            if (size==2)  PUTUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
-            if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
-            if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
+            if      (size==1)  PUTUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
+            else if (size==2)  PUTUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
+            else if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
+            else if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
             break;
         case 7: // unsigned int
         case 8: // unsigned char
-            if (size==1)  PUTUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
-            if (size==2)  PUTUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
-            if (size==4)  PUTUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
-            if (size==8)  PUTUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
+            if      (size==1)  PUTUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
+            else if (size==2)  PUTUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
+            else if (size==4)  PUTUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
+            else if (size==8)  PUTUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
             break;
         default:
             break;
@@ -1254,95 +1292,10 @@ int Type_isBitField(TYPE_INFO *type_info) { return (type_info->bitsize || type_i
 
 
 #if 0
-void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data);
-void Type_dumpType(DICT *dict,char *name,char *addr,char *prefix);
-void Type_dumpVar(DICT *dict,char *name,char *prefix);
-
-typedef struct
-{
-    DICT_ITEM *typeitem;
-    char *addr;
-} TYPE_VAR;
-
-// DONE
-DICT_ITEM *Type_findBasic(DICT *dict,DICT_ITEM *typeitem,TYPE_INFO *type_info)
-{
-    while (typeitem && type_info && Type_getTypeInfo(typeitem,type_info))
-    {
-        if (!strcmp(type_info->category,"base_type") ||
-            !strcmp(type_info->category,"enumeration_type") ||
-            !strcmp(type_info->category,"structure_type") ||
-            !strcmp(type_info->category,"union_type") ||
-            !strcmp(type_info->category,"pointer_type") ||
-            !strcmp(type_info->category,"array_type"))
-            break;
-
-        typeitem=type_info->nexttype;
-    }
-
-    return typeitem;
-}
 
 long long *Type_getLocation(char *loc)
 {
     return STRTOLLP(loc);
-}
-
-
-DICT_ITEM *Type_getChild(DICT *dict,DICT_ITEM *typeitem,char *member,int n)
-{
-    void *Type_findMemberByName(DICT *dict,DICT_ITEM *iter,DICT_ITEM *item,void *data)
-    {
-        ull *addr=STRTOULLP(item->data);
-        if (addr)
-        {
-            DICT_ITEM *typeitem=(DICT_ITEM *) *addr;
-            char *member=(char *) data;
-            int memberlen=hdict_delimit(member,strlen(member));
-            char *name=SU_lookup(&typeitem->dict,"DW_AT_name");
-            if (name && strlen(name)==memberlen && !strncmp(name,member,memberlen))
-                return typeitem;
-        }
-        return NULL;
-    }
-
-    void *Type_findMemberByIndex(DICT *dict,char *name)
-    {
-        DICT_ITEM *item=jli_getitem(dict,name,strlen(name),0);
-        ull *addr=item?STRTOULLP(item->data):NULL;
-        return addr?(void *) *addr:NULL;
-    }
-
-    DICT_ITEM *children=NULL;
-
-    if (typeitem && (children=SU_subitem(&typeitem->dict,"children")))
-    {
-        typeitem=member?
-            dict_traverse(dict,&children->dict,Type_findMemberByName,(void *) member):
-            Type_findMemberByIndex(&children->dict,(char *) ulltostr("%llu",(ull)n));
-    }
-
-    return typeitem;
-}
-
-
-
-int Type_traverseTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn);
-
-
-int Type_traverseBaseType(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    return fn(dict,data,type_info);
-}
-
-int Type_traverseEnum(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    return fn(dict,data,type_info);
-}
-
-int Type_traversePointer(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    return fn(dict,data,type_info);
 }
 
 int Type_traverseArray(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
@@ -1375,35 +1328,6 @@ int Type_traverseArray(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseF
     return status;
 }
 
-int Type_traverseTypedef(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    int status=fn(dict,data,type_info);
-
-    if (Type_findBasic(dict,type_info->item,type_info))
-        Type_traverseTypeInfo(dict,data,type_info,fn);
-
-    return status;
-}
-
-int Type_traverseStruct(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    unsigned int i=0;
-    DICT_ITEM *memberitem;
-    TYPE_INFO local_type_info;
-    int status=fn(dict,data,type_info);
-
-    while (Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,i++),&ZERO(local_type_info)))
-    {
-        char *name=strlen(type_info->name)?
-                          FORMATA(name,256,"%s.%s",type_info->name,local_type_info.DW_AT_name):
-                          local_type_info.DW_AT_name;
-        Type_combine(&local_type_info,type_info->addr,name);
-        Type_traverseTypeInfo(dict,data,&local_type_info,fn);
-    }
-
-    return status;
-}
-
 int Type_traverseUnion(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
 {
     TYPE_INFO local_type_info;
@@ -1424,65 +1348,6 @@ int Type_traverseUnion(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseF
     }
 
     return status;
-}
-
-int Type_traverseMember(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    long long *loc=Type_getLocation(type_info->DW_AT_data_member_location);
-    ull offset = loc?*loc:0;
-    char *addr = type_info->addr;
-    char *name = type_info->name;
-    int index = type_info->index;
-    int status=fn(dict,data,type_info);
-
-    if (Type_findBasic(dict,type_info->item,type_info))
-    {
-        Type_combine(type_info,addr+offset,name);
-        Type_traverseTypeInfo(dict,data,type_info,fn);
-    }
-
-    return status;
-}
-
-int Type_traverseVariable(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    long long *loc;
-    //char *name=type_info->DW_AT_name;
-    int status=fn(dict,data,type_info);
-
-    if (loc=Type_getLocation(type_info->DW_AT_location))
-    {
-        char *newaddr = (char *) (unsigned long) *loc;
-        Type_findBasic(dict,type_info->item,type_info);
-        Type_combine(type_info,newaddr,type_info->name);
-        Type_traverseTypeInfo(dict,data,type_info,fn);
-    }
-
-    return status;
-}
-
-int Type_traverseTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info,Type_traverseFn fn)
-{
-    if (!strcmp(type_info->category,"base_type"))             Type_traverseBaseType(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"enumeration_type")) Type_traverseEnum(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"pointer_type"))     Type_traversePointer(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"array_type"))       Type_traverseArray(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"typedef"))          Type_traverseTypedef(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"structure_type"))   Type_traverseStruct(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"union_type"))       Type_traverseUnion(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"member"))           Type_traverseMember(dict,data,type_info,fn);
-    else if (!strcmp(type_info->category,"variable"))         Type_traverseVariable(dict,data,type_info,fn);
-}
-
-int Type_traverse(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data,Type_traverseFn fn)
-{
-    if (dict && typeitem)
-    {
-        TYPE_INFO type_info;
-        Type_getTypeInfo(typeitem,&ZERO(type_info));
-        Type_combine(&type_info,addr,"");
-        Type_traverseTypeInfo(dict,data,&type_info,fn);
-    }
 }
 
 
@@ -1541,14 +1406,6 @@ int Type_dumpTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
     return 0;
 }
 
-void Type_dump(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data)
-{
-    Type_traverse(dict,typeitem,addr,data,Type_dumpTypeInfo);
-}
-
-
-
-
 int Type_installTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
 {
     char buf[64];
@@ -1559,97 +1416,6 @@ int Type_installTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
         jli_install(dict,Type_humanReadableVal(type_info,buf),type_info->name);
 
     return 0;
-}
-
-void Type_jvar(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data)
-{
-    Type_traverse(dict,typeitem,addr,data,Type_installTypeInfo);
-}
-
-
-
-void Type_ref(DICT *dict,DICT_ITEM *typeitem,char *addr)
-{
-    if (typeitem && addr)
-    {
-        TYPE_INFO type_info;
-        ZERO(type_info);
-        Type_getTypeInfo(typeitem,&type_info);
-        jli_install(dict,"","");
-        jli_install(dict,ulltostr("0x%llx",(ull) addr),".addr");
-        jli_install(dict,type_info.typename,".type");
-    }
-}
-
-
-
-void Type_deref(DICT *dict,DICT_ITEM *typeitem,char *addr)
-{
-    if (typeitem && addr)
-    {
-        TYPE_INFO type_info;
-        ZERO(type_info);
-        if (Type_findBasic(dict,typeitem,&type_info) &&
-            !strcmp(type_info.category,"pointer_type"))
-            Type_ref(dict,type_info.nexttype,*((char **) (addr)));
-    }
-}
-
-void Type_member(DICT *dict,DICT_ITEM *typeitem,char *addr,char *member)
-{
-    if (dict && typeitem && addr && member)
-    {
-        int dlen=hdict_delimit(member,strlen(member));
-        TYPE_INFO type_info;
-        DICT_ITEM *basicitem=Type_findBasic(dict,typeitem,&ZERO(type_info));
-        Type_getTypeInfo(basicitem,&ZERO(type_info)); // re-retrieve so we don't mistake a member's name for struct's
-
-        if (dlen)
-        {
-            ull *index,*byte_size;
-            char *container_name;
-            ull offset=0;
-
-            if (!(container_name=type_info.DW_AT_name))
-                container_name=type_info.type_id;
-
-            if (!strcmp(type_info.category,"array_type") &&
-                (index=STRTOULLP(member)) &&
-                (typeitem=Type_getTypeInfo(type_info.nexttype,&type_info)) &&
-                (byte_size=STRTOULLP(type_info.DW_AT_byte_size)))
-            {
-                offset=((*index)*(*byte_size));
-            }
-            else if ((typeitem=Type_getTypeInfo(Type_getChild(dict,basicitem,member,0),&ZERO(type_info))))
-            {
-                DICT_ITEM *basicitem=Type_findBasic(dict,typeitem,&ZERO(type_info));
-                ull *loc=Type_getLocation(type_info.DW_AT_data_member_location);
-                offset=loc?*loc:0;
-            }
-
-            if (member[dlen]=='.')
-                return Type_member(dict,typeitem,addr+offset,member+dlen+1);
-            else
-                addr+=offset;
-        }
-
-        jli_install(dict,"","");
-        jli_install(dict,ulltostr("0x%llx",(unsigned) addr),".addr");
-        jli_install(dict,type_info.typename,".type");
-    }
-}
-
-void Type_var(DICT *dict,DICT_ITEM *typeitem)
-{
-    if (typeitem)
-    {
-        TYPE_INFO type_info;
-        ull *loc;
-        ZERO(type_info);
-        Type_getTypeInfo(typeitem,&type_info);
-        if (loc=Type_getLocation(type_info.DW_AT_location))
-            Type_ref(dict,typeitem,(char *) *loc);
-    }
 }
 
 void Type_cgetbin(DICT *dict,DICT_ITEM *typeitem,char *addr)

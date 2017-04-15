@@ -76,19 +76,19 @@ typedef enum
 
 typedef union // keep members aligned with associated dutype enum
 {
-    TYPE_UTYPE dutype;
+    struct { TYPE_UTYPE dutype;                           } base;
     struct { TYPE_UTYPE dutype; unsigned char        val; } int1u;
     struct { TYPE_UTYPE dutype; unsigned short       val; } int2u;
-    struct { TYPE_UTYPE dutype; unsigned long        val; } int4u;
+    struct { TYPE_UTYPE dutype; unsigned int         val; } int4u;
     struct { TYPE_UTYPE dutype; unsigned long long   val; } int8u;
     struct { TYPE_UTYPE dutype; signed   char        val; } int1s;
     struct { TYPE_UTYPE dutype; signed   short       val; } int2s;
-    struct { TYPE_UTYPE dutype; signed   long        val; } int4s;
+    struct { TYPE_UTYPE dutype; signed   int         val; } int4s;
     struct { TYPE_UTYPE dutype; signed   long long   val; } int8s;
     struct { TYPE_UTYPE dutype;          float       val; } float4;
     struct { TYPE_UTYPE dutype;          double      val; } float8;
     struct { TYPE_UTYPE dutype;          long double val; } float12;
-    struct { TYPE_UTYPE dutype;               void * val; } addr;
+    struct { TYPE_UTYPE dutype;          void *      val; } addr;
 } TYPE_UVALUE;
 
 typedef struct {
@@ -117,7 +117,8 @@ typedef enum {
     TYPEF_LOCATION   = 1<<0xa,
     TYPEF_ADDR       = 1<<0xb,
     TYPEF_EXTERNAL   = 1<<0xc,
-    TYPEF_SYMBOLIC   = 1<<0xd
+    TYPEF_VECTOR     = 1<<0xe,
+    TYPEF_SYMBOLIC   = 1<<0xf
 } TYPE_FLAGS;
 
 
@@ -144,6 +145,7 @@ typedef struct
 
 
 extern LTV *ref_create_cvar(LTV *type,void *data,char *member);
+extern LTV *ref_assign_cvar(LTV *cvar,LTV *ltv);
 extern int ref_print_cvar(FILE *ofile,LTV *ltv);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
 extern int ref_curate_module(LTV *mod_ltv,char *altname);

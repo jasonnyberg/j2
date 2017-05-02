@@ -38,10 +38,10 @@ char *STRTOLL_TAIL;
 
 int Gmymalloc=0;
 
-int try_depth=1;
-int try_loglev=2;
-int try_infolev=1;
-int try_edepth=2;
+unsigned try_depth=-1;
+unsigned try_loglev=2;
+unsigned try_infolev=1;
+unsigned try_edepth=2;
 
 __thread TRY_CONTEXT try_context;
 

@@ -833,7 +833,7 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
     return status;
 }
 
-int REF_iterate(CLL *refs,int remove)
+int REF_iterate(CLL *refs,int pop)
 {
     int status=0;
 
@@ -850,7 +850,7 @@ int REF_iterate(CLL *refs,int remove)
             // iterate cvar
         } else {
             LTV *next_ltv=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr);
-            if (remove)
+            if (pop)
                 LTVR_release(&ref_ltvr->lnk);
             if (next_ltv)
                 return ref;

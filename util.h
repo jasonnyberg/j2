@@ -85,10 +85,10 @@ extern int Gmymalloc;
 static inline int minint(int a,int b) { return MIN(a,b); }
 static inline int maxint(int a,int b) { return MAX(a,b); }
 
-extern int try_depth;
-extern int try_loglev;
-extern int try_infolev;
-extern int try_edepth;
+extern unsigned try_depth;
+extern unsigned try_loglev;
+extern unsigned try_infolev;
+extern unsigned try_edepth;
 
 #define TRY_STRLEN 1024
 typedef char TRY_STRING[TRY_STRLEN];

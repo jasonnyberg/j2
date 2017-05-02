@@ -1,4 +1,3 @@
-
 /*
  * j2 - A simple concatenative programming language that can understand
  *      the structure of and dynamically link with compatible C binaries.
@@ -205,13 +204,17 @@ void show_toks(FILE *ofile,char *pre,CLL *toks,char *post)
 // REPL Context
 //////////////////////////////////////////////////
 
-LTV *dict_push(CONTEXT *context,LTV *ltv)  { return (LTV *) LTV_enq(&context->dict,ltv,HEAD); }
-LTV *dict_pop(CONTEXT *context)            { return (LTV *) LTV_deq(&context->dict,HEAD); }
-LTV *dict_peek(CONTEXT *context)           { return (LTV *) LTV_peek(&context->dict,HEAD); }
+CLL *dict(CONTEXT *context) { return context?&context->dict:NULL; }
+LTV *dict_push(CONTEXT *context,LTV *ltv)  { return (LTV *) LTV_enq(dict(context),ltv,HEAD); }
+LTV *dict_pop(CONTEXT *context)            { return (LTV *) LTV_deq(dict(context),HEAD); }
+LTV *dict_peek(CONTEXT *context)           { return (LTV *) LTV_peek(dict(context),HEAD); }
 
-LTV *stack_push(CONTEXT *context,LTV *ltv) { return (LTV *) LTV_enq(&context->stack,ltv,HEAD); }
-LTV *stack_pop(CONTEXT *context)           { return (LTV *) LTV_deq(&context->stack,HEAD); }
-LTV *stack_peek(CONTEXT *context)          { return (LTV *) LTV_peek(&context->stack,HEAD); }
+CLL *stack(CONTEXT *context) { return context?&context->stack:NULL; }
+LTV *stack_push(CONTEXT *context,LTV *ltv) { return (LTV *) LTV_enq(stack(context),ltv,HEAD); }
+LTV *stack_pop(CONTEXT *context)           { return (LTV *) LTV_deq(stack(context),HEAD); }
+LTV *stack_peek(CONTEXT *context)          { return (LTV *) LTV_peek(stack(context),HEAD); }
+
+CLL *toks(CONTEXT *context) { return context?&context->toks:NULL; }
 
 CONTEXT *CONTEXT_new(EDICT *edict)
 {
@@ -220,9 +223,9 @@ CONTEXT *CONTEXT_new(EDICT *edict)
 
     STRY(!(context=NEW(CONTEXT)),"allocating context");
     TRYCATCH(!(context->edict=edict),-1,release_context,"assigning context's edict");
-    CLL_init(&context->dict);
-    CLL_init(&context->stack);
-    CLL_init(&context->toks);
+    CLL_init(dict(context));
+    CLL_init(stack(context));
+    CLL_init(toks(context));
     context->exception=NULL;
     context->skipdepth=0;
     context->skip=false;
@@ -245,8 +248,8 @@ void CONTEXT_free(CONTEXT *context)
     if (!context) return;
     CLL_cut(&context->lnk); // remove from any list it's in
     void tok_free(CLL *lnk) { TOK_free((TOK *) lnk); }
-    CLL_release(&context->stack,LTVR_release);
-    CLL_release(&context->toks,tok_free);
+    CLL_release(stack(context),LTVR_release);
+    CLL_release(toks(context),tok_free);
     RELEASE(context);
 }
 
@@ -285,12 +288,12 @@ int edict_graph(FILE *ofile,EDICT *edict)
     void show_context(CONTEXT *context) {
         int halt=0;
         fprintf(ofile,"\"Context %x\"\n",context);
-        fprintf(ofile,"\"S%2$x\" [label=\"Stack\"]\n\"Context %1$x\" -> \"S%2$x\" -> \"%2$x\"\n",context,&context->stack);
-        ltvs2dot(ofile,&context->stack,0,NULL);
-        fprintf(ofile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,&context->dict);
-        ltvs2dot(ofile,&context->dict,0,NULL);
-        fprintf(ofile,"\"Context %x\" -> \"%x\"\n",context,&context->toks);
-        descend_toks(&context->toks,"Toks");
+        fprintf(ofile,"\"S%2$x\" [label=\"Stack\"]\n\"Context %1$x\" -> \"S%2$x\" -> \"%2$x\"\n",context,stack(context));
+        ltvs2dot(ofile,stack(context),0,NULL);
+        fprintf(ofile,"\"D%2$x\" [label=\"Dict\"]\n\"Context %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",context,dict(context));
+        ltvs2dot(ofile,dict(context),0,NULL);
+        fprintf(ofile,"\"Context %x\" -> \"%x\"\n",context,toks(context));
+        descend_toks(toks(context),"Toks");
     }
 
     void show_contexts(char *pre,CLL *contexts,char *post) {
@@ -388,7 +391,7 @@ int eval_push(CONTEXT *context,TOK *tok) { // engine pops
     int status=0;
     if (tok && tok->flags&TOK_EXPR && CLL_EMPTY(&tok->children))
         STRY(parse_expr(tok),"parsing expr");
-    STRY(!toks_push(&context->toks,tok),"pushing tok to eval stack");
+    STRY(!toks_push(toks(context),tok),"pushing tok to eval stack");
  done:
     return status;
 }
@@ -397,7 +400,7 @@ int edict_resolve(CONTEXT *context,CLL *ref,int insert) { // may need to insert 
     int status=0;
     STRY(!context || !ref,"validating args");
     void *dict_resolve(CLL *lnk) { return REF_resolve(((LTVR *) lnk)->ltv,ref,insert)?NULL:NON_NULL; } // if lookup failed, continue map by returning NULL
-    status=!CLL_map(&context->dict,FWD,dict_resolve);
+    status=!CLL_map(dict(context),FWD,dict_resolve);
  done:
     return status;
 }
@@ -547,7 +550,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             }
         } else {
             //edict_graph_to_file("/tmp/jj.dot",context->edict);
-            print_ltvs(stdout,CODE_BLUE,&context->stack,CODE_RESET "\n",0);
+            print_ltvs(stdout,CODE_BLUE,stack(context),CODE_RESET "\n",0);
         }
     done:
         return status;
@@ -557,7 +560,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         int status=0;
         if (edict_resolve(context,&ref_tok->children,false) || !REF_ltv(ref_head)) // if lookup failed, push copy to stack
             STRY(!stack_push(context,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
-	else
+        else
             STRY(!stack_push(context,REF_ltv(ref_head)),"pushing resolved ref to stack");
     done:
         return status;
@@ -582,7 +585,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
     int remove() {
         int status=0;
         if (ref_head) {
-	    TRYCATCH(edict_resolve(context,&ref_tok->children,false),0,done,"resolving ref for remove");
+            TRYCATCH(edict_resolve(context,&ref_tok->children,false),0,done,"resolving ref for remove");
             STRY(REF_remove(ref_head),"performing ref remove");
         } else {
             LTV_release(stack_pop(context));
@@ -591,9 +594,12 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int stack_open()     { return !dict_push(context,stack_pop(context)); }
+    int scope_open()     { return !dict_push(context,stack_pop(context)); }
     int scope_close()    { return !stack_push(context,dict_pop(context)); }
-    int function_close() { return eval_push(context,TOK_new(TOK_EXPR,dict_peek(context))); }
+    int function_close() {
+        return eval_push(context,TOK_new(TOK_EXPR,LTV_new(">/",2,LT_NONE))) || // to close and delete lambda scope
+            eval_push(context,TOK_new(TOK_EXPR,dict_peek(context))); // to eval lambda
+    }
 
     int append() {
         int status=0;
@@ -615,7 +621,7 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
         TOK *map_tok=NULL;
 
         if (ref_head) { // prep ref for iteration
-	    STRY(edict_resolve(context,&ref_tok->children,false),"resolving ref for deref");
+            STRY(edict_resolve(context,&ref_tok->children,false),"resolving ref for deref");
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
             if (pop)
                 map_tok->flags|=TOK_POP;
@@ -690,9 +696,9 @@ int ops_eval(CONTEXT *context,TOK *ops_tok) // ops contains refs in children
             else
                 switch (ops[i]) {
                     case '|': context->skip=true; goto done; // skip over exception handlers
-                    case '<': STRY(stack_open(),    "evaluating scope_open");     break;
+                    case '<': STRY(scope_open(),    "evaluating scope_open");     break;
                     case '>': STRY(scope_close(),   "evaluating scope_close");    break;
-                    case '(': STRY(stack_open(),    "evaluating function_open");  break;
+                    case '(': STRY(scope_open(),    "evaluating function_open");  break;
                     case ')': STRY(function_close(),"evaluating function_close"); break;
                     case '&': STRY(throw(NON_NULL), "evaluating throw");          break;
                     case '!': STRY(eval(),          "evaluating eval");           break;
@@ -793,7 +799,7 @@ int context_eval(CONTEXT *context)
     int status=0;
     STRY(!context,"testing for null context");
 
-    TOK *tok=toks_peek(&context->toks);
+    TOK *tok=toks_peek(toks(context));
     if (tok)
         STRY(tok_eval(context,tok),"evaluating tok");
     else
@@ -849,9 +855,10 @@ int edict(int argc,char *argv[])
     int status=0;
     EDICT *edict;
     try_reset();
+    try_depth=1; // superficial info only
     STRY(!(edict=NEW(EDICT)),"allocating edict");
     STRY(edict_init(edict),"initializing edict");
-    
+
     switch(argc) {
         case 2:  STRY(edict_eval(edict,argv[1]),"evaluating argv[1]"); break;
         default: STRY(edict_eval(edict,("[bootstrap.edict] #read")),"bootstrapping edict"); break;
@@ -861,4 +868,3 @@ int edict(int argc,char *argv[])
     edict_destroy(edict);
     return status;
 }
-

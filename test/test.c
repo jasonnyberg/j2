@@ -27,3 +27,5 @@ extern int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
 
     return x+y[5]+*z+arga+argb->b+localc+locale*const_double;
 }
+
+extern int add(int a,int b) { return a+b; }

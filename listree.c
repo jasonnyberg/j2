@@ -399,6 +399,12 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
     return ltv;
 }
 
+// delete an lti from an ltv
+void LTV_erase(LTV *ltv,LTI *lti)
+{
+    RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release);
+}
+
 LTV *LTV_dup(LTV *ltv)
 {
     if (!ltv) return NULL;

@@ -146,6 +146,7 @@ extern LTI *LTI_resolve(LTV *ltv,char *name,int insert);
 extern int LTV_empty(LTV *ltv);
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);
 extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); //
+extern void LTV_erase(LTV *ltv,LTI *lti);
 
 extern LTV *LTV_dup(LTV *ltv);
 

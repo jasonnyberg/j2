@@ -400,10 +400,7 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
 }
 
 // delete an lti from an ltv
-void LTV_erase(LTV *ltv,LTI *lti)
-{
-    RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release);
-}
+void LTV_erase(LTV *ltv,LTI *lti) { RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release); }
 
 LTV *LTV_dup(LTV *ltv)
 {
@@ -414,10 +411,6 @@ LTV *LTV_dup(LTV *ltv)
         flags |= LT_DUP;
     return LTV_new(ltv->data,ltv->len,flags);
 }
-
-LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put(ltvs,ltv,end,NULL); }
-LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get(ltvs,POP,end,NULL,NULL); }
-LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get(ltvs,KEEP,end,NULL,NULL); }
 
 int LTV_wildcard(LTV *ltv)
 {

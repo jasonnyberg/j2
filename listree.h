@@ -149,11 +149,6 @@ extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); //
 extern void LTV_erase(LTV *ltv,LTI *lti);
 
 extern LTV *LTV_dup(LTV *ltv);
-
-extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
-extern LTV *LTV_deq(CLL *ltvs,int end);
-extern LTV *LTV_peek(CLL *ltvs,int end);
-
 extern int LTV_wildcard(LTV *ltv);
 
 extern void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth);
@@ -165,6 +160,9 @@ extern void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label);
 
+#define LTV_enq(ltvs,ltv,end) LTV_put((ltvs),(ltv),(end),NULL)
+#define LTV_deq(ltvs,end)     LTV_get((ltvs),POP,(end),NULL,NULL)
+#define LTV_peek(ltvs,end)    LTV_get((ltvs),KEEP,(end),NULL,NULL)
 
 //////////////////////////////////////////////////
 // Basic LT construction

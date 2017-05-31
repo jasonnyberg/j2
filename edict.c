@@ -35,6 +35,16 @@
 #include "trace.h" // lttng
 
 
+//////////////////////////////////////////////////
+// Utils
+//////////////////////////////////////////////////
+
+#define PUSH(cll,ltv) LTV_enq((cll),(ltv),HEAD)
+#define POP(cll)      LTV_deq((cll),HEAD)
+#define PEEK(cll)     LTV_peek((cll),HEAD)
+
+//////////////////////////////////////////////////
+
 typedef struct EDICT
 {
     LTV *root;
@@ -76,7 +86,7 @@ typedef enum {
     TOK_FILE     =1<<0x01,
     TOK_EXPR     =1<<0x02,
     TOK_LIT      =1<<0x03,
-    TOK_OPS      =1<<0x04,
+    TOK_ATOM     =1<<0x04,
     TOK_REF      =1<<0x05,
 } TOK_FLAGS;
 
@@ -120,12 +130,12 @@ void THREAD_free(THREAD *thread);
 //////////////////////////////////////////////////
 
 TOK *toks_push(CLL *cll,TOK *tok) { return (TOK *) CLL_put(cll,&tok->lnk,HEAD); }
-TOK *toks_pop(CLL *cll)           { return (TOK *) CLL_get(cll,POP,HEAD); }
-TOK *toks_peek(CLL *cll)          { return (TOK *) CLL_get(cll,KEEP,HEAD); }
+TOK *toks_pop(CLL *cll)           { return (TOK *) CLL_get(cll,POP,HEAD);       }
+TOK *toks_peek(CLL *cll)          { return (TOK *) CLL_get(cll,KEEP,HEAD);      }
 
-LTV *tok_push(TOK *tok,LTV *ltv) { return LTV_enq(&tok->ltvs,ltv,HEAD); }
-LTV *tok_pop(TOK *tok )          { return LTV_deq(&tok->ltvs,HEAD);     }
-LTV *tok_peek(TOK *tok)          { return LTV_peek(&tok->ltvs,HEAD);    }
+LTV *tok_push(TOK *tok,LTV *ltv) { return PUSH(&tok->ltvs,ltv); }
+LTV *tok_pop(TOK *tok )          { return POP(&tok->ltvs);      }
+LTV *tok_peek(TOK *tok)          { return PEEK(&tok->ltvs);     }
 
 TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
 {
@@ -172,7 +182,7 @@ void show_tok_flags(FILE *ofile,TOK *tok)
     if (tok->flags&TOK_FILE)    fprintf(ofile,"FILE ");
     if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
     if (tok->flags&TOK_LIT)     fprintf(ofile,"LIT ");
-    if (tok->flags&TOK_OPS)     fprintf(ofile,"OPS ");
+    if (tok->flags&TOK_ATOM)    fprintf(ofile,"OPS ");
     if (tok->flags&TOK_REF)     fprintf(ofile,"REF ");
 }
 
@@ -205,16 +215,18 @@ void show_toks(FILE *ofile,char *pre,CLL *toks,char *post)
 //////////////////////////////////////////////////
 
 CLL *dict(THREAD *thread) { return thread?&thread->dict:NULL; }
-LTV *dict_push(THREAD *thread,LTV *ltv)  { return (LTV *) LTV_enq(dict(thread),ltv,HEAD); }
-LTV *dict_pop(THREAD *thread)            { return (LTV *) LTV_deq(dict(thread),HEAD); }
-LTV *dict_peek(THREAD *thread)           { return (LTV *) LTV_peek(dict(thread),HEAD); }
-
 CLL *stack(THREAD *thread) { return thread?&thread->stack:NULL; }
-LTV *stack_push(THREAD *thread,LTV *ltv) { return (LTV *) LTV_enq(stack(thread),ltv,HEAD); }
-LTV *stack_pop(THREAD *thread)           { return (LTV *) LTV_deq(stack(thread),HEAD); }
-LTV *stack_peek(THREAD *thread)          { return (LTV *) LTV_peek(stack(thread),HEAD); }
-
 CLL *toks(THREAD *thread) { return thread?&thread->toks:NULL; }
+
+//////////////////////////////////////////////////
+
+LTV *stack_put(THREAD *thread,LTV *ltv) { return LT_put(PEEK(dict(thread)),"$",HEAD,ltv); }
+LTV *stack_get(THREAD *thread,int pop) {
+    void *stack_resolve(CLL *lnk) { return LT_get(((LTVR *) lnk)->ltv,"$",HEAD,POP); }
+    return CLL_map(dict(thread),FWD,stack_resolve);
+}
+
+//////////////////////////////////////////////////
 
 THREAD *THREAD_new(EDICT *edict)
 {
@@ -230,7 +242,7 @@ THREAD *THREAD_new(EDICT *edict)
     thread->skipdepth=0;
     thread->skip=false;
 
-    TRYCATCH(!dict_push(thread,edict->root),-1,release_thread,"pushing thread->dict root");
+    TRYCATCH(!PUSH(dict(thread),edict->root),-1,release_thread,"pushing thread->dict root");
     TRYCATCH(!CLL_put(&edict->threads,&thread->lnk,HEAD),-1,release_thread,"pushing thread into edict");
 
     goto done; // success!
@@ -369,11 +381,11 @@ int parse_expr(TOK *tok)
         else if (tlen=series(data,len,NULL,NULL,"[]")) // lit
             STRY(!append(tok,TOK_LIT,data+1,tlen-2,tlen),"appending lit");
         else if (tlen=series(data,len,EDICT_MONO_OPS,NULL,NULL)) // special, non-ganging op
-            STRY(!append(tok,TOK_OPS,data,1,1),"appending %c",*data);
+            STRY(!append(tok,TOK_ATOM,data,1,1),"appending %c",*data);
         else { // ANYTHING else is ops and/or ref
             TOK *ops=NULL;
             tlen=series(data,len,EDICT_OPS,NULL,NULL); // ops
-            STRY(!(ops=append(tok,TOK_OPS,data,tlen,tlen)),"appending ops");
+            STRY(!(ops=append(tok,TOK_ATOM,data,tlen,tlen)),"appending ops");
             if ((tlen=series(data,len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS,"[]"))) // ref
                 STRY(!append(ops,TOK_REF,data,tlen,tlen),"appending ref");
         }
@@ -387,6 +399,7 @@ int parse_expr(TOK *tok)
 // eval engine
 //////////////////////////////////////////////////
 
+// push expr onto tok stack, tokenizing if necessary
 int eval_push(THREAD *thread,TOK *tok) { // engine pops
     int status=0;
     if (tok && tok->flags&TOK_EXPR && CLL_EMPTY(&tok->children))
@@ -396,7 +409,8 @@ int eval_push(THREAD *thread,TOK *tok) { // engine pops
     return status;
 }
 
-int edict_resolve(THREAD *thread,CLL *ref,int insert) { // may need to insert after a failed resolve!
+// walk up stack of lexical scopes looking for reference; inserts always resolve at most-local scope
+int edict_resolve(THREAD *thread,CLL *ref,int insert) {
     int status=0;
     STRY(!thread || !ref,"validating args");
     void *dict_resolve(CLL *lnk) { return REF_resolve(((LTVR *) lnk)->ltv,ref,insert)?NULL:NON_NULL; } // if lookup failed, continue map by returning NULL
@@ -405,28 +419,30 @@ int edict_resolve(THREAD *thread,CLL *ref,int insert) { // may need to insert af
     return status;
 }
 
+// solo ref, i.e. not part of an atom; must have lambda attached
 int ref_eval(THREAD *thread,TOK *ref_tok)
 {
     int status=0;
     REF *ref_head=NULL;
     LTV *lambda_ltv=NULL,*ref_ltv=NULL;
 
-    STRY(!(lambda_ltv=LTV_peek(&ref_tok->lambdas,HEAD)),"validating ref lambda");
+    STRY(!(lambda_ltv=PEEK(&ref_tok->lambdas)),"validating ref lambda");
     STRY(!(ref_head=REF_HEAD(&ref_tok->children)),"validating ref head");
     STRY(!(ref_ltv=REF_ltv(ref_head)),"validating deref result");
-    STRY(!stack_push(thread,ref_ltv),"pushing resolved ref to stack");
+    STRY(!stack_put(thread,ref_ltv),"pushing resolved ref to stack");
     STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
     TRYCATCH(REF_iterate(&ref_tok->children,ref_tok->flags&TOK_POP),0,terminate,"iterating ref");
     TRYCATCH(!REF_ltv(ref_head),0,terminate,"iterating ref");
-
     goto done; // success!
+
  terminate:
     TOK_free(ref_tok);
  done:
     return status;
 }
 
-int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
+// ops and/or ref
+int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
 {
     int status=0;
     LTV *ltv=NULL; // optok's data
@@ -445,11 +461,11 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         LTV *ref_ltv=tok_peek(ref_tok);
         wildcard=LTV_wildcard(ref_ltv);
         STRY((assignment && wildcard),"testing for assignment-to-wildcard");
-        STRY(REF_create(ref_ltv->data,ref_ltv->len,&ref_tok->children),"creating REF"); // ref tok children are REFs!!!
+        STRY(REF_create(ref_ltv->data,ref_ltv->len,&ref_tok->children),"creating REF"); // ref tok children are REFs, not TOKs!!!
         void *resolve_macro(CLL *cll) {
             int status=0;
             REF *ref=(REF *) cll;
-            LTV *ltv=LTV_peek(&ref->keys,HEAD);
+            LTV *ltv=PEEK(&ref->keys);
             if (series(ltv->data,ltv->len,NULL,NULL,"``")==ltv->len) { // macro
                 CLL ref;
                 CLL_init(&ref);
@@ -474,7 +490,7 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int readfrom()  {
             int status=0;
             LTV *ltv_ifilename=NULL;
-            STRY(!(ltv_ifilename=stack_pop(thread)),"popping import filename");
+            STRY(!(ltv_ifilename=stack_get(thread,POP)),"popping import filename");
             char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
             FILE *ifile=strncmp("stdin",ifilename,5)?fopen(ifilename,"r"):stdin;
             if (ifile) {
@@ -490,7 +506,7 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int import() {
             int status=0;
             LTV *mod_ltv=NULL;
-            STRY(!(mod_ltv=stack_peek(thread)),"peeking dwarf import filename");
+            STRY(!(mod_ltv=stack_get(thread,KEEP)),"peeking dwarf import filename");
             STRY(ref_curate_module(mod_ltv,NULL),"importing module");
         done:
             return status;
@@ -499,7 +515,7 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int preview() {
             int status=0;
             LTV *mod_ltv=NULL;
-            STRY(!(mod_ltv=stack_peek(thread)),"peeking dwarf import filename");
+            STRY(!(mod_ltv=stack_get(thread,KEEP)),"peeking dwarf import filename");
             STRY(ref_preview_module(mod_ltv),"listing module");
         done:
             return status;
@@ -508,9 +524,9 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int cvar() {
             int status=0;
             LTV *type,*cvar;
-            STRY(!(type=stack_pop(thread)),"popping type");
+            STRY(!(type=stack_get(thread,POP)),"popping type");
             STRY(!(cvar=ref_create_cvar(type,NULL,NULL)),"creating cvar");
-            STRY(!stack_push(thread,cvar),"pushing cvar");
+            STRY(!stack_put(thread,cvar),"pushing cvar");
         done:
             return status;
         }
@@ -531,8 +547,11 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
-        int error() {
-            return 1;
+        int dup() {
+            int status=0;
+            STRY(!stack_put(thread,LTV_dup(stack_get(thread,KEEP))),"duplicating TOS");
+        done:
+            return status;
         }
 
         int status=0;
@@ -540,12 +559,12 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             LTV *key=REF_key(ref_head);
             char *buf=NULL;
             if (key) {
-                if      (!strnncmp(key->data,key->len,"read",-1))    STRY(readfrom(),"starting input stream");
-                else if (!strnncmp(key->data,key->len,"preview",-1)) STRY(preview(),"importing module preview");
-                else if (!strnncmp(key->data,key->len,"import",-1))  STRY(import(),"importing dwarf module");
-                else if (!strnncmp(key->data,key->len,"new",-1))     STRY(cvar(),"creating cvar");
-                else if (!strnncmp(key->data,key->len,"error",-1))   STRY(error(),"evaluating \"#error\"");
-                else if (!strnncmp(key->data,key->len,"throw",-1))   STRY(throw(NON_NULL),"evaluating \"#throw\"");
+                if      (!strnncmp(key->data,key->len,"read",-1))    STRY(readfrom(),"evaluating #read");
+                else if (!strnncmp(key->data,key->len,"preview",-1)) STRY(preview(),"evaluating #preview");
+                else if (!strnncmp(key->data,key->len,"import",-1))  STRY(import(),"evaluating #import");
+                else if (!strnncmp(key->data,key->len,"new",-1))     STRY(cvar(),"evaluating #new");
+                else if (!strnncmp(key->data,key->len,"dup",-1))     STRY(dup(),"evaluating #dup");
+                else if (!strnncmp(key->data,key->len,"throw",-1))   STRY(throw(NON_NULL),"evaluating #throw");
                 else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");
             }
         } else {
@@ -559,9 +578,9 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     int deref() {
         int status=0;
         if (edict_resolve(thread,&ref_tok->children,false) || !REF_ltv(ref_head)) // if lookup failed, push copy to stack
-            STRY(!stack_push(thread,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
+            STRY(!stack_put(thread,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
         else
-            STRY(!stack_push(thread,REF_ltv(ref_head)),"pushing resolved ref to stack");
+            STRY(!stack_put(thread,REF_ltv(ref_head)),"pushing resolved ref to stack");
     done:
         return status;
     }
@@ -570,9 +589,9 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *tos=NULL;
         TRYCATCH(edict_resolve(thread,&ref_tok->children,true),0,exception,"resolving ref for assign");
-        TRYCATCH(!(tos=stack_peek(thread)),0,exception,"peeking anon");
+        TRYCATCH(!(tos=stack_get(thread,KEEP)),0,exception,"peeking anon");
         TRYCATCH(REF_assign(ref_head,tos),0,exception,"assigning anon to ref");
-        stack_pop(thread); // succeeded, detach anon from stack
+        stack_get(thread,POP); // succeeded, detach anon from stack
         goto done;
 
     exception:
@@ -588,7 +607,7 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             TRYCATCH(edict_resolve(thread,&ref_tok->children,false),0,done,"resolving ref for remove");
             STRY(REF_remove(ref_head),"performing ref remove");
         } else {
-            LTV_release(stack_pop(thread));
+            LTV_release(stack_get(thread,POP));
         }
     done:
         return status;
@@ -597,9 +616,9 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     int scope_open() {
         int status=0;
         LTV *scope=NULL;
-        STRY(!(scope=stack_pop(thread)),"popping scope from stack");
+        STRY(!(scope=stack_get(thread,POP)),"popping scope from stack");
         STRY(!LTI_resolve(scope,"$",true),"creating local stack");
-        STRY(!dict_push(thread,scope),"pushing new local stack");
+        STRY(!PUSH(dict(thread),scope),"pushing new local stack");
     done:
         return status;
     }
@@ -608,32 +627,32 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *oldscope=NULL,*newscope=NULL;
         LTI *oldstack=NULL,*newstack=NULL;
-        STRY(!(oldscope=dict_pop(thread)),"popping old scope");
-        STRY(!(newscope=dict_peek(thread)),"peeking new scope");
+        STRY(!(oldscope=POP(dict(thread))),"popping old scope");
+        STRY(!(newscope=PEEK(dict(thread))),"peeking new scope");
         STRY(!(oldstack=LTI_resolve(oldscope,"$",false)),"resolving old stack");
         STRY(!(newstack=LTI_resolve(newscope,"$",false)),"resolving new stack");
         CLL_MERGE(&newstack->ltvs,&oldstack->ltvs,HEAD);
         LTV_erase(oldscope,oldstack); // delete the old stack's handle ("$")
-        STRY(!stack_push(thread,oldscope),"pushing scope onto stack");
+        STRY(!stack_put(thread,oldscope),"pushing scope onto stack");
     done:
         return status;
     }
 
     int function_close() {
         return eval_push(thread,TOK_new(TOK_EXPR,LTV_new(">/",2,LT_NONE))) || // to close and delete lambda scope
-            eval_push(thread,TOK_new(TOK_EXPR,dict_peek(thread))); // to eval lambda
+            eval_push(thread,TOK_new(TOK_EXPR,PEEK(dict(thread)))); // to eval lambda
     }
 
     int append() {
         int status=0;
         LTV *a=NULL,*b=NULL;
         char *buf;
-        STRY(!(b=stack_pop(thread)),"popping append b");
-        STRY(!(a=stack_pop(thread)),"popping append a");
+        STRY(!(b=stack_get(thread,POP)),"popping append b");
+        STRY(!(a=stack_get(thread,POP)),"popping append a");
         STRY(!(buf=mymalloc(a->len+b->len)),"allocating merge buf");
         strncpy(buf,a->data,a->len);
         strncpy(buf+a->len,b->data,b->len);
-        STRY(!stack_push(thread,LTV_new(buf,a->len+b->len,LT_OWN)),"pushing merged LTV");
+        STRY(!stack_put(thread,LTV_new(buf,a->len+b->len,LT_OWN)),"pushing merged LTV");
     done:
         return status;
     }
@@ -648,13 +667,13 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
             if (pop)
                 map_tok->flags|=TOK_POP;
-            STRY(!(lambda_ltv=stack_pop(thread)),"popping lambda");
+            STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
         }
         else { // pop/prep expression for iteration
-            STRY(!(lambda_ltv=stack_pop(thread)),"popping lambda");
-            STRY(!(map_tok=TOK_new(TOK_EXPR,stack_pop(thread))),"allocating map expr");
+            STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
+            STRY(!(map_tok=TOK_new(TOK_EXPR,stack_get(thread,POP))),"allocating map expr");
         }
-        STRY(!(LTV_enq(&map_tok->lambdas,lambda_ltv,HEAD)),"pushing lambda into map tok");
+        STRY(!(PUSH(&map_tok->lambdas,lambda_ltv)),"pushing lambda into map tok");
         STRY(eval_push(thread,map_tok),"pushing map tok");
 
     done:
@@ -666,7 +685,7 @@ int ops_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         if (ref_head) // popping iteration
             STRY(map(true),"delegating map w/pop");
         else
-            STRY(eval_push(thread,TOK_new(TOK_EXPR,stack_pop(thread))),"pushing lambda");
+            STRY(eval_push(thread,TOK_new(TOK_EXPR,stack_get(thread,POP))),"pushing lambda");
     done:
         return status;
     }
@@ -747,7 +766,7 @@ int lit_eval(THREAD *thread,TOK *tok)
 {
     int status=0;
     if (!thread->skip && !thread->exception)
-        STRY(!stack_push(thread,tok_pop(tok)),"pushing expr lit");
+        STRY(!stack_put(thread,tok_pop(tok)),"pushing expr lit");
     TOK_free(tok);
  done:
     return status;
@@ -760,7 +779,7 @@ int expr_eval(THREAD *thread,TOK *tok)
     LTV *lambda_ltv=NULL;
 
     if ((child=toks_pop(&tok->children))) {
-        if ((lambda_ltv=LTV_peek(&tok->lambdas,HEAD))) // iterative... for each child: push lambda, child.
+        if ((lambda_ltv=PEEK(&tok->lambdas))) // iterative... for each child: push lambda, child.
             STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
         STRY(eval_push(thread,child),"pushing child");
     } else {
@@ -803,11 +822,11 @@ int tok_eval(THREAD *thread,TOK *tok)
     TRY(!tok,"testing for null tok");
     CATCH(status,0,goto done,"catching null tok");
 
-    switch(tok->flags&(TOK_FILE | TOK_EXPR | TOK_LIT | TOK_OPS | TOK_REF))
+    switch(tok->flags&(TOK_FILE | TOK_EXPR | TOK_LIT | TOK_ATOM | TOK_REF))
     {
         case TOK_FILE: STRY(file_eval(thread,tok),"evaluating file"); break;
         case TOK_LIT : STRY(lit_eval(thread,tok), "evaluating lit");  break;
-        case TOK_OPS : STRY(ops_eval(thread,tok), "evaluating ops");  break;
+        case TOK_ATOM: STRY(atom_eval(thread,tok),"evaluating atom");  break;
         case TOK_REF : STRY(ref_eval(thread,tok), "evaluating ref");  break; // used for map
         case TOK_EXPR: STRY(expr_eval(thread,tok),"evaluating expr"); break;
         default: TOK_free(tok); break;

@@ -469,22 +469,22 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
 
-    void *lnk2dot(CLL *lnk,int last) {
-        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown]\n",lnk);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown %s]\n",lnk->lnk[TAIL],lnk,last?"constraint=false":"");
+    void *lnk2dot(CLL *lnk) {
+        fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown penwidth=2.0]\n",lnk);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=brown penwidth=2.0]\n",lnk->lnk[TAIL],lnk);
         return NULL;
     }
 
     void *ltvr2dot(CLL *lnk) {
         LTVR *ltvr=(LTVR *) lnk;
         fprintf(ofile,"\"%x\" -> \"LTV%x\" [color=purple len=0.1]\n",lnk,ltvr->ltv);
-        return lnk2dot(lnk,false);
+        return lnk2dot(lnk);
     }
 
     void cll2dot(CLL *cll,char *label) {
-        lnk2dot(cll,true);
         if (label)
             fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse style=filled fillcolor=gray]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,cll);
+        lnk2dot(cll);
     }
 
     void lti2dot(LTV *ltv,LTI *lti) {
@@ -940,7 +940,7 @@ void REF_dot(FILE *ofile,CLL *refs,char *label)
         fprintf(ofile,"\"%x\" [label=\"\" shape=box label=\"",ref);
         fprintf(ofile,"%s",ref->reverse?"REV":"FWD");
         fprintf(ofile,"\"]\n");
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=red]\n",ref,lnk->lnk[0]);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=red penwidth=2.0]\n",ref,lnk->lnk[0]);
         //fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->ltvs);
         fprintf(ofile,"\"%2$x\" [label=\"root\"]\n\"%1$x\" -> \"%2$x\"\n",ref,&ref->root);
         ltvs2dot(ofile,&ref->root,0,NULL);

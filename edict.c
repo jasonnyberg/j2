@@ -39,9 +39,9 @@
 // Utils
 //////////////////////////////////////////////////
 
-#define PUSH(cll,ltv) LTV_enq((cll),(ltv),HEAD)
-#define POP(cll)      LTV_deq((cll),HEAD)
-#define PEEK(cll)     LTV_peek((cll),HEAD)
+LTV *push(CLL *cll,LTV *ltv) { return LTV_enq((cll),(ltv),HEAD); }
+LTV *pop(CLL *cll)           { LTV_deq((cll),HEAD); }
+LTV *peek(CLL *cll)          { LTV_peek((cll),HEAD); }
 
 //////////////////////////////////////////////////
 
@@ -115,9 +115,8 @@ typedef struct THREAD {
     CLL lnk;
     EDICT *edict;
     CLL dict;        // cll of ltvr
-    CLL stack;       // cll of ltvr (grows at tail)
     CLL toks;        // cll of tok
-    void *exception;
+    CLL exceptions;
     int skipdepth;
     int skip;
 } THREAD;
@@ -133,9 +132,9 @@ TOK *toks_push(CLL *cll,TOK *tok) { return (TOK *) CLL_put(cll,&tok->lnk,HEAD); 
 TOK *toks_pop(CLL *cll)           { return (TOK *) CLL_get(cll,POP,HEAD);       }
 TOK *toks_peek(CLL *cll)          { return (TOK *) CLL_get(cll,KEEP,HEAD);      }
 
-LTV *tok_push(TOK *tok,LTV *ltv) { return PUSH(&tok->ltvs,ltv); }
-LTV *tok_pop(TOK *tok )          { return POP(&tok->ltvs);      }
-LTV *tok_peek(TOK *tok)          { return PEEK(&tok->ltvs);     }
+LTV *tok_push(TOK *tok,LTV *ltv) { return push(&tok->ltvs,ltv); }
+LTV *tok_pop(TOK *tok )          { return pop(&tok->ltvs);      }
+LTV *tok_peek(TOK *tok)          { return peek(&tok->ltvs);     }
 
 TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
 {
@@ -182,7 +181,7 @@ void show_tok_flags(FILE *ofile,TOK *tok)
     if (tok->flags&TOK_FILE)    fprintf(ofile,"FILE ");
     if (tok->flags&TOK_EXPR)    fprintf(ofile,"EXPR ");
     if (tok->flags&TOK_LIT)     fprintf(ofile,"LIT ");
-    if (tok->flags&TOK_ATOM)    fprintf(ofile,"OPS ");
+    if (tok->flags&TOK_ATOM)    fprintf(ofile,"ATOM ");
     if (tok->flags&TOK_REF)     fprintf(ofile,"REF ");
 }
 
@@ -215,14 +214,14 @@ void show_toks(FILE *ofile,char *pre,CLL *toks,char *post)
 //////////////////////////////////////////////////
 
 CLL *dict(THREAD *thread) { return thread?&thread->dict:NULL; }
-CLL *stack(THREAD *thread) { return thread?&thread->stack:NULL; }
 CLL *toks(THREAD *thread) { return thread?&thread->toks:NULL; }
+CLL *exceptions(THREAD *thread) { return thread?&thread->exceptions:NULL; }
 
 //////////////////////////////////////////////////
 
-LTV *stack_put(THREAD *thread,LTV *ltv) { return LT_put(PEEK(dict(thread)),"$",HEAD,ltv); }
+LTV *stack_put(THREAD *thread,LTV *ltv) { return LT_put(peek(dict(thread)),"$",HEAD,ltv); }
 LTV *stack_get(THREAD *thread,int pop) {
-    void *stack_resolve(CLL *lnk) { return LT_get(((LTVR *) lnk)->ltv,"$",HEAD,POP); }
+    void *stack_resolve(CLL *lnk) { return LT_get(((LTVR *) lnk)->ltv,"$",HEAD,pop); }
     return CLL_map(dict(thread),FWD,stack_resolve);
 }
 
@@ -236,13 +235,12 @@ THREAD *THREAD_new(EDICT *edict)
     STRY(!(thread=NEW(THREAD)),"allocating thread");
     TRYCATCH(!(thread->edict=edict),-1,release_thread,"assigning thread's edict");
     CLL_init(dict(thread));
-    CLL_init(stack(thread));
     CLL_init(toks(thread));
-    thread->exception=NULL;
+    CLL_init(exceptions(thread));
     thread->skipdepth=0;
     thread->skip=false;
 
-    TRYCATCH(!PUSH(dict(thread),edict->root),-1,release_thread,"pushing thread->dict root");
+    TRYCATCH(!push(dict(thread),edict->root),-1,release_thread,"pushing thread->dict root");
     TRYCATCH(!CLL_put(&edict->threads,&thread->lnk,HEAD),-1,release_thread,"pushing thread into edict");
 
     goto done; // success!
@@ -259,8 +257,9 @@ void THREAD_free(THREAD *thread)
 {
     if (!thread) return;
     CLL_cut(&thread->lnk); // remove from any list it's in
+    //CLL_release(dict(thread),LTVR_release);
+    CLL_release(exceptions(thread),LTVR_release);
     void tok_free(CLL *lnk) { TOK_free((TOK *) lnk); }
-    CLL_release(stack(thread),LTVR_release);
     CLL_release(toks(thread),tok_free);
     RELEASE(thread);
 }
@@ -278,7 +277,7 @@ int edict_graph(FILE *ofile,EDICT *edict)
             TOK *tok=(TOK *) lnk;
             fprintf(ofile,"\"%x\" [shape=box label=\"",tok);
             show_tok_flags(ofile,tok);
-            fprintf(ofile,"\"]\n\"%x\" -> \"%x\" [color=red]\n",tok,lnk->lnk[0]);
+            fprintf(ofile,"\"]\n\"%x\" -> \"%x\" [color=darkgreen penwidth=2.0]\n",tok,lnk->lnk[0]);
             fprintf(ofile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
             ltvs2dot(ofile,&tok->ltvs,0,NULL);
             fprintf(ofile,"\"%2$x\" [label=\"lambdas\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->lambdas);
@@ -293,15 +292,13 @@ int edict_graph(FILE *ofile,EDICT *edict)
         }
 
         fprintf(ofile,"\"%x\" [label=\"%s\"]\n",toks,label);
-        fprintf(ofile,"\"%x\" -> \"%x\" [color=red]\n",toks,toks->lnk[0]);
+        fprintf(ofile,"\"%x\" -> \"%x\" [color=darkgreen penwidth=2.0]\n",toks,toks->lnk[0]);
         CLL_map(toks,FWD,op);
     }
 
     void show_thread(THREAD *thread) {
         int halt=0;
         fprintf(ofile,"\"Thread %x\"\n",thread);
-        fprintf(ofile,"\"S%2$x\" [label=\"Stack\"]\n\"Thread %1$x\" -> \"S%2$x\" -> \"%2$x\"\n",thread,stack(thread));
-        ltvs2dot(ofile,stack(thread),0,NULL);
         fprintf(ofile,"\"D%2$x\" [label=\"Dict\"]\n\"Thread %1$x\" -> \"D%2$x\" -> \"%2$x\"\n",thread,dict(thread));
         ltvs2dot(ofile,dict(thread),0,NULL);
         fprintf(ofile,"\"Thread %x\" -> \"%x\"\n",thread,toks(thread));
@@ -426,7 +423,7 @@ int ref_eval(THREAD *thread,TOK *ref_tok)
     REF *ref_head=NULL;
     LTV *lambda_ltv=NULL,*ref_ltv=NULL;
 
-    STRY(!(lambda_ltv=PEEK(&ref_tok->lambdas)),"validating ref lambda");
+    STRY(!(lambda_ltv=peek(&ref_tok->lambdas)),"validating ref lambda");
     STRY(!(ref_head=REF_HEAD(&ref_tok->children)),"validating ref head");
     STRY(!(ref_ltv=REF_ltv(ref_head)),"validating deref result");
     STRY(!stack_put(thread,ref_ltv),"pushing resolved ref to stack");
@@ -465,7 +462,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         void *resolve_macro(CLL *cll) {
             int status=0;
             REF *ref=(REF *) cll;
-            LTV *ltv=PEEK(&ref->keys);
+            LTV *ltv=peek(&ref->keys);
             if (series(ltv->data,ltv->len,NULL,NULL,"``")==ltv->len) { // macro
                 CLL ref;
                 CLL_init(&ref);
@@ -481,9 +478,33 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         ref_head=REF_HEAD(&ref_tok->children);
     }
 
-    int throw(void *exception) {
-        thread->exception=exception;
-        return 0;
+    int throw(LTV *ltv) {
+        int status=0;
+        if (ltv) {
+            STRY(!push(exceptions(thread),ltv),"throwing exception");
+        }
+        else if (ref_head) {
+            TRYCATCH(edict_resolve(thread,&ref_tok->children,false),0,done,"resolving ref for throw");
+            STRY(!push(exceptions(thread),REF_ltv(ref_head)),"throwing named exception");
+        } else {
+            STRY(!push(exceptions(thread),stack_get(thread,POP)),"throwing exception from stack");
+        }
+    done:
+        return status;
+    }
+
+    int catch() {
+        int status=0;
+        LTV *exception=NULL;
+        STRY(!(exception=peek(exceptions(thread))),"peeking at exception stack");
+        if (ref_head) { // looking for a specific exception to catch
+            TRYCATCH(edict_resolve(thread,&ref_tok->children,false),0,done,"resolving ref for catch");
+            if (exception!=REF_ltv(ref_head))
+                goto done;
+        }
+        LTV_release(pop(exceptions(thread)));
+    done:
+        return status;
     }
 
     int special() { // handle special operations
@@ -564,13 +585,10 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
                 else if (!strnncmp(key->data,key->len,"import",-1))  STRY(import(),"evaluating #import");
                 else if (!strnncmp(key->data,key->len,"new",-1))     STRY(cvar(),"evaluating #new");
                 else if (!strnncmp(key->data,key->len,"dup",-1))     STRY(dup(),"evaluating #dup");
-                else if (!strnncmp(key->data,key->len,"throw",-1))   STRY(throw(NON_NULL),"evaluating #throw");
                 else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");
             }
-        } else {
+        } else
             edict_graph_to_file("/tmp/jj.dot",thread->edict);
-            print_ltvs(stdout,CODE_BLUE,stack(thread),CODE_RESET "\n",0);
-        }
     done:
         return status;
     }
@@ -596,7 +614,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
 
     exception:
         TOK_free(ref_tok);
-        thread->exception=NON_NULL;
+        throw(LTV_new("exception: assign",-1,0));
     done:
         return status;
     }
@@ -618,7 +636,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         LTV *scope=NULL;
         STRY(!(scope=stack_get(thread,POP)),"popping scope from stack");
         STRY(!LTI_resolve(scope,"$",true),"creating local stack");
-        STRY(!PUSH(dict(thread),scope),"pushing new local stack");
+        STRY(!push(dict(thread),scope),"pushing new local stack");
     done:
         return status;
     }
@@ -627,8 +645,8 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *oldscope=NULL,*newscope=NULL;
         LTI *oldstack=NULL,*newstack=NULL;
-        STRY(!(oldscope=POP(dict(thread))),"popping old scope");
-        STRY(!(newscope=PEEK(dict(thread))),"peeking new scope");
+        STRY(!(oldscope=pop(dict(thread))),"popping old scope");
+        STRY(!(newscope=peek(dict(thread))),"peeking new scope");
         STRY(!(oldstack=LTI_resolve(oldscope,"$",false)),"resolving old stack");
         STRY(!(newstack=LTI_resolve(newscope,"$",false)),"resolving new stack");
         CLL_MERGE(&newstack->ltvs,&oldstack->ltvs,HEAD);
@@ -640,7 +658,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
 
     int function_close() {
         return eval_push(thread,TOK_new(TOK_EXPR,LTV_new(">/",2,LT_NONE))) || // to close and delete lambda scope
-            eval_push(thread,TOK_new(TOK_EXPR,PEEK(dict(thread)))); // to eval lambda
+            eval_push(thread,TOK_new(TOK_EXPR,peek(dict(thread)))); // to eval lambda
     }
 
     int append() {
@@ -653,6 +671,8 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         strncpy(buf,a->data,a->len);
         strncpy(buf+a->len,b->data,b->len);
         STRY(!stack_put(thread,LTV_new(buf,a->len+b->len,LT_OWN)),"pushing merged LTV");
+        LTV_release(a);
+        LTV_release(b);
     done:
         return status;
     }
@@ -663,17 +683,17 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         TOK *map_tok=NULL;
 
         if (ref_head) { // prep ref for iteration
+            STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
             STRY(edict_resolve(thread,&ref_tok->children,false),"resolving ref for deref");
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
             if (pop)
                 map_tok->flags|=TOK_POP;
-            STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
         }
         else { // pop/prep expression for iteration
             STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
             STRY(!(map_tok=TOK_new(TOK_EXPR,stack_get(thread,POP))),"allocating map expr");
         }
-        STRY(!(PUSH(&map_tok->lambdas,lambda_ltv)),"pushing lambda into map tok");
+        STRY(!(push(&map_tok->lambdas,lambda_ltv)),"pushing lambda into map tok");
         STRY(eval_push(thread,map_tok),"pushing map tok");
 
     done:
@@ -690,13 +710,6 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         return status;
     }
 
-    int catch() {
-        int status=0;
-        // if (thread->exception == whatever) could do some pattern-matching here
-        thread->exception=NULL;
-        return status;
-    }
-
     int compare() { // compare either TOS/NOS, or TOS/name
         int status=0;
         // FIXME
@@ -708,9 +721,9 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     // iterate over ops
     ////////////////////////////////////////////////////////////////////////////
 
-    //edict_graph_to_file("/tmp/jj.dot",thread->edict);
+    //edict_graph_to_file("/tmp/jj.dot",thread->edict)
 
-    if (!thread->skip && !thread->exception && !opslen && ref_head) // implied deref
+    if (!thread->skip && CLL_EMPTY(exceptions(thread)) && !opslen && ref_head) // implied deref
         STRY(deref(),"performing implied deref");
     else
         for (int i=0;i<opslen;i++) {
@@ -720,17 +733,17 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
                     case '>': case ')': if (thread->skipdepth) thread->skipdepth--; break;
                     default: break;
                 }
-            else if (thread->exception)
+            else if (peek(exceptions(thread)))
                 switch (ops[i]) {
-                    case '<': case '(': thread->skipdepth++; break;
+                    case '<': case '(': thread->skipdepth++; break; // ignore intervening contexts
                     case '>': STRY(scope_close(),   "evaluating scope_close (ex)");    break;
                     case ')': STRY(function_close(),"evaluating function_close (ex)"); break;
                     case '|': STRY(catch(),         "evaluating catch (ex)");          break;
                     default: break;
                 }
-            else if (thread->skip) // exception handlers end at end of blocks
+            else if (thread->skip)
                 switch (ops[i]) {
-                    case '<': case '(': thread->skipdepth++; break;
+                    case '<': case '(': thread->skipdepth++; break; // ignore intervening contexts
                     case '>': thread->skip=false; STRY(scope_close(),   "evaluating scope_close (skip)");    break;
                     case ')': thread->skip=false; STRY(function_close(),"evaluating function_close (skip)"); break;
                     default: break;
@@ -742,7 +755,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
                     case '>': STRY(scope_close(),   "evaluating scope_close");    break;
                     case '(': STRY(scope_open(),    "evaluating function_open");  break;
                     case ')': STRY(function_close(),"evaluating function_close"); break;
-                    case '&': STRY(throw(NON_NULL), "evaluating throw");          break;
+                    case '&': STRY(throw(NULL),     "evaluating throw");          break;
                     case '!': STRY(eval(),          "evaluating eval");           break;
                     case '%': STRY(map(false),      "evaluating map");            break;
                     case '@': STRY(assign(),        "evaluating assign");         break;
@@ -765,7 +778,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
 int lit_eval(THREAD *thread,TOK *tok)
 {
     int status=0;
-    if (!thread->skip && !thread->exception)
+    if (!thread->skip && CLL_EMPTY(exceptions(thread)))
         STRY(!stack_put(thread,tok_pop(tok)),"pushing expr lit");
     TOK_free(tok);
  done:
@@ -779,7 +792,7 @@ int expr_eval(THREAD *thread,TOK *tok)
     LTV *lambda_ltv=NULL;
 
     if ((child=toks_pop(&tok->children))) {
-        if ((lambda_ltv=PEEK(&tok->lambdas))) // iterative... for each child: push lambda, child.
+        if ((lambda_ltv=peek(&tok->lambdas))) // iterative... for each child: push lambda, child.
             STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
         STRY(eval_push(thread,child),"pushing child");
     } else {
@@ -801,6 +814,7 @@ int file_eval(THREAD *thread,TOK *tok)
 
     STRY(!tok,"validating file tok");
     STRY(!(tok_data=tok_peek(tok)),"validating file");
+    TRYCATCH(!CLL_EMPTY(exceptions(thread)),0,close_file,"checking for file read during exception");
     TRYCATCH((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,0,close_file,"reading from file");
     TRYCATCH(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
     TRYCATCH(eval_push(thread,expr),TRY_ERR,free_expr,"enqueing expr token");
@@ -809,7 +823,8 @@ int file_eval(THREAD *thread,TOK *tok)
  free_expr:  TOK_free(expr);
  free_line:  free(line);
  close_file:
-    fclose((FILE *) tok_data->data);
+    if (tok_data->data!=stdin)
+        fclose((FILE *) tok_data->data);
     TOK_free(tok);
 
  done:

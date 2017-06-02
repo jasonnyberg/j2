@@ -225,6 +225,8 @@ LTV *stack_get(THREAD *thread,int pop) {
     return CLL_map(dict(thread),FWD,stack_resolve);
 }
 
+int exception(THREAD *thread,LTV *ltv) { return !push(exceptions(thread),ltv); }
+
 //////////////////////////////////////////////////
 
 THREAD *THREAD_new(EDICT *edict)
@@ -275,13 +277,15 @@ int edict_graph(FILE *ofile,EDICT *edict)
     void descend_toks(CLL *toks,char *label) {
         void *op(CLL *lnk) {
             TOK *tok=(TOK *) lnk;
-            fprintf(ofile,"\"%x\" [shape=box label=\"",tok);
+            fprintf(ofile,"\"%x\" [shape=box style=filled fillcolor=green4 label=\"",tok);
             show_tok_flags(ofile,tok);
             fprintf(ofile,"\"]\n\"%x\" -> \"%x\" [color=darkgreen penwidth=2.0]\n",tok,lnk->lnk[0]);
-            fprintf(ofile,"\"%2$x\" [label=\"ltvs\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
+            fprintf(ofile,"\"%2$x\"\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->ltvs);
             ltvs2dot(ofile,&tok->ltvs,0,NULL);
-            fprintf(ofile,"\"%2$x\" [label=\"lambdas\"]\n\"%1$x\" -> \"%2$x\"\n",tok,&tok->lambdas);
-            ltvs2dot(ofile,&tok->lambdas,0,NULL);
+            if (!CLL_EMPTY(&tok->lambdas)) {
+                fprintf(ofile,"\"%2$x\"\n\"%1$x\" -> \"%2$x\" [label=\"&#955;\"]\n",tok,&tok->lambdas);
+                ltvs2dot(ofile,&tok->lambdas,0,NULL);
+            }
             if (CLL_HEAD(&tok->children)) {
                 fprintf(ofile,"\"%x\" -> \"%x\"\n",tok,&tok->children);
                 if (tok->flags&TOK_REF)
@@ -291,7 +295,7 @@ int edict_graph(FILE *ofile,EDICT *edict)
             }
         }
 
-        fprintf(ofile,"\"%x\" [label=\"%s\"]\n",toks,label);
+        fprintf(ofile,"\"%x\" [shape=ellipse label=\"%s\"]\n",toks,label);
         fprintf(ofile,"\"%x\" -> \"%x\" [color=darkgreen penwidth=2.0]\n",toks,toks->lnk[0]);
         CLL_map(toks,FWD,op);
     }
@@ -481,13 +485,13 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     int throw(LTV *ltv) {
         int status=0;
         if (ltv) {
-            STRY(!push(exceptions(thread),ltv),"throwing exception");
+            STRY(exception(thread,ltv),"throwing exception");
         }
         else if (ref_head) {
             TRYCATCH(edict_resolve(thread,&ref_tok->children,false),0,done,"resolving ref for throw");
-            STRY(!push(exceptions(thread),REF_ltv(ref_head)),"throwing named exception");
+            STRY(exception(thread,REF_ltv(ref_head)),"throwing named exception");
         } else {
-            STRY(!push(exceptions(thread),stack_get(thread,POP)),"throwing exception from stack");
+            STRY(exception(thread,stack_get(thread,POP)),"throwing exception from stack");
         }
     done:
         return status;
@@ -559,7 +563,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             LTI *lti=NULL;
             if ((lti=REF_lti(ref_head))) {
                 CLL *ltvs=&lti->ltvs;
-                graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
+                graph_ltvs_to_file("/tmp/jj.dot",ltvs,2,label);
                 print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
             }
             else if ((cvar=REF_ltv(ref_head)) && cvar->flags&LT_CVAR)
@@ -568,9 +572,14 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
-        int dup() {
+        int dup() { return !stack_put(thread,LTV_dup(stack_get(thread,KEEP))); }
+
+        int ro(int is_ro) {
             int status=0;
-            STRY(!stack_put(thread,LTV_dup(stack_get(thread,KEEP))),"duplicating TOS");
+            LTV *ltv=NULL;
+            STRY(!(ltv=stack_get(thread,KEEP)),"getting tos");
+            if (is_ro) ltv->flags|=LT_RO;
+            else       ltv->flags&=~LT_RO;
         done:
             return status;
         }
@@ -585,10 +594,14 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
                 else if (!strnncmp(key->data,key->len,"import",-1))  STRY(import(),"evaluating #import");
                 else if (!strnncmp(key->data,key->len,"new",-1))     STRY(cvar(),"evaluating #new");
                 else if (!strnncmp(key->data,key->len,"dup",-1))     STRY(dup(),"evaluating #dup");
+                else if (!strnncmp(key->data,key->len,"ro",-1))      STRY(ro(true),"evaluating #ro");
+                else if (!strnncmp(key->data,key->len,"rw",-1))      STRY(ro(false),"evaluating #rw");
                 else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");
             }
-        } else
+        } else {
             edict_graph_to_file("/tmp/jj.dot",thread->edict);
+        }
+
     done:
         return status;
     }
@@ -791,8 +804,9 @@ int expr_eval(THREAD *thread,TOK *tok)
     TOK *child=NULL;
     LTV *lambda_ltv=NULL;
 
-    if ((child=toks_pop(&tok->children))) {
-        if ((lambda_ltv=peek(&tok->lambdas))) // iterative... for each child: push lambda, child.
+    if ((child=toks_pop(&tok->children)))
+    {
+        if ((lambda_ltv=peek(&tok->lambdas)))
             STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
         STRY(eval_push(thread,child),"pushing child");
     } else {
@@ -841,7 +855,7 @@ int tok_eval(THREAD *thread,TOK *tok)
     {
         case TOK_FILE: STRY(file_eval(thread,tok),"evaluating file"); break;
         case TOK_LIT : STRY(lit_eval(thread,tok), "evaluating lit");  break;
-        case TOK_ATOM: STRY(atom_eval(thread,tok),"evaluating atom");  break;
+        case TOK_ATOM: STRY(atom_eval(thread,tok),"evaluating atom"); break;
         case TOK_REF : STRY(ref_eval(thread,tok), "evaluating ref");  break; // used for map
         case TOK_EXPR: STRY(expr_eval(thread,tok),"evaluating expr"); break;
         default: TOK_free(tok); break;
@@ -854,10 +868,10 @@ int tok_eval(THREAD *thread,TOK *tok)
 int thread_eval(THREAD *thread)
 {
     int status=0;
+    TOK *tok=NULL;
     STRY(!thread,"testing for null thread");
 
-    TOK *tok=toks_peek(toks(thread));
-    if (tok)
+    if ((tok=toks_peek(toks(thread))))
         STRY(tok_eval(thread,tok),"evaluating tok");
     else
         THREAD_free(thread);
@@ -875,21 +889,14 @@ int thread_eval(THREAD *thread)
 ///////////////////////////////////////////////////////
 
 // ultimately, an edict will be simply be an LTV with certain items embedded (i.e. stack, threads)
-int edict_init(EDICT *edict)
+int edict_init(EDICT *edict,char *buf)
 {
     int status=0;
     STRY(!edict,"validating edict");
     CLL_init(&edict->threads);
-    STRY(!(edict->root=LTV_new("ROOT",TRY_ERR,LT_NONE)),"creating edict root");
+    STRY(!(edict->root=LTV_new("ROOT",TRY_ERR,LT_RO)),"creating edict root");
     STRY(!LTI_resolve(edict->root,"$",true),"creating global stack");
 
- done:
-    return status;
-}
-
-int edict_eval(EDICT *edict,char *buf)
-{
-    int status=0;
     THREAD *thread=NULL;
     STRY(!(thread=THREAD_new(edict)),"creating initial thread");
     STRY(eval_push(thread,TOK_expr(buf,-1)),"injecting buf into initial thread");
@@ -917,11 +924,10 @@ int edict(int argc,char *argv[])
     try_reset();
     try_depth=1; // superficial info only
     STRY(!(edict=NEW(EDICT)),"allocating edict");
-    STRY(edict_init(edict),"initializing edict");
 
     switch(argc) {
-        case 2:  STRY(edict_eval(edict,argv[1]),"evaluating argv[1]"); break;
-        default: STRY(edict_eval(edict,("[bootstrap.edict] #read")),"bootstrapping edict"); break;
+        case 2:  STRY(edict_init(edict,argv[1]),"evaluating argv[1]"); break;
+        default: STRY(edict_init(edict,("[bootstrap.edict] #read")),"bootstrapping edict"); break;
     }
 
  done:

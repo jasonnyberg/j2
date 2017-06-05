@@ -455,32 +455,8 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     int assignment=series(ops,opslen,NULL,"@",NULL)<opslen; // ops contains "@", i.e. assignment
     int wildcard=0;
 
-    TOK *ref_tok=toks_peek(&ops_tok->children);
+    TOK *ref_tok=NULL;
     REF *ref_head=NULL;
-
-    if (ref_tok) {
-        LTV *ref_ltv=tok_peek(ref_tok);
-        wildcard=LTV_wildcard(ref_ltv);
-        STRY((assignment && wildcard),"testing for assignment-to-wildcard");
-        STRY(REF_create(ref_ltv->data,ref_ltv->len,&ref_tok->children),"creating REF"); // ref tok children are REFs, not TOKs!!!
-        void *resolve_macro(CLL *cll) {
-            int status=0;
-            REF *ref=(REF *) cll;
-            LTV *ltv=peek(&ref->keys);
-            if (series(ltv->data,ltv->len,NULL,NULL,"``")==ltv->len) { // macro
-                CLL ref;
-                CLL_init(&ref);
-                STRY(REF_create(ltv->data+1,ltv->len-2,&ref),"creating REF"); // ref tok children are LT REFs, not TOKs!
-                STRY(edict_resolve(thread,&ref,false),"resolving macro");
-                LTV *res_ltv=REF_ltv(REF_HEAD(&ref));
-                LTV_renew(ltv,res_ltv->data,res_ltv->len,LT_DUP);
-            }
-        done:
-            return status?NON_NULL:NULL;
-        }
-        STRY(CLL_map(&ref_tok->children,FWD,resolve_macro)!=NULL,"resolving ref macros");
-        ref_head=REF_HEAD(&ref_tok->children);
-    }
 
     int throw(LTV *ltv) {
         int status=0;
@@ -728,6 +704,34 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         // FIXME
     done:
         return status;
+    }
+
+    ////////////////////////////////////////////////////////////////////////////
+    // create a ref if necessary
+    ////////////////////////////////////////////////////////////////////////////
+
+    if ((ref_tok=toks_peek(&ops_tok->children))) {
+        LTV *ref_ltv=tok_peek(ref_tok);
+        wildcard=LTV_wildcard(ref_ltv);
+        STRY((assignment && wildcard),"testing for assignment-to-wildcard");
+        STRY(REF_create(ref_ltv->data,ref_ltv->len,&ref_tok->children),"creating REF"); // ref tok children are REFs, not TOKs!!!
+        void *resolve_macro(CLL *cll) {
+            int status=0;
+            REF *ref=(REF *) cll;
+            LTV *ltv=peek(&ref->keys);
+            if (series(ltv->data,ltv->len,NULL,NULL,"``")==ltv->len) { // macro
+                CLL ref;
+                CLL_init(&ref);
+                STRY(REF_create(ltv->data+1,ltv->len-2,&ref),"creating REF"); // ref tok children are LT REFs, not TOKs!
+                STRY(edict_resolve(thread,&ref,false),"resolving macro");
+                LTV *res_ltv=REF_ltv(REF_HEAD(&ref));
+                LTV_renew(ltv,res_ltv->data,res_ltv->len,LT_DUP);
+            }
+        done:
+            return status?NON_NULL:NULL;
+        }
+        STRY(CLL_map(&ref_tok->children,FWD,resolve_macro)!=NULL,"resolving ref macros");
+        ref_head=REF_HEAD(&ref_tok->children);
     }
 
     ////////////////////////////////////////////////////////////////////////////

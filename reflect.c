@@ -1281,7 +1281,7 @@ int Type_isBitField(TYPE_INFO *type_info) { return (type_info->bitsize || type_i
 
 
 
-
+// New name idea: GUT, for grand unified theory
 
 LTV *ref_type_to_ffi_type(LTV *type,ffi_type *ft)
 {

@@ -29,3 +29,5 @@ extern int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd)
 }
 
 extern int add(int a,int b) { return a+b; }
+
+extern void voidfunc(int a,int b) { x=a+b; }

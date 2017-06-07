@@ -51,6 +51,9 @@ LTV *attr_set(LTV *ltv,char *attr,char *val) { return LT_put(ltv,attr,TAIL,LTV_n
 LTV *attr_own(LTV *ltv,char *attr,char *val) { return LT_put(ltv,attr,TAIL,LTV_new(val,-1,LT_OWN)); }
 LTV *attr_imm(LTV *ltv,char *attr,long long imm)    { return LT_put(ltv,attr,TAIL,LTV_new((void *) imm,0,LT_IMM)); }
 
+extern char *attr_get(LTV *ltv,char *attr);
+extern void attr_del(LTV *ltv,char *attr);
+
 char *attr_get(LTV *ltv,char *attr)
 {
     LTV *attr_ltv=LT_get(ltv,attr,TAIL,KEEP);
@@ -949,7 +952,7 @@ int traverse_types(char *filename,LTV *module)
 }
 
 
-int ref_curate_module(LTV *module,char *altname)
+int ref_curate_module(LTV *module,int bootstrap)
 {
     int status=0;
     CU_DATA cu_data;
@@ -1081,14 +1084,14 @@ int ref_curate_module(LTV *module,char *altname)
         return work_op(NULL,die);
     }
 
-    char *filename=altname?altname:FORMATA(filename,module->len,"%s",module->data);
+    char *filename=FORMATA(filename,module->len,"%s",module->data);
     do {
         STRY(traverse_cus(filename,init,&cu_data),"traversing module compute units");
         pass++;
     } while (!LTV_empty(dependencies));
 
     LTV_release(dependencies);
-    resolve_symbols(module,altname?NULL:filename,index); // dlopen wants NULL for "this" module
+    resolve_symbols(module,filename,index); // dlopen wants NULL for "this" module
     //traverse_types("/tmp/simple.dot",module);
     LTV_release(index);
     LTV_release(compile_units);
@@ -1363,9 +1366,6 @@ LTV *ref_type_to_ffi_type(LTV *type)
         return NULL;
     }
 }
-
-
-
 
 
 

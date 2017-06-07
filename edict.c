@@ -504,11 +504,11 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
-        int import() {
+        int import(int bootstrap) {
             int status=0;
             LTV *mod_ltv=NULL;
             STRY(!(mod_ltv=stack_get(thread,KEEP)),"peeking dwarf import filename");
-            STRY(ref_curate_module(mod_ltv,NULL),"importing module");
+            STRY(ref_curate_module(mod_ltv,bootstrap),"importing module");
         done:
             return status;
         }
@@ -564,14 +564,16 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         if (ref_head) {
             LTV *key=REF_key(ref_head);
             char *buf=NULL;
+#define BUILTIN(cmd) (!strnncmp(key->data,key->len,(#cmd),-1))
             if (key) {
-                if      (!strnncmp(key->data,key->len,"read",-1))    STRY(readfrom(),"evaluating #read");
-                else if (!strnncmp(key->data,key->len,"preview",-1)) STRY(preview(),"evaluating #preview");
-                else if (!strnncmp(key->data,key->len,"import",-1))  STRY(import(),"evaluating #import");
-                else if (!strnncmp(key->data,key->len,"new",-1))     STRY(cvar(),"evaluating #new");
-                else if (!strnncmp(key->data,key->len,"dup",-1))     STRY(dup(),"evaluating #dup");
-                else if (!strnncmp(key->data,key->len,"ro",-1))      STRY(ro(true),"evaluating #ro");
-                else if (!strnncmp(key->data,key->len,"rw",-1))      STRY(ro(false),"evaluating #rw");
+                if      BUILTIN(read)      STRY(readfrom(),"evaluating #read");
+                else if BUILTIN(preview)   STRY(preview(),"evaluating #preview");
+                else if BUILTIN(bootstrap) STRY(import(true),"evaluating #bootstrap");
+                else if BUILTIN(import)    STRY(import(false),"evaluating #import");
+                else if BUILTIN(new)       STRY(cvar(),"evaluating #new");
+                else if BUILTIN(dup)       STRY(dup(),"evaluating #dup");
+                else if BUILTIN(ro)        STRY(ro(true),"evaluating #ro");
+                else if BUILTIN(rw)        STRY(ro(false),"evaluating #rw");
                 else STRY(dump(PRINTA(buf,key->len,(char *) key->data)),"dumping named item");
             }
         } else {

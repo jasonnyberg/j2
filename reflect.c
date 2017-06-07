@@ -253,20 +253,21 @@ int dot_type_info(FILE *ofile,TYPE_INFO *type_info)
 LTV *ref_find_basic(LTV *type)
 {
     TYPE_INFO *type_info=NULL;
-    do {
+    while (type && type->flags&LT_TYPE) {
         type_info=(TYPE_INFO *) type->data;
         if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
             return type;
-    } while (type=LT_get(type,TYPE_BASE,HEAD,KEEP));
+        type=LT_get(type,TYPE_BASE,HEAD,KEEP);
+    }
     return NULL;
 }
 
-LTV *ref_get_child(LTV *type,char *member)
+LTV *ref_get_child(LTV *type,char *childname)
 {
     if (type->flags&LT_TYPE) {
-        LTV *subtype=LT_get(type,member,HEAD,KEEP);
-        if (subtype->flags&LT_TYPE)
-            return subtype;
+        LTV *child=LT_get(type,childname,HEAD,KEEP);
+        if (child && child->flags&LT_TYPE)
+            return child;
     }
     return NULL;
 }
@@ -336,6 +337,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
     CLL queue;
     CLL_init(&queue);
     LTV_enq(&queue,ref_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
+    //LTV *history=LTV_VOID;
 
     int process_type_info(LTV *cvar) {
         int status=0;
@@ -362,48 +364,59 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
         TYPE_INFO *type_info=(TYPE_INFO *) type->data;
 
         char *name=attr_get(type,TYPE_NAME);
-        const char *str=NULL;
-        dwarf_get_TAG_name(type_info->tag,&str);
-        fprintf(ofile," %s \"%s\",",str+7,name);
+        //char *tstr=NULL;
+        //if (!LT_get(history,FORMATA(tstr,12,"%p",cvar->data),HEAD,KEEP))
+        {
+            const char *str=NULL;
+            dwarf_get_TAG_name(type_info->tag,&str);
+            fprintf(ofile," %s \"%s\",",str+7,name);
 
-        switch(type_info->tag) {
-            case DW_TAG_union_type:
-            case DW_TAG_structure_type:
-                cvar_map(type,type_info_op); // traverse type hierarchy
-                break;
-            case DW_TAG_pointer_type: {
-                LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
-                if (base_type)
-                    LTV_enq(&queue,ref_create_cvar(base_type,*(void **) cvar->data,NULL),HEAD);
-                break;
-            }
-            case DW_TAG_array_type:
-                fprintf(ofile," (array unimplemented)");
-                break;
-            case DW_TAG_enumeration_type:
-                fprintf(ofile," (enum unimplemented)");
-                break;
-            case DW_TAG_enumerator:
-                fprintf(ofile,"enumerator!!!\n");
-                break;
-            case DW_TAG_member:
-                if (type_info->flags&TYPEF_BYTESIZE) {
-                    print_type_info(ofile,type_info);
-                    // and fall thru case!!!
-                } else {
-                    LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+            switch(type_info->tag) {
+                case DW_TAG_union_type:
+                case DW_TAG_structure_type:
+                    cvar_map(type,type_info_op); // traverse type hierarchy
+                    break;
+                case DW_TAG_pointer_type: {
+                    TYPE_UVALUE uval;
+                    char buf[64];
+                    if (Type_getUVAL(cvar,&uval))
+                        fprintf(ofile," %s",Type_pushUVAL(&uval,buf));
+                    break;
+                    LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
+                    void *loc=*(void **) cvar->data;
+                    //LT_put(history,FORMATA(tstr,12,"%p",loc),TAIL,type);
+                    if (base_type && loc)
+                        LTV_enq(&queue,ref_create_cvar(base_type,loc,NULL),HEAD);
                     break;
                 }
-            case DW_TAG_base_type: {
-                TYPE_UVALUE uval;
-                char buf[64];
-                if (Type_getUVAL(cvar,&uval))
-                    fprintf(ofile," %s",Type_pushUVAL(&uval,buf));
-                break;
+                case DW_TAG_array_type:
+                    fprintf(ofile," (array unimplemented)");
+                    break;
+                case DW_TAG_enumeration_type:
+                    fprintf(ofile," (enum unimplemented)");
+                    break;
+                case DW_TAG_enumerator:
+                    fprintf(ofile,"enumerator!!!\n");
+                    break;
+                case DW_TAG_member:
+                    if (type_info->flags&TYPEF_BYTESIZE) {
+                        print_type_info(ofile,type_info);
+                        // and fall thru case!!!
+                    } else {
+                        LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                        break;
+                    }
+                case DW_TAG_base_type: {
+                    TYPE_UVALUE uval;
+                    char buf[64];
+                    if (Type_getUVAL(cvar,&uval))
+                        fprintf(ofile," %s",Type_pushUVAL(&uval,buf));
+                    break;
+                }
+                default:
+                    LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                    break;
             }
-            default:
-                LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
-                break;
         }
     done:
         fprintf(ofile,"\n");
@@ -414,6 +427,9 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
         process_type_info(cvar);
         LTV_release(cvar);
     }
+
+    //print_ltv(stdout,"history",history,"\n",0);
+    //LTV_release(history);
 
  done:
     return status;
@@ -841,7 +857,7 @@ int resolve_symbols(LTV *module,char *dlname,LTV *index)
             case DW_TAG_enumerator:
                 if (type_name)
                     categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
-                break;
+                    break;
             case DW_TAG_typedef:
                 if (type_name)
                     categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
@@ -977,13 +993,20 @@ int ref_curate_module(LTV *module,char *altname)
                         if (parent && name)
                             STRY(!LT_put(parent,name,TAIL,type_info_ltv),"linking extern subprogram/variable to parent");
                         break;
-                    case DW_TAG_unspecified_parameters: // varargs
-                        if (parent)
-                            STRY(!LT_put(parent,"unspecified parameters",TAIL,type_info_ltv),"linking unspecified parameters to parent");
-                        break;
                     case DW_TAG_subrange_type:
                         if (parent)
                             STRY(!LT_put(parent,"subrange type",TAIL,type_info_ltv),"linking subrange type to parent");
+                        break;
+                    case DW_TAG_member:
+                    case DW_TAG_formal_parameter:
+                        if (parent && name) {
+                            STRY(!LT_put(parent,"child sequence",TAIL,type_info_ltv),"linking child to parent in sequence");
+                            STRY(!LT_put(parent,name,TAIL,type_info_ltv),"linking type info to parent");
+                        }
+                        break;
+                    case DW_TAG_unspecified_parameters: // varargs
+                        if (parent)
+                            STRY(!LT_put(parent,"unspecified parameters",TAIL,type_info_ltv),"linking unspecified parameters to parent");
                         break;
                     default:
                         if (parent && name)
@@ -1076,8 +1099,7 @@ int ref_curate_module(LTV *module,char *altname)
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 {
-    switch(uval->base.dutype)
-    {
+    switch(uval->base.dutype) {
         case TYPE_INT1S:   sprintf(buf,"0x%x",  uval->int1s.val);   break;
         case TYPE_INT2S:   sprintf(buf,"0x%x",  uval->int2s.val);   break;
         case TYPE_INT4S:   sprintf(buf,"0x%x",  uval->int4s.val);   break;
@@ -1097,8 +1119,7 @@ char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
 {
     int tVar;
-    switch(uval->base.dutype)
-    {
+    switch(uval->base.dutype) {
         case TYPE_INT1S:   sscanf(buf,"%i",  &tVar);uval->int1s.val=tVar; break;
         case TYPE_INT2S:   sscanf(buf,"%i",  &tVar);uval->int2s.val=tVar; break;
         case TYPE_INT4S:   sscanf(buf,"%i",  &tVar);uval->int4s.val=tVar; break;
@@ -1117,9 +1138,8 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
 
 
 #define UVAL2VAR(uval,var)                                                      \
-    {                                                                           \
-        switch (uval.dutype)                                                    \
-        {                                                                       \
+    do {                                                                        \
+        switch (uval.dutype) {                                                  \
             case TYPE_INT1S:   var=(typeof(var)) uval.int1s.val; break;         \
             case TYPE_INT2S:   var=(typeof(var)) uval.int2s.val; break;         \
             case TYPE_INT4S:   var=(typeof(var)) uval.int4s.val; break;         \
@@ -1132,7 +1152,7 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
             case TYPE_FLOAT8:  var=(typeof(var)) uval.float8.val; break;        \
             case TYPE_FLOAT12: var=(typeof(var)) uval.float12.val; break;       \
         }                                                                       \
-    }
+    } while(0)
 
 #define GETUVAL(member,type,uval)                                               \
     do {                                                                        \
@@ -1167,16 +1187,15 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
     ull bitoffset=type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
-        case DW_TAG_member:           encoding=5;                   break; // bitfield
-        case DW_TAG_enumeration_type: encoding=5;                   break;
-        case DW_TAG_pointer_type:     encoding=7;                   break;
+        case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
+        case DW_TAG_enumeration_type: encoding=DW_ATE_signed;       break;
+        case DW_TAG_pointer_type:     encoding=DW_ATE_unsigned;     break;
         case DW_TAG_base_type:        encoding=type_info->encoding; break;
         default: goto done;
     }
 
     BZERO(*uval);
-    switch (encoding)
-    {
+    switch (encoding) {
         case DW_ATE_float:
             if      (size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
             else if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
@@ -1232,28 +1251,28 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
     ull bitoffset=type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
-        case DW_TAG_member:           encoding=5;                   break; // bitfield
-        case DW_TAG_enumeration_type: encoding=5;                   break;
-        case DW_TAG_pointer_type:     encoding=7;                   break;
+        case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
+        case DW_TAG_enumeration_type: encoding=DW_ATE_signed;       break;
+        case DW_TAG_pointer_type:     encoding=DW_ATE_unsigned;     break;
         case DW_TAG_base_type:        encoding=type_info->encoding; break;
         default: goto done;
     }
 
     switch (encoding) {
-        case 4: // float
+        case DW_ATE_float:
             if      (size==4)  PUTUVAL(float4, TYPE_FLOAT4, uval);
             else if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
             else if (size==12) PUTUVAL(float12,TYPE_FLOAT12,uval);
             break;
-        case 5: // signed int
-        case 6: // signed char
+        case DW_ATE_signed:
+        case DW_ATE_signed_char:
             if      (size==1)  PUTUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
             else if (size==2)  PUTUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
             else if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
             else if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
             break;
-        case 7: // unsigned int
-        case 8: // unsigned char
+        case DW_ATE_unsigned:
+        case DW_ATE_unsigned_char:
             if      (size==1)  PUTUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
             else if (size==2)  PUTUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
             else if (size==4)  PUTUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
@@ -1280,27 +1299,71 @@ int Type_isBitField(TYPE_INFO *type_info) { return (type_info->bitsize || type_i
 
 
 
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+//ffi_type_void
+
 
 // New name idea: GUT, for grand unified theory
 
-LTV *ref_type_to_ffi_type(LTV *type,ffi_type *ft)
+LTV *ref_type_to_ffi_type(LTV *type)
 {
     int status=0;
     LTV *basic_type=NULL,*member_type=NULL,*cvar=NULL;
     TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
     TYPE_INFO *type_info=(TYPE_INFO *) basic_type->data;
+    ffi_type *ft=NULL;
 
-    switch(type_info->tag) {
-        case DW_TAG_base_type:
+    ull size=type_info->bytesize;
+    ull bitsize=type_info->bitsize;
+    ull bitoffset=type_info->bitoffset;
+    ull encoding;
+    switch (type_info->tag) {
+        case DW_TAG_pointer_type:     ft=&ffi_type_pointer;
+        case DW_TAG_union_type:
+        case DW_TAG_structure_type:   goto done;
+        case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
+        case DW_TAG_enumeration_type: encoding=DW_ATE_signed;       break;
+        case DW_TAG_base_type:        encoding=type_info->encoding; break;
+        default: goto done;
+    }
+
+    switch (encoding) {
+        case DW_ATE_float:
+            if      (size==4)  ft=&ffi_type_float;
+            else if (size==8)  ft=&ffi_type_double;
+            else if (size==12) ft=&ffi_type_longdouble;
+            break;
+        case DW_ATE_signed:
+        case DW_ATE_signed_char:
+            if      (size==1)  ft=&ffi_type_sint8;
+            else if (size==2)  ft=&ffi_type_sint16;
+            else if (size==4)  ft=&ffi_type_sint32;
+            else if (size==8)  ft=&ffi_type_sint64;
+            break;
+        case DW_ATE_unsigned:
+        case DW_ATE_unsigned_char:
+            if      (size==1)  ft=&ffi_type_uint8;
+            else if (size==2)  ft=&ffi_type_uint16;
+            else if (size==4)  ft=&ffi_type_uint32;
+            else if (size==8)  ft=&ffi_type_uint64;
             break;
         default:
             break;
     }
-
-    int size=type_info->bytesize;
  done:
-    return status?NULL:cvar;
+    if (ft) {
+        LTV *ltv=LTV_new(ft,sizeof(ffi_type),LT_BIN|LT_CVAR);
+        attr_set(ltv,TYPE_NAME,"module.type.ffi_type");
+        return ltv;
+    } else {
+        return NULL;
+    }
 }
+
 
 
 
@@ -1424,232 +1487,6 @@ char *Type_humanReadableVal(TYPE_INFO *type_info,char *buf)
 
 
 
-int Type_dumpTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
-{
-    char buf[64];
-    data=strlen((char *) data)?data:"%50s :%s\n";
-
-    if (!strcmp(type_info->category,"base_type") ||
-        !strcmp(type_info->category,"enumeration_type") ||
-        !strcmp(type_info->category,"pointer_type"))
-    {
-        printf(data,Type_humanReadableVal(type_info,buf),type_info->name);
-    }
-
-    return 0;
-}
-
-int Type_installTypeInfo(DICT *dict,void *data,TYPE_INFO *type_info)
-{
-    char buf[64];
-
-    if (!strcmp(type_info->category,"base_type") ||
-        !strcmp(type_info->category,"enumeration_type") ||
-        !strcmp(type_info->category,"pointer_type"))
-        jli_install(dict,Type_humanReadableVal(type_info,buf),type_info->name);
-
-    return 0;
-}
-
-void Type_cgetbin(DICT *dict,DICT_ITEM *typeitem,char *addr)
-{
-    TYPE_INFO type_info;
-    ull *byte_size;
-    if ((typeitem=Type_findBasic(dict,typeitem,&ZERO(type_info))) &&
-        (byte_size=STRTOULLP(type_info.DW_AT_byte_size)))
-        bufpush(dict,addr,*byte_size);
-}
-
-void Type_csetbin(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data,int len)
-{
-    TYPE_INFO type_info;
-    ull *byte_size;
-    if ((typeitem=Type_findBasic(dict,typeitem,&ZERO(type_info))) &&
-        (byte_size=STRTOULLP(type_info.DW_AT_byte_size)))
-        memcpy(addr,data,len<*byte_size?len:*byte_size);
-}
-
-void Type_cget(DICT *dict,DICT_ITEM *typeitem,char *addr)
-{
-    TYPE_INFO type_info;
-    char buf[64];
-    ull *byte_size;
-    if ((typeitem=Type_findBasic(dict,typeitem,&ZERO(type_info))) &&
-        (byte_size=STRTOULLP(type_info.DW_AT_byte_size)))
-    {
-        TYPE_UVALUE uval;
-        Type_getUVAL(&type_info,addr,&uval);
-        if (uval.dutype==TYPE_NONE)
-            Type_ref(dict,typeitem,addr);
-        else
-            strpush(dict,Type_pushUVAL(&uval,buf));
-    }
-}
-
-void Type_cset(DICT *dict,DICT_ITEM *typeitem,char *addr,void *data,int len)
-{
-    TYPE_INFO type_info;
-    ull *byte_size;
-    if ((typeitem=Type_findBasic(dict,typeitem,&ZERO(type_info))) &&
-        (byte_size=STRTOULLP(type_info.DW_AT_byte_size)))
-    {
-        TYPE_UVALUE uval;
-        Type_getUVAL(&type_info,addr,&uval);
-        if (uval.dutype==TYPE_NONE)
-            memcpy(addr,data,len<*byte_size?len:*byte_size);
-        else
-            Type_putUVAL(&type_info,addr,Type_pullUVAL(&uval,data));
-    }
-}
-
-
-
-JLI_EXTENSION(reflect_var)
-{
-    void *arg=jli_pop(dict,"",0); // varname
-    if (arg) Type_var(dict,Type_lookupName(dict,arg));
-    DELETE(arg);
-    return 0;
-}
-
-JLI_EXTENSION(reflect_dump)
-{
-    DICT_ITEM *sep=jli_getitem(dict,"",0,1);
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (sep && var)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc)
-        {
-            Type_dump(dict,Type_lookupName(dict,type),(char *) *loc,sep->data);
-        }
-    }
-    DELETE(dict_free(var));
-    DELETE(dict_free(sep));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_jvar)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (var)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc)
-            Type_jvar(dict,Type_lookupName(dict,type),(char *) *loc,NULL);
-    }
-    DELETE(dict_free(var));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_deref)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (var)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc) Type_deref(dict,Type_lookupName(dict,type),(char *) *loc);
-    }
-    DELETE(dict_free(var));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_member)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (var)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc) Type_member(dict,Type_lookupName(dict,type),(char *) *loc,name);
-    }
-    DELETE(dict_free(var));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_cget)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (var)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc) Type_cget(dict,Type_lookupName(dict,type),(char *) *loc);
-    }
-    DELETE(dict_free(var));
-    return 0;
-}
-
-
-JLI_EXTENSION(reflect_cset)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    DICT_ITEM *val=jli_getitem(dict,"",0,1);
-    if (var && val)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc) Type_cset(dict,Type_lookupName(dict,type),(char *) *loc,val->data,val->datalen);
-    }
-    DELETE(dict_free(val));
-    DELETE(dict_free(var));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_cgetbin)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (var)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc) Type_cgetbin(dict,Type_lookupName(dict,type),(char *) *loc);
-    }
-    DELETE(dict_free(var));
-    return 0;
-}
-
-
-JLI_EXTENSION(reflect_csetbin)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    DICT_ITEM *val=jli_getitem(dict,"",0,1);
-    if (var && val)
-    {
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        if (type && loc) Type_csetbin(dict,Type_lookupName(dict,type),(char *) *loc,val->data,val->datalen);
-    }
-    DELETE(dict_free(val));
-    DELETE(dict_free(var));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_cnew)
-{
-    char *arg=jli_pop(dict,"",0);
-    TYPE_INFO type_info;
-    DICT_ITEM *typeitem=Type_findBasic(dict,Type_lookupName(dict,arg),&ZERO(type_info));
-    ull *byte_size;
-    if (typeitem && (byte_size=STRTOULLP(type_info.DW_AT_byte_size)))
-        Type_ref(dict,typeitem,mymalloc(*byte_size));
-    DELETE(arg);
-    return 0;
-}
-
-JLI_EXTENSION(reflect_cdel)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    ull *loc;
-    if (var && (loc=INTVAR(&var->dict,"addr",0)))
-        myfree((void *) *loc,0);
-    DELETE(dict_free(var));
-    return 0;
-}
-
 JLI_EXTENSION(reflect_czero)
 {
     DICT_ITEM *var=jli_getitem(dict,"",0,1);
@@ -1667,50 +1504,6 @@ JLI_EXTENSION(reflect_czero)
 }
 
 
-#define CVAR_NAMESPACE "CVAR"
-#define CVAR_NAMESPACE_STRLEN 4
-
-JLI_EXTENSION(reflect_cvar)
-{
-    hdict_copy(dict,CVAR_NAMESPACE,CVAR_NAMESPACE_STRLEN);
-    return reflect_member(dict,name,namelen,elevate);
-}
-
-JLI_EXTENSION(reflect_cvarget)
-{
-    hdict_copy(dict,CVAR_NAMESPACE,CVAR_NAMESPACE_STRLEN);
-    reflect_member(dict,name,namelen,elevate);
-    return reflect_cget(dict,name,namelen,elevate);
-}
-
-JLI_EXTENSION(reflect_cvarset)
-{
-    hdict_copy(dict,CVAR_NAMESPACE,CVAR_NAMESPACE_STRLEN);
-    reflect_member(dict,name,namelen,elevate);
-    return reflect_cset(dict,name,namelen,elevate);
-}
-
-JLI_EXTENSION(reflect_cvar_begin)
-{
-    hdict_name(dict,CVAR_NAMESPACE,CVAR_NAMESPACE_STRLEN);
-    return 0;
-}
-
-JLI_EXTENSION(reflect_cvar_end)
-{
-    DELETE(dict_free(hdict_getitem(dict,CVAR_NAMESPACE,CVAR_NAMESPACE_STRLEN,1)));
-    return 0;
-}
-
-JLI_EXTENSION(reflect_permute)
-{
-    Type_permute(dict,"types");
-    return 0;
-}
-
-
-static char *reflection_fifoname=NULL;
-static DICT *reflection_dict=NULL;
 
 char *reflect_enumstr(char *type,unsigned int value)
 {
@@ -1723,47 +1516,5 @@ char *reflect_enumstr(char *type,unsigned int value)
         enumitem->data:NULL;
 }
 
-void reflect_vardump(char *type,void *addr,char *prefix)
-{
-    Type_dump(reflection_dict,Type_lookupName(reflection_dict,type),(char *) addr,prefix);
-}
-
-void reflect_pushvar(char *type,void *addr)
-{
-    Type_ref(reflection_dict,Type_lookupName(reflection_dict,type),(char *)addr);
-}
-
-void reflect_init(char *binname,char *fifoname)
-{
-    char *cmd;
-
-    reflection_dict=jliext_init();
-
-    jli_parse(reflection_dict,ulltostr("'0x%llx@var",      (ull) (void *) reflect_var));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@member",   (ull) (void *) reflect_member));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@dump",     (ull) (void *) reflect_dump));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@deref",    (ull) (void *) reflect_deref));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@cget",     (ull) (void *) reflect_cget));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@cset",     (ull) (void *) reflect_cset));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@cgetbin",  (ull) (void *) reflect_cgetbin));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@csetbin",  (ull) (void *) reflect_csetbin));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@cnew",     (ull) (void *) reflect_cnew));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@cdel",     (ull) (void *) reflect_cdel));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@czero",    (ull) (void *) reflect_czero));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@jvar",     (ull) (void *) reflect_jvar));
-    jli_parse(reflection_dict,ulltostr("'0x%llx@permute",  (ull) (void *) reflect_permute));
-    DICT_BYTECODE(reflection_dict,"<",reflect_cvar_begin);
-    DICT_BYTECODE(reflection_dict,">",reflect_cvar_end);
-    DICT_BYTECODE(reflection_dict,"`",reflect_cvar);
-    DICT_BYTECODE(reflection_dict,";",reflect_cvarget);
-    DICT_BYTECODE(reflection_dict,":",reflect_cvarset);
-
-    jli_frame_begin(reflection_dict);
-
-    reflection_fifoname = fifoname;
-    mkfifo(reflection_fifoname,777);
-
-    printf("Ready!\n");
-}
 
 #endif

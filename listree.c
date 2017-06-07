@@ -424,6 +424,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
 {
     char *indent="                                                                                                                ";
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
         switch (*flags&LT_TRAVERSE_TYPE) {
             case LT_TRAVERSE_LTI:
                 if (maxdepth && depth>=maxdepth) *flags|=LT_TRAVERSE_HALT;

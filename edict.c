@@ -539,8 +539,8 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             LTI *lti=NULL;
             if ((lti=REF_lti(ref_head))) {
                 CLL *ltvs=&lti->ltvs;
-                graph_ltvs_to_file("/tmp/jj.dot",ltvs,2,label);
-                print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
+                graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
+                print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",4);
             }
             else if ((cvar=REF_ltv(ref_head)) && cvar->flags&LT_CVAR)
                 ref_print_cvar(stdout,cvar);

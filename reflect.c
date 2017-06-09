@@ -483,15 +483,14 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
     Dwarf_Error error;
 
     char *diename = NULL;
-    Dwarf_Off global_offset;
 
     STRY(!type_info_ltv || !cu_data,"validating params");
     TYPE_INFO *type_info=(TYPE_INFO *) type_info_ltv->data;
 
     STRY(die==NULL,"testing for null die");
-    STRY(dwarf_dieoffset(die,&global_offset,&error),"getting global die offset");
-    DWARF_ID(type_info->id_str,global_offset);
-    DWARF_ID(cu_data->offset_str,global_offset);
+    STRY(dwarf_dieoffset(die,&type_info->die,&error),"getting global die offset");
+    DWARF_ID(type_info->id_str,type_info->die);
+    DWARF_ID(cu_data->offset_str,type_info->die);
     STRY(dwarf_tag(die,&type_info->tag,&error),"getting die tag");
 
     switch (type_info->tag)
@@ -555,8 +554,8 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
             case DW_AT_name: // string
                 break;
             case DW_AT_type: // global_formref
-                IF_OK(dwarf_global_formref(*attr,&global_offset,&error),type_info->flags|=TYPEF_BASE);
-                DWARF_ID(type_info->base_str,global_offset);
+                IF_OK(dwarf_global_formref(*attr,&type_info->base,&error),type_info->flags|=TYPEF_BASE);
+                DWARF_ID(type_info->base_str,type_info->base);
                 break;
             case DW_AT_low_pc:
                 IF_OK(dwarf_formsdata(*attr,&type_info->low_pc,&error),type_info->flags|=TYPEF_LOWPC);
@@ -914,22 +913,10 @@ int resolve_symbols(LTV *module,char *dlname,LTV *index)
 }
 
 
-
-// FIXME: USE dwarf_offdie_b TO DO ON-DEMAND TYPE RESOLUTION
-/* dwarf_offdie_b() new October 2011 */
-/*  Finding die given global (not CU-relative) offset.
-    Applies to debug_info (is_info true) or debug_types (is_info false). */
-int dwarf_offdie_b(Dwarf_Debug /*dbg*/,
-                       Dwarf_Off        /*offset*/,
-                       Dwarf_Bool       /*is_info*/,
-                       Dwarf_Die*       /*return_die*/,
-                       Dwarf_Error*     /*error*/);
-
-
-int traverse_types(char *filename,LTV *module)
+int dump_module_simple(char *ofilename,LTV *module)
 {
     int status=0;
-    FILE *ofile=fopen(filename,"w");
+    FILE *ofile=fopen(ofilename,"w");
 
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags); // finesse: traverse flags below won't match if listree_acyclic sets LT_TRAVERSE_HALT
@@ -959,12 +946,11 @@ int ref_curate_module(LTV *module,int bootstrap)
 
     LTV *compile_units=LTV_VOID;
     LTV *index=LTV_VOID;
-    LTV *dependencies=LTV_VOID;
-    int pass=0;
 
-    int init(Dwarf_Debug dbg,Dwarf_Die die) {
+    int curate_die(Dwarf_Debug dbg,Dwarf_Die die) {
         int work_op(LTV *parent,Dwarf_Die die) { // propagates parentage through the stateless DIE_OP calls
             int status=0;
+            Dwarf_Error error;
             LTV *type_info_ltv=NULL;
             TYPE_INFO *type_info=NULL;
 
@@ -978,6 +964,7 @@ int ref_curate_module(LTV *module,int bootstrap)
                     case DW_TAG_subprogram:
                         if (!(type_info->flags&TYPEF_EXTERNAL))
                             return true;
+                        break;
                     default:
                         break;
                 }
@@ -1022,62 +1009,52 @@ int ref_curate_module(LTV *module,int bootstrap)
 
             int descend() {
                 int status=0;
-                char *name=get_diename(dbg,die); // name is allocated from heap...
-                if (name)
-                    STRY(!attr_own(type_info_ltv,TYPE_NAME,name),"naming type info");
-                STRY(!LT_put(index,type_info->id_str,TAIL,type_info_ltv),"indexing type info");
                 if (type_info->tag==DW_TAG_compile_unit) {
-                    // Incremental load: Check to see if this CU needs to be loaded
-                    // A) automatically, B) by request, or C) contains an unresolved die's base
-                    int contains_dependent() {
-                        LTI *lti=NULL;
-                        LTV *ltv=NULL;
-                        TYPE_INFO *base_info;
-                        if ((lti=LTI_first(dependencies)) && (ltv=LTV_peek(&lti->ltvs,HEAD))) {
-                            base_info=(TYPE_INFO *) ltv->data;
-                            if (strncmp(base_info->base_str,cu_data.offset_str,TYPE_IDLEN)>0 &&
-                                strncmp(base_info->base_str,cu_data.next_cu_header_offset_str,TYPE_IDLEN)<0)
-                                return true;
-                        }
-                        return false;
-                    }
-                    if (pass==0 || contains_dependent())
-                        STRY(traverse_child(dbg,die,child_op),"traversing child");
+                    // if (cu is in list of cu's to load)
+                    STRY(traverse_child(dbg,die,child_op),"traversing child");
                 } else { // attach dies to base by id to resolve dependency graph; later, dedup by relinking bases symbolically
                     STRY(traverse_child(dbg,die,child_op),"traversing child");
                     if (type_info->flags&TYPEF_BASE) { // first, resolve this type's base if possible, or put it in the pending list
                         LTV *base=LT_get(index,type_info->base_str,HEAD,KEEP);
+                        if (!base)
+                        {
+                            Dwarf_Die basedie;
+                            STRY(dwarf_offdie_b(dbg,type_info->base,true,&basedie,&error),"looking up forward-referenced die");
+                            STRY(curate_die(dbg,basedie),"processing forward-referenced die");
+                            base=LT_get(index,type_info->base_str,HEAD,KEEP);
+                        }
                         if (base) // we can link base immediately
                             LT_put(type_info_ltv,TYPE_BASE,HEAD,base);
-                        else // we have to put it in the dependencies queue to try later
-                            LT_put(dependencies,type_info->base_str,TAIL,type_info_ltv);
-                    }
-
-                    LTI *lti=LTI_resolve(dependencies,type_info->id_str,false); // now, see if this die resolves any in pending list
-                    if (lti) {
-                        void *link_base(CLL *lnk) {
-                            LT_put(((LTVR *) lnk)->ltv,TYPE_BASE,HEAD,type_info_ltv);
-                            LTVR_release(lnk);
-                            return NULL;
-                        }
-                        CLL_map(&lti->ltvs,FWD,link_base);
-                        RBN_release(&dependencies->sub.ltis,&lti->rbn,LTI_release); // purge type's id from dependencies
                     }
                 }
-                STRY(link2parent(name),"linking die to parent");
             done:
                 return status;
             }
 
-            STRY(!(type_info_ltv=LTV_new(NEW(TYPE_INFO),sizeof(TYPE_INFO),LT_OWN|LT_BIN|LT_CVAR|LT_TYPE)),"creating TYPE_INFO-type CVAR");
-            type_info=(TYPE_INFO *) type_info_ltv->data;
+            char *name=NULL;
+            Dwarf_Off offset;
+            char offset_str[TYPE_IDLEN];
+            STRY(dwarf_dieoffset(die,&offset,&error),"getting global die offset");
+            DWARF_ID(offset_str,offset);
 
-            STRY(populate_type_info(dbg,die,type_info_ltv,&cu_data),"populating die type info");
-            if (disqualify())
-                LTV_release(type_info_ltv);
-            else
-                STRY(descend(),"processing type info");
+            if ((type_info_ltv=LT_get(index,offset_str,HEAD,KEEP))) { // may have been installed via fwd reference
+                type_info=(TYPE_INFO *) type_info_ltv->data;
+                name=attr_get(type_info_ltv,TYPE_NAME);
+            } else { // process this virgin die            {
+                STRY(!(type_info_ltv=LTV_new(NEW(TYPE_INFO),sizeof(TYPE_INFO),LT_OWN|LT_BIN|LT_CVAR|LT_TYPE)),"creating TYPE_INFO-type CVAR");
+                type_info=(TYPE_INFO *) type_info_ltv->data;
+                STRY(populate_type_info(dbg,die,type_info_ltv,&cu_data),"populating die type info");
+                TRYCATCH(disqualify(),0,dq,"disqualifying die");
+                if ((name=get_diename(dbg,die))) // name is allocated from heap...
+                    STRY(!attr_own(type_info_ltv,TYPE_NAME,name),"naming type info");
+                STRY(!LT_put(index,type_info->id_str,TAIL,type_info_ltv),"indexing type info");
+                STRY(descend(),"processing type info children");
+            }
+            STRY(link2parent(name),"linking die to parent");
             STRY(traverse_sibling(dbg,die,sib_op),"traversing sibling");
+            goto done; // success!
+        dq:
+            LTV_release(type_info_ltv);
         done:
             return status;
         }
@@ -1085,14 +1062,9 @@ int ref_curate_module(LTV *module,int bootstrap)
     }
 
     char *filename=FORMATA(filename,module->len,"%s",module->data);
-    do {
-        STRY(traverse_cus(filename,init,&cu_data),"traversing module compute units");
-        pass++;
-    } while (!LTV_empty(dependencies));
-
-    LTV_release(dependencies);
-    resolve_symbols(module,filename,index); // dlopen wants NULL for "this" module
-    //traverse_types("/tmp/simple.dot",module);
+    STRY(traverse_cus(filename,curate_die,&cu_data),"traversing module compute units");
+    resolve_symbols(module,filename,index);
+    //dump_module_simple("/tmp/simple.dot",module);
     LTV_release(index);
     LTV_release(compile_units);
  done:

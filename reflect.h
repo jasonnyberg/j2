@@ -126,6 +126,8 @@ typedef struct
 {
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
+    Dwarf_Off die;
+    Dwarf_Off base;
     TYPE_FLAGS flags;
     Dwarf_Half tag; // kind of item (base, struct, etc.
     Dwarf_Signed const_value; // enum val
@@ -150,7 +152,7 @@ extern int ref_print_cvar(FILE *ofile,LTV *ltv);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
 extern int ref_curate_module(LTV *mod_ltv,int bootstrap);
 extern int ref_preview_module(LTV *mod_ltv);
-
+extern LTV *ref_type_to_ffi_type(LTV *type);
 
 #if 0
 extern long long *Type_getLocation(char *loc);

@@ -69,11 +69,6 @@ int debug_dump=0;
 int debug=DEBUG_BAIL|DEBUG_ERR;
 
 //////////////////////////////////////////////////
-
-struct TOK;
-struct THREAD;
-
-//////////////////////////////////////////////////
 // REPL Tokens
 //////////////////////////////////////////////////
 
@@ -89,9 +84,6 @@ typedef enum {
     TOK_ATOM     =1<<0x04,
     TOK_REF      =1<<0x05,
 } TOK_FLAGS;
-
-struct TOK;
-typedef struct TOK TOK;
 
 typedef struct TOK {
     CLL lnk;
@@ -319,14 +311,8 @@ int edict_graph(FILE *ofile,EDICT *edict)
     if (!edict) goto done;
 
     fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
-
     fprintf(ofile,"Gmymalloc [label=\"Gmymalloc %d\"]\n",Gmymalloc);
-    fprintf(ofile,"ltv_count [label=\"ltv_count %d\"]\n",ltv_count);
-    fprintf(ofile,"ltvr_count [label=\"ltvr_count %d\"]\n",ltvr_count);
-    fprintf(ofile,"lti_count [label=\"lti_count %d\"]\n",lti_count);
-
     show_threads("",&edict->threads,"\n");
-
     fprintf(ofile,"}\n");
 
  done:

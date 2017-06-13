@@ -30,7 +30,6 @@
 #include "cll.h"
 #include "rbtree.h"
 
-extern int ltv_count,ltvr_count,lti_count;
 #define RBR struct rb_root
 #define RBN struct rb_node
 
@@ -43,10 +42,10 @@ typedef enum {
     LT_BIN  =1<<0x04, // data is binary/unprintable
     LT_CVAR =1<<0x05, // LTV data is a C variable
     LT_TYPE =1<<0x06, // CVAR of type TYPE_INFO (for reflection)
-    LT_NIL  =1<<0x07, // false
-    LT_NULL =1<<0x08, // empty (as opposed to false)
-    LT_IMM  =1<<0x09, // immediate value, not a pointer
-    LT_MACRO=1<<0x0a, // 'macro'
+    LT_FFI  =1<<0x07, // CVAR of type ffi_type (for reflection)
+    LT_NIL  =1<<0x08, // false
+    LT_NULL =1<<0x09, // empty (as opposed to false)
+    LT_IMM  =1<<0x0a, // immediate value, not a pointer
     LT_NOWC =1<<0x0b, // do not do wildcard matching
     LT_RO   =1<<0x0c, // META: disallow release
     LT_AVIS =1<<0x0d, // META: absolute traversal visitation flag
@@ -56,6 +55,7 @@ typedef enum {
     LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
     LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
     LT_VOID =LT_NIL|LT_NULL,                // a placeholder node, internal use only!
+    LT_REF  =LT_FFI|LT_TYPE,                // used for reflection; visibility controlled by "show_ref"
     LT_META =LT_RO|LT_AVIS|LT_RVIS|LT_LIST, // need to be preserved during LTV_renew
 } LTV_FLAGS;
 

@@ -23,8 +23,10 @@
 
 #include <dwarf.h>
 #include <libdwarf.h>
+#include <ffi.h>
 
 #include "listree.h"
+
 /*
  * [index]/[dependencies]
  *   "die_id"
@@ -40,13 +42,15 @@
  *     [type_info]...
  */
 
-#define MOD_HDL   "mod hdl"   // a module's dynamic linker handle
+#define DL_HDL   "mod hdl"   // a module's dynamic linker handle
 
 #define TYPE_NAME "type name" // a die's type name
 #define TYPE_BASE "type base" // a die's base's ltv
 
 #define CVAR_SYMB "cvar symb" // what kind of cvar is this (i.e. what to cast ltv->data to)
 #define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
+
+#define FFI_INFO "ffi info"   // FFI data assocated with type
 
 #define DIE_FORMAT "\"%s\""       // format for a die's DOT-language element id
 #define CVAR_FORMAT "\"CVAR_%x\"" // format for a CVAR's DOT-language element id
@@ -145,6 +149,7 @@ typedef struct
 } TYPE_INFO;
 
 
+extern CLL ref_mod,ref_type_info,ref_ffi_cif,ref_ffi_type;
 
 extern LTV *ref_create_cvar(LTV *type,void *data,char *member);
 extern LTV *ref_assign_cvar(LTV *cvar,LTV *ltv);
@@ -152,7 +157,7 @@ extern int ref_print_cvar(FILE *ofile,LTV *ltv);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
 extern int ref_curate_module(LTV *mod_ltv,int bootstrap);
 extern int ref_preview_module(LTV *mod_ltv);
-extern LTV *ref_type_to_ffi_type(LTV *type);
+extern ffi_type *ref_type_to_ffi_type(LTV *type);
 
 #if 0
 extern long long *Type_getLocation(char *loc);

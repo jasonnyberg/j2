@@ -33,6 +33,9 @@
 
 CLL ltv_repo,ltvr_repo,lti_repo,ro_list;
 int ltv_count=0,ltvr_count=0,lti_count=0;
+int show_ref=0;
+
+
 
 //////////////////////////////////////////////////
 // LisTree
@@ -420,6 +423,8 @@ int LTV_wildcard(LTV *ltv)
     return tlen < ltv->len;
 }
 
+int LTV_hide(LTV *ltv) { return !show_ref && ((ltv->flags&LT_REF)); }
+
 void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
 {
     char *indent="                                                                                                                ";
@@ -428,8 +433,8 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
         switch (*flags&LT_TRAVERSE_TYPE) {
             case LT_TRAVERSE_LTI:
                 if (maxdepth && depth>=maxdepth) *flags|=LT_TRAVERSE_HALT;
-                fstrnprint(stdout,indent,MAX(0,depth*4-2));
-                fprintf(ofile,"\"%s\"\n",(*lti)->name);
+                //fstrnprint(stdout,indent,MAX(0,depth*4-2));
+                fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
                 break;
             case LT_TRAVERSE_LTV:
                 fstrnprint(ofile,indent,depth*4);
@@ -444,6 +449,9 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 else                                       fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
                 if (post) fprintf(ofile,"%s",post);
                 else fprintf(ofile,"]\n");
+
+                if (LTV_hide(*ltv))
+                    *flags|=LT_TRAVERSE_HALT;
                 break;
             default:
                 break;

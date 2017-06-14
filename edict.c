@@ -518,6 +518,15 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             return status;
         }
 
+        int ffi() {
+            int status=0;
+            LTV *type,*cvar;
+            STRY(!(type=stack_get(thread,KEEP)),"popping type");
+            STRY(ref_ffi_prep(type),"prepping cvar for ffi");
+        done:
+            return status;
+        }
+
         int dump(char *label) {
             int status=0;
             edict_resolve(thread,&ref_tok->children,false);
@@ -526,7 +535,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             if ((lti=REF_lti(ref_head))) {
                 CLL *ltvs=&lti->ltvs;
                 graph_ltvs_to_file("/tmp/jj.dot",ltvs,0,label);
-                print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",4);
+                print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
             }
             else if ((cvar=REF_ltv(ref_head)) && cvar->flags&LT_CVAR)
                 ref_print_cvar(stdout,cvar);
@@ -556,6 +565,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
                 else if BUILTIN(preview)   STRY(preview(),"evaluating #preview");
                 else if BUILTIN(bootstrap) STRY(import(true),"evaluating #bootstrap");
                 else if BUILTIN(import)    STRY(import(false),"evaluating #import");
+                else if BUILTIN(ffi)       STRY(ffi(),"evaluating #ffi");
                 else if BUILTIN(new)       STRY(cvar(),"evaluating #new");
                 else if BUILTIN(dup)       STRY(dup(),"evaluating #dup");
                 else if BUILTIN(ro)        STRY(ro(true),"evaluating #ro");

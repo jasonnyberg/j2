@@ -326,7 +326,12 @@ LTV *ref_assign_cvar(LTV *cvar,LTV *ltv)
 void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
 {
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
+        if ((*flags==LT_TRAVERSE_LTI)) {
+            int len=strlen((*lti)->name);
+            if (series((*lti)->name,len,NULL," ",NULL)<len)
+                (*flags)|=LT_TRAVERSE_HALT;
+        }
+        else if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
             return op((*ltv),flags);
         return NULL;
     }
@@ -357,7 +362,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
                     LTV_enq(&queue,ref_create_cvar(ltv,cvar->data+type_info->data_member_location,NULL),TAIL);
                     break;
                 default:
-                    fprintf(ofile,"    child tag %d unimplemented\n",type_info->tag);
+                    fprintf(ofile,CODE_RED "child tag %d unimplemented" CODE_RESET "\n",type_info->tag);
                     break;
             }
         done:
@@ -403,13 +408,8 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
                     fprintf(ofile,"enumerator!!!\n");
                     break;
                 case DW_TAG_member:
-                    if (type_info->flags&TYPEF_BYTESIZE) {
-                        print_type_info(ofile,type_info);
-                        // and fall thru case!!!
-                    } else {
-                        LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
-                        break;
-                    }
+                    LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                    break;
                 case DW_TAG_base_type: {
                     TYPE_UVALUE uval;
                     char buf[64];
@@ -1086,6 +1086,9 @@ int ref_curate_module(LTV *module,int bootstrap)
     //dump_module_simple("/tmp/simple.dot",module);
     LTV_release(index);
     LTV_release(compile_units);
+
+    ref_ffi_prep(module);
+
  done:
     return status;
 }
@@ -1313,7 +1316,8 @@ ffi_type *ref_type_to_ffi_type(LTV *type)
     ull bitoffset=type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
-        case DW_TAG_pointer_type:     ft=&ffi_type_pointer;
+        case DW_TAG_pointer_type:     ft=&ffi_type_pointer;         goto done;
+        case DW_TAG_array_type:       ft=&ffi_type_pointer;         goto done;
         case DW_TAG_union_type:
         case DW_TAG_structure_type:   goto done;
         case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
@@ -1350,7 +1354,7 @@ ffi_type *ref_type_to_ffi_type(LTV *type)
 }
 
 // prepare a type_info cvar for ffi use
-int ffi_prep(LTV *type)
+int ref_ffi_prep(LTV *type)
 {
     int status=0;
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
@@ -1368,10 +1372,11 @@ int ffi_prep(LTV *type)
                     {
                         ffi_type *ft=NULL;
                         LTV *ffi_ltv=NULL;
-                        STRY(!(ft=ref_type_to_ffi_type(*ltv)),"deriving basic ffi type");
-                        STRY(!(ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),ft,NULL)),"creating ffi_type cvar");
-                        ffi_ltv->flags|=LT_FFI;
-                        LT_put((*ltv),FFI_INFO,HEAD,ffi_ltv);
+                        if ((ft=ref_type_to_ffi_type(*ltv))) {
+                            STRY(!(ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),ft,NULL)),"creating ffi_type cvar");
+                            ffi_ltv->flags|=LT_FFI;
+                            LT_put((*ltv),FFI_INFO,HEAD,ffi_ltv);
+                        }
                         break;
                     }
                     case DW_TAG_structure_type:

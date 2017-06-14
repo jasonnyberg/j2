@@ -30,6 +30,8 @@
 #include "cll.h"
 #include "rbtree.h"
 
+extern int show_ref;
+
 #define RBR struct rb_root
 #define RBN struct rb_node
 

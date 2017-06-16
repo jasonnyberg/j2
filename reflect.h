@@ -46,11 +46,13 @@
 
 #define TYPE_NAME "type name" // a die's type name
 #define TYPE_BASE "type base" // a die's base's ltv
+#define TYPE_LIST "type list" // type's children, in die order
 
 #define CVAR_SYMB "cvar symb" // what kind of cvar is this (i.e. what to cast ltv->data to)
 #define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
 
-#define FFI_INFO "ffi info"   // FFI data assocated with type
+#define FFI_TYPE "ffi type"   // FFI data assocated with type
+#define FFI_CIF  "ffi cif"    // FFI data assocated with type
 
 #define DIE_FORMAT "\"%s\""       // format for a die's DOT-language element id
 #define CVAR_FORMAT "\"CVAR_%x\"" // format for a CVAR's DOT-language element id
@@ -153,7 +155,7 @@ extern CLL ref_mod,ref_type_info,ref_ffi_cif,ref_ffi_type;
 
 extern LTV *ref_create_cvar(LTV *type,void *data,char *member);
 extern LTV *ref_assign_cvar(LTV *cvar,LTV *ltv);
-extern int ref_print_cvar(FILE *ofile,LTV *ltv);
+extern int ref_print_cvar(FILE *ofile,LTV *ltv,int depth);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
 extern int ref_curate_module(LTV *mod_ltv,int bootstrap);
 extern int ref_preview_module(LTV *mod_ltv);

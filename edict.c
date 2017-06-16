@@ -538,7 +538,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
                 print_ltvs(stdout,CODE_BLUE,ltvs,CODE_RESET "\n",2);
             }
             else if ((cvar=REF_ltv(ref_head)) && cvar->flags&LT_CVAR)
-                ref_print_cvar(stdout,cvar);
+                ref_print_cvar(stdout,cvar,0);
         done:
             return status;
         }

@@ -40,7 +40,10 @@
 #include "reflect.h"
 
 // initialized/populated during bootstrap
-CLL ref_mod,ref_type_info,ref_ffi_cif,ref_ffi_type;
+CLL ref_mod,
+    ref_type_info,
+    ref_ffi_cif,
+    ref_ffi_type;
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf);
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf);
@@ -205,7 +208,7 @@ int print_type_info(FILE *ofile,TYPE_INFO *type_info)
     dwarf_get_TAG_name(type_info->tag,&str);
     fprintf(ofile,"|%s",str+7);
     if (type_info->flags&TYPEF_BASE)       fprintf(ofile,"|base %s",        type_info->base_str);
-    if (type_info->flags&TYPEF_CONSTVAL)   fprintf(ofile,"|constval %u",    type_info->const_value);
+    if (type_info->flags&TYPEF_CONSTVAL)   fprintf(ofile,"|constval 0x%x",  type_info->const_value);
     if (type_info->flags&TYPEF_BYTESIZE)   fprintf(ofile,"|bytesize %u",    type_info->bytesize);
     if (type_info->flags&TYPEF_BITSIZE)    fprintf(ofile,"|bitsize %u",     type_info->bitsize);
     if (type_info->flags&TYPEF_BITOFFSET)  fprintf(ofile,"|bitoffset %u",   type_info->bitoffset);
@@ -338,7 +341,7 @@ void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
     return ltv_traverse(ltv,traverse_types,NULL);
 }
 
-int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
+int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 {
     int status=0;
     LTV *type;
@@ -346,7 +349,6 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
     CLL queue;
     CLL_init(&queue);
     LTV_enq(&queue,ref_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
-    //LTV *history=LTV_VOID;
 
     int process_type_info(LTV *cvar) {
         int status=0;
@@ -373,12 +375,10 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
         TYPE_INFO *type_info=(TYPE_INFO *) type->data;
 
         char *name=attr_get(type,TYPE_NAME);
-        //char *tstr=NULL;
-        //if (!LT_get(history,FORMATA(tstr,12,"%p",cvar->data),HEAD,KEEP))
         {
             const char *str=NULL;
             dwarf_get_TAG_name(type_info->tag,&str);
-            fprintf(ofile," %s \"%s\",",str+7,name);
+            fprintf(ofile,"%*c%s \"%s\"",depth*4,' ',str+7,name);
 
             switch(type_info->tag) {
                 case DW_TAG_union_type:
@@ -389,23 +389,22 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
                     TYPE_UVALUE uval;
                     char buf[64];
                     if (Type_getUVAL(cvar,&uval))
-                        fprintf(ofile," %s",Type_pushUVAL(&uval,buf));
+                        fprintf(ofile,"%s",Type_pushUVAL(&uval,buf));
                     break;
                     LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
                     void *loc=*(void **) cvar->data;
-                    //LT_put(history,FORMATA(tstr,12,"%p",loc),TAIL,type);
                     if (base_type && loc)
                         LTV_enq(&queue,ref_create_cvar(base_type,loc,NULL),HEAD);
                     break;
                 }
                 case DW_TAG_array_type:
-                    fprintf(ofile," (array display unimplemented)");
+                    fprintf(ofile,"(array display unimplemented)");
                     break;
                 case DW_TAG_enumeration_type:
-                    fprintf(ofile," (enum display unimplemented)");
+                    fprintf(ofile,"(enum display unimplemented)");
                     break;
                 case DW_TAG_enumerator:
-                    fprintf(ofile,"enumerator!!!\n");
+                    fprintf(ofile,"0x%x",type_info->const_value);
                     break;
                 case DW_TAG_member:
                     LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
@@ -414,7 +413,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
                     TYPE_UVALUE uval;
                     char buf[64];
                     if (Type_getUVAL(cvar,&uval))
-                        fprintf(ofile," %s",Type_pushUVAL(&uval,buf));
+                        fprintf(ofile,"%s",Type_pushUVAL(&uval,buf));
                     break;
                 }
                 default:
@@ -427,26 +426,24 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int maxdepth)
         return status;
     }
 
+    fprintf(ofile,"CVAR:\n");
     while ((cvar=LTV_deq(&queue,HEAD))) {
         process_type_info(cvar);
         LTV_release(cvar);
     }
-
-    //print_ltv(stdout,"history",history,"\n",0);
-    //LTV_release(history);
 
  done:
     return status;
 }
 
 
-int ref_print_cvar(FILE *ofile,LTV *ltv)
+int ref_print_cvar(FILE *ofile,LTV *ltv,int depth)
 {
     int status=0;
     if (ltv->flags&LT_TYPE) // special case
         print_type_info(ofile,(TYPE_INFO *) ltv->data);
     else
-        ref_dump_cvar(ofile,ltv,0); // use reflection!!!!!
+        ref_dump_cvar(ofile,ltv,depth); // use reflection!!!!!
  done:
     return status;
 }
@@ -532,7 +529,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,LTV *type_info_ltv,CU_DATA 
         case DW_TAG_template_type_parameter:
         case DW_TAG_template_value_parameter:
         case DW_TAG_imported_module:
-            //type_info->tag=0; // reject
+            type_info->tag=0; // reject
             goto done;
     }
 
@@ -992,6 +989,8 @@ int ref_curate_module(LTV *module,int bootstrap)
             int disqualify() {
                 switch (type_info->tag) {
                     case 0: // populate_type_info rejected it
+                    case  DW_TAG_label:
+                        return true;
                     case DW_TAG_variable:
                     case DW_TAG_subprogram:
                         if (!(type_info->flags&TYPEF_EXTERNAL))
@@ -1022,7 +1021,7 @@ int ref_curate_module(LTV *module,int bootstrap)
                     case DW_TAG_member:
                     case DW_TAG_formal_parameter:
                         if (parent && name) {
-                            STRY(!LT_put(parent,"child sequence",TAIL,type_info_ltv),"linking child to parent in sequence");
+                            STRY(!LT_put(parent,TYPE_LIST,TAIL,type_info_ltv),"linking child to parent in sequence");
                             STRY(!LT_put(parent,name,TAIL,type_info_ltv),"linking type info to parent");
                         }
                         break;
@@ -1049,6 +1048,7 @@ int ref_curate_module(LTV *module,int bootstrap)
                 STRY(!(type_info_ltv=LTV_new(NEW(TYPE_INFO),sizeof(TYPE_INFO),LT_OWN|LT_BIN|LT_CVAR|LT_TYPE)),"creating TYPE_INFO-type CVAR"); // ANONYMOUS CVAR UNTIL REFLECTION IS BOOTSTRAPPED!
                 STRY(populate_type_info(dbg,die,type_info_ltv,&cu_data),"populating die type info");
                 type_info=(TYPE_INFO *) type_info_ltv->data;
+                TRYCATCH(!type_info->tag,0,reject,"checking for hard reject");
                 if ((name=get_diename(dbg,die))) // name is allocated from heap...
                     STRY(!attr_own(type_info_ltv,TYPE_NAME,name),"naming type info");
                 if (!disqualify())
@@ -1073,6 +1073,8 @@ int ref_curate_module(LTV *module,int bootstrap)
             }
             STRY(traverse_sibling(dbg,die,sib_op),"traversing sibling");
             goto done; // success!
+        reject:
+            LTV_release(type_info_ltv);
         done:
             return status;
         }
@@ -1302,14 +1304,26 @@ int Type_isBitField(TYPE_INFO *type_info) { return (type_info->bitsize || type_i
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //ffi_type_void
-
-ffi_type *ref_type_to_ffi_type(LTV *type)
+ffi_type *cvar_ffi_type(LTV *type)
 {
     int status=0;
+    ffi_type *ft=NULL;
+    LTV *ffi_type_ltv=NULL;
+    TRYCATCH(!(type=ref_find_basic(type)),0,done,"resolving basic type");
+    if ((ffi_type_ltv=LT_get(type,FFI_TYPE,HEAD,KEEP)))
+        ft=(ffi_type *) ffi_type_ltv->data;
+ done:
+    return ft;
+}
+
+ffi_type *basic_ffi_type(LTV *type)
+{
+    int status=0;
+    ffi_type *ft=NULL;
     LTV *basic_type=NULL,*member_type=NULL,*cvar=NULL;
     TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
+
     TYPE_INFO *type_info=(TYPE_INFO *) basic_type->data;
-    ffi_type *ft=NULL;
 
     ull size=type_info->bytesize;
     ull bitsize=type_info->bitsize;
@@ -1353,35 +1367,69 @@ ffi_type *ref_type_to_ffi_type(LTV *type)
     return ft;
 }
 
+
 // prepare a type_info cvar for ffi use
 int ref_ffi_prep(LTV *type)
 {
     int status=0;
-    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR) {
+
+    LTV *create_ffi_type_ltv(LTV *ltv) {
+        LTV *ffi_ltv=NULL;
+        ffi_type *ft=NULL;
+        if ((ft=basic_ffi_type(ltv)))
+            STRY(!(ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),ft,NULL)),"creating ffi_type cvar");
+        else
+            STRY(!(ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),&ffi_type_void,NULL)),"creating ffi_type cvar");
+        ffi_ltv->flags|=LT_FFI;
+    done:
+        return ffi_ltv;
+    }
+
+    int collate_child_ffi_types(LTV *ltv,int *count,ffi_type ***child_types)
+    {
+        int status=0;
+        LTI *children=LTI_resolve(ltv,TYPE_LIST,0);
+        *count=children?CLL_len(&children->ltvs):0;
+        (*child_types)=calloc(sizeof(ffi_type *),*count+1);
+        if (*count) {
+            int offset=0;
+            void *get_child_ffi_type(CLL *lnk) {
+                int status=0;
+                LTV *child_type=((LTVR *) lnk)->ltv;
+                ffi_type *child_ffi_type=cvar_ffi_type(child_type);
+                STRY(!child_ffi_type,"validating child ffi type");
+                (*child_types)[offset++]=child_ffi_type;
+            done:
+                return status?NON_NULL:NULL;
+            }
+            CLL_map(&children->ltvs,FWD,get_child_ffi_type);
+        }
+        (*child_types)[*count]=NULL; // null terminate the array for the struct case
+
+    done:
+        return status;
+    }
+
+    void *pre(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        if ((*flags==LT_TRAVERSE_LTV)) {
             if ((*ltv)->flags&LT_TYPE) {
-                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
-                switch (type_info->tag) {
-                    case DW_TAG_subprogram:
-                    case DW_TAG_subroutine_type:
-                        break;
-                    case DW_TAG_base_type:
-                    case DW_TAG_enumerator:
-                    case DW_TAG_pointer_type:
-                    case DW_TAG_array_type:
-                    {
-                        ffi_type *ft=NULL;
-                        LTV *ffi_ltv=NULL;
-                        if ((ft=ref_type_to_ffi_type(*ltv))) {
-                            STRY(!(ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),ft,NULL)),"creating ffi_type cvar");
-                            ffi_ltv->flags|=LT_FFI;
-                            LT_put((*ltv),FFI_INFO,HEAD,ffi_ltv);
+                if (!cvar_ffi_type(*ltv)) {
+                    TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                    switch (type_info->tag) {
+                        case DW_TAG_pointer_type:
+                        case DW_TAG_array_type:
+                        case DW_TAG_base_type:
+                        case DW_TAG_enumeration_type:
+                        case DW_TAG_enumerator: {
+                                LTV *ffi_type_ltv=NULL;
+                                STRY(!(ffi_type_ltv=create_ffi_type_ltv(*ltv)),"creating basic ffi type");
+                                STRY(!LT_put((*ltv),FFI_TYPE,HEAD,ffi_type_ltv),"installing basic ffi type");
+                            break;
                         }
-                        break;
+                        default:
+                            break;
                     }
-                    case DW_TAG_structure_type:
-                    case DW_TAG_union_type:
-                        break;
                 }
             }
         }
@@ -1389,20 +1437,60 @@ int ref_ffi_prep(LTV *type)
         return status?NON_NULL:NULL;
     }
 
-    // postfix traversal so structs/unions are processed after their members
-    STRY(ltv_traverse(type,listree_acyclic,traverse_types)!=NULL,"traversing module");
+
+    void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        if ((*flags==LT_TRAVERSE_LTV)) {
+            if ((*ltv)->flags&LT_TYPE) {
+                if (!cvar_ffi_type(*ltv)) {
+                    TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                    char *name=attr_get((*ltv),TYPE_NAME);
+                    switch (type_info->tag) {
+                        case DW_TAG_subprogram:
+                        case DW_TAG_subroutine_type: {
+                                LTV *ffi_ltv=NULL;
+                                STRY(!(ffi_ltv=create_ffi_type_ltv(*ltv)),"creating subprogram return ffi type");
+                                int argc=0;
+                                ffi_type **argv=NULL;
+                                STRY(collate_child_ffi_types((*ltv),&argc,&argv),"collating subprogram child ffi types");
+                                LTV *cif_ltv=ref_create_cvar(LTV_peek(&ref_ffi_cif,HEAD),NULL,NULL);
+                                cif_ltv->flags|=LT_FFI;
+                                ffi_prep_cif((ffi_cif *) cif_ltv->data,FFI_DEFAULT_ABI,argc,(ffi_type *) ffi_ltv->data,argv);
+                                LT_put((*ltv),FFI_TYPE,HEAD,ffi_ltv);
+                                LT_put((*ltv),FFI_CIF,HEAD,cif_ltv);
+                            break;
+                        }
+                        case DW_TAG_structure_type: {
+                                LTV *ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),NULL,NULL);
+                                ffi_ltv->flags|=LT_FFI;
+                                ffi_type *ft=(ffi_type *) ffi_ltv->data;
+                                int count=0;
+                                ft->type=FFI_TYPE_STRUCT;
+                                STRY(collate_child_ffi_types((*ltv),&count,&ft->elements),"collating struct child ffi types");
+                                LT_put((*ltv),FFI_TYPE,HEAD,ffi_ltv);
+                            break;
+                        }
+                        case DW_TAG_union_type:
+                            printf("Unhandled union %s\n",name);
+                            break;
+                        default:
+                            break;
+                    }
+                }
+            }
+            //   else *flags|=LT_TRAVERSE_HALT;
+        }
+    done:
+        return status?NON_NULL:NULL;
+    }
+
+    // postfix traversal so structs/unions are processed after their members. also need to catch circular dependencies
+    STRY(ltv_traverse(type,pre,post)!=NULL,"traversing module");
  done:
     return status;
 }
 
 
 // New name idea: GUT, for grand unified theory
-
-
-LTV *ref_subprogram_to_ffi_cif(LTV *subprogram)
-{
-    return NULL;
-}
 
 
 int test()

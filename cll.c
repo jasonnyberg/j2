@@ -45,3 +45,4 @@ void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,CLL_OP op) { // map with fast-fo
     return rval;
 }
 void *CLL_map(CLL *sentinel,int dir,CLL_OP op) { return CLL_mapfrom(sentinel,NULL,dir,op); }
+int CLL_len(CLL *sentinel) { int acc=0; void *f(CLL *lnk) { acc++; return NULL; } return sentinel?(CLL_map(sentinel,FWD,f),acc):0; }

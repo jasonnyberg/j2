@@ -423,7 +423,14 @@ int LTV_wildcard(LTV *ltv)
     return tlen < ltv->len;
 }
 
-int LTV_hide(LTV *ltv) { return !show_ref && ((ltv->flags&LT_REF)); }
+int LTI_hide(LTI *lti)
+{
+    //int len=strlen(lti->name);
+    //return series(lti->name,len,NULL," ",NULL)<len;
+    return 0;
+}
+
+int LTV_hide(LTV *ltv) { return !show_ref && ((ltv->flags&LT_TYPE)); }
 
 void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
 {
@@ -431,8 +438,10 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
         listree_acyclic(lti,ltvr,ltv,depth,flags);
         switch (*flags&LT_TRAVERSE_TYPE) {
             case LT_TRAVERSE_LTI:
-                if (maxdepth && depth>=maxdepth) *flags|=LT_TRAVERSE_HALT;
-                fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                    *flags|=LT_TRAVERSE_HALT;
+                else
+                    fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
                 break;
             case LT_TRAVERSE_LTV:
                 if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
@@ -544,7 +553,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
         switch(*flags) {
             case LT_TRAVERSE_LTI:
-                if (maxdepth && depth>=maxdepth)
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
                     *flags|=LT_TRAVERSE_HALT;
                 else
                     lti2dot(*ltv,*lti);
@@ -619,7 +628,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
         switch(*flags) {
             case LT_TRAVERSE_LTI:
-                if (maxdepth && depth>=maxdepth)
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
                     *flags|=LT_TRAVERSE_HALT;
                 else
                     lti2dot(*ltv,*lti);

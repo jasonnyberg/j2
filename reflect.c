@@ -1411,20 +1411,24 @@ int ref_ffi_prep(LTV *type)
     }
 
     void *pre(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        //listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags==LT_TRAVERSE_LTV)) {
             if ((*ltv)->flags&LT_TYPE) {
                 if (!cvar_ffi_type(*ltv)) {
                     TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
                     switch (type_info->tag) {
+                        case DW_TAG_subprogram:
+                        case DW_TAG_subroutine_type: {
+                            break;
+                        }
                         case DW_TAG_pointer_type:
                         case DW_TAG_array_type:
                         case DW_TAG_base_type:
                         case DW_TAG_enumeration_type:
                         case DW_TAG_enumerator: {
-                                LTV *ffi_type_ltv=NULL;
-                                STRY(!(ffi_type_ltv=create_ffi_type_ltv(*ltv)),"creating basic ffi type");
-                                STRY(!LT_put((*ltv),FFI_TYPE,HEAD,ffi_type_ltv),"installing basic ffi type");
+                            LTV *ffi_type_ltv=NULL;
+                            STRY(!(ffi_type_ltv=create_ffi_type_ltv(*ltv)),"creating basic ffi type");
+                            STRY(!LT_put((*ltv),FFI_TYPE,HEAD,ffi_type_ltv),"installing basic ffi type");
                             break;
                         }
                         default:
@@ -1434,6 +1438,7 @@ int ref_ffi_prep(LTV *type)
             }
         }
     done:
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
         return status?NON_NULL:NULL;
     }
 
@@ -1441,40 +1446,49 @@ int ref_ffi_prep(LTV *type)
     void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         if ((*flags==LT_TRAVERSE_LTV)) {
             if ((*ltv)->flags&LT_TYPE) {
-                if (!cvar_ffi_type(*ltv)) {
-                    TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
-                    char *name=attr_get((*ltv),TYPE_NAME);
-                    switch (type_info->tag) {
-                        case DW_TAG_subprogram:
-                        case DW_TAG_subroutine_type: {
-                                LTV *ffi_ltv=NULL;
-                                STRY(!(ffi_ltv=create_ffi_type_ltv(*ltv)),"creating subprogram return ffi type");
-                                int argc=0;
-                                ffi_type **argv=NULL;
-                                STRY(collate_child_ffi_types((*ltv),&argc,&argv),"collating subprogram child ffi types");
-                                LTV *cif_ltv=ref_create_cvar(LTV_peek(&ref_ffi_cif,HEAD),NULL,NULL);
-                                cif_ltv->flags|=LT_FFI;
-                                ffi_prep_cif((ffi_cif *) cif_ltv->data,FFI_DEFAULT_ABI,argc,(ffi_type *) ffi_ltv->data,argv);
-                                LT_put((*ltv),FFI_TYPE,HEAD,ffi_ltv);
-                                LT_put((*ltv),FFI_CIF,HEAD,cif_ltv);
-                            break;
+                TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
+                char *name=attr_get((*ltv),TYPE_NAME);
+                switch (type_info->tag) {
+                    case DW_TAG_subprogram:
+                    case DW_TAG_subroutine_type: {
+                        if (!LT_get(*ltv,FFI_CIF,HEAD,KEEP)) {
+                            if (name)
+                                printf("post: %s\n",name);
+
+                            LTV *return_type=NULL;
+                            STRY(!(return_type=create_ffi_type_ltv(*ltv)),"creating subprogram return ffi type");
+                            int argc=0;
+                            ffi_type **argv=NULL;
+                            STRY(collate_child_ffi_types((*ltv),&argc,&argv),"collating subprogram child ffi types");
+                            LTV *cif_ltv=ref_create_cvar(LTV_peek(&ref_ffi_cif,HEAD),NULL,NULL);
+                            cif_ltv->flags|=LT_FFI;
+                            STRY(ffi_prep_cif((ffi_cif *) cif_ltv->data,FFI_DEFAULT_ABI,argc,(ffi_type *) return_type->data,argv),
+                                 "prepping cif");
+                            LT_put((*ltv),FFI_TYPE,HEAD,return_type);
+                            LT_put((*ltv),FFI_CIF,HEAD,cif_ltv);
                         }
-                        case DW_TAG_structure_type: {
-                                LTV *ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),NULL,NULL);
-                                ffi_ltv->flags|=LT_FFI;
-                                ffi_type *ft=(ffi_type *) ffi_ltv->data;
-                                int count=0;
-                                ft->type=FFI_TYPE_STRUCT;
-                                STRY(collate_child_ffi_types((*ltv),&count,&ft->elements),"collating struct child ffi types");
-                                LT_put((*ltv),FFI_TYPE,HEAD,ffi_ltv);
-                            break;
-                        }
-                        case DW_TAG_union_type:
-                            printf("Unhandled union %s\n",name);
-                            break;
-                        default:
-                            break;
+                        break;
                     }
+                    case DW_TAG_structure_type: {
+                        if (!cvar_ffi_type(*ltv)) {
+                            LTV *ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),NULL,NULL);
+                            ffi_ltv->flags|=LT_FFI;
+                            ffi_type *ft=(ffi_type *) ffi_ltv->data;
+                            int count=0;
+                            ft->type=FFI_TYPE_STRUCT;
+                            STRY(collate_child_ffi_types((*ltv),&count,&ft->elements),"collating struct child ffi types");
+                            LT_put((*ltv),FFI_TYPE,HEAD,ffi_ltv);
+                        }
+                        break;
+                    }
+                    case DW_TAG_union_type:
+                        if (!cvar_ffi_type(*ltv)) {
+                            printf("Unhandled union %s\n",name);
+                        }
+
+                        break;
+                    default:
+                        break;
                 }
             }
             //   else *flags|=LT_TRAVERSE_HALT;
@@ -1490,37 +1504,71 @@ int ref_ffi_prep(LTV *type)
 }
 
 
+LTV *ref_rval_create(LTV *lambda)
+{
+    // assumes lambda is a CVAR/TYPE_INFO/subprogram
+    // error check later...
+    LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
+    LTV *return_type=ref_find_basic(cvar_type); // base type of a subprogram is its return type
+    return ref_create_cvar(return_type,NULL,NULL);
+}
+
+int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
+{
+    int status=0;
+    void *marshal_arg(CLL *lnk) {
+        int status=0;
+        LTV *arg=((LTVR *) lnk)->ltv;
+        LTV *arg_type=LT_get(arg,FFI_TYPE,HEAD,KEEP);
+        char *name=attr_get(arg_type,TYPE_NAME);
+        LTV *type=((LTVR *) lnk)->ltv;
+        STRY(marshal(name,type),"retrieving ffi arg from environment");
+    done:
+        return status?NON_NULL:NULL;
+    }
+    LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
+    LTI *children=LTI_resolve(cvar_type,TYPE_LIST,0);
+    STRY(CLL_map(&children->ltvs,FWD,marshal_arg)!=NULL,"marshalling ffi args from environment");
+ done:
+    return status;
+}
+
+LTV *ref_coerce(LTV *arg,LTV *type)
+{
+    return arg; // no coersion in first cut
+}
+
+int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs)
+{
+    int status=0;
+    int index=0;
+    void **args=NULL;
+    LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
+
+    LTV *cif=LT_get(cvar_type,FFI_CIF,HEAD,KEEP);
+
+    LTI *children=LTI_resolve(cvar_type,TYPE_LIST,0);
+    int arity=children?CLL_len(&children->ltvs):0;
+    args=calloc(sizeof(void *),arity);
+
+    void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; }
+    CLL_map(&children->ltvs,FWD,index_arg);
+
+    ffi_call((ffi_cif *) cif->data,lambda->data,rval->data,args); // no return value
+
+ done:
+    return status;
+}
+
+
+
+
 // New name idea: GUT, for grand unified theory
 
 
-int test()
+int ffi_test(int x)
 {
-    ffi_cif cif;
-    ffi_type *args[1];
-    void *values[1];
-    char *s;
-    int rc;
-
-    /* Initialize the argument info vectors */
-    args[0] = &ffi_type_pointer;
-    values[0] = &s;
-
-    /* Initialize the cif */
-    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, 1,
-                     &ffi_type_uint, args) == FFI_OK)
-    {
-        s = "Hello World!";
-        ffi_call(&cif, (void (*)(void)) puts, &rc, values);
-        /* rc now holds the result of the call to puts */
-
-        /* values holds a pointer to the function's arg, so to
-           call puts() again all we need to do is change the
-           value of s */
-        s = "This is cool!";
-        ffi_call(&cif, (void (*)(void)) puts, &rc, values);
-    }
-
-    return 0;
+    return x*2;
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

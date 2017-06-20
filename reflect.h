@@ -161,16 +161,11 @@ extern int ref_curate_module(LTV *mod_ltv,int bootstrap);
 extern int ref_preview_module(LTV *mod_ltv);
 extern int ref_ffi_prep(LTV *type);
 
-#if 0
-extern long long *Type_getLocation(char *loc);
+extern LTV *ref_rval_create(LTV *lambda);
+extern int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
+extern LTV *ref_coerce(LTV *arg,LTV *type);
+extern int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
 
-extern char *reflect_enumstr(char *type,unsigned int val);
-extern void reflect_vardump(char *type,void *addr,char *prefix);
-extern void reflect_varmember(char *type,void *addr,char *member);
-extern void reflect_pushvar(char *type,void *addr);
-
-extern void reflect_init(char *binname,char *fifoname);
-extern void reflect(char *command);
-#endif
+extern int ffi_test(int x);
 
 #endif

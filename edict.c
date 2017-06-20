@@ -56,13 +56,13 @@ typedef struct EDICT
 enum { EVAL_SUCCESS=0, EVAL_ITER };
 
 enum {
-    DEBUG_FILE      = 1<<0,
-    DEBUG_ATOM      = 1<<1,
-    DEBUG_EXPR      = 1<<2,
-    DEBUG_BAIL      = 1<<3,
-    DEBUG_PREEVAL   = 1<<4,
-    DEBUG_POSTEVAL  = 1<<5,
-    DEBUG_ERR       = 1<<6
+    DEBUG_FILE     = 1<<0,
+    DEBUG_ATOM     = 1<<1,
+    DEBUG_EXPR     = 1<<2,
+    DEBUG_BAIL     = 1<<3,
+    DEBUG_PREEVAL  = 1<<4,
+    DEBUG_POSTEVAL = 1<<5,
+    DEBUG_ERR      = 1<<6
 };
 
 int debug_dump=0;
@@ -76,13 +76,14 @@ CLL tok_repo;
 int tok_count=0;
 
 typedef enum {
-    TOK_NONE     =0,
-    TOK_POP      =1<<0x00,
-    TOK_FILE     =1<<0x01,
-    TOK_EXPR     =1<<0x02,
-    TOK_LIT      =1<<0x03,
-    TOK_ATOM     =1<<0x04,
-    TOK_REF      =1<<0x05,
+    TOK_NONE =0,
+    TOK_POP  =1<<0,
+    TOK_FILE =1<<1,
+    TOK_EXPR =1<<2,
+    TOK_LIT  =1<<3,
+    TOK_ATOM =1<<4,
+    TOK_REF  =1<<5,
+    TOK_FFI  =1<<6,
 } TOK_FLAGS;
 
 typedef struct TOK {
@@ -175,6 +176,7 @@ void show_tok_flags(FILE *ofile,TOK *tok)
     if (tok->flags&TOK_LIT)     fprintf(ofile,"LIT ");
     if (tok->flags&TOK_ATOM)    fprintf(ofile,"ATOM ");
     if (tok->flags&TOK_REF)     fprintf(ofile,"REF ");
+    if (tok->flags&TOK_FFI)     fprintf(ofile,"FFI ");
 }
 
 void show_tok(FILE *ofile,char *pre,TOK *tok,char *post) {
@@ -332,14 +334,15 @@ int edict_graph_to_file(char *filename,EDICT *edict)
 }
 
 
+
 //////////////////////////////////////////////////
-// parser
+// tokenizer
 //////////////////////////////////////////////////
 
 #define EDICT_OPS "|&!%#@/+="
 #define EDICT_MONO_OPS "()<>{}"
 
-int parse_expr(TOK *tok)
+int tokenize(TOK *tok)
 {
     int status=0;
     char *data=NULL;
@@ -357,6 +360,13 @@ int parse_expr(TOK *tok)
 
     STRY(!tok,"testing for null tok");
     STRY(!(tokval=tok_peek(tok)),"testing for tok ltvr value");
+
+    if (tokval->flags&LT_CVAR) {
+        TOK *subtok=TOK_new(TOK_FFI,tokval);
+        STRY(!CLL_put(&tok->children,&subtok->lnk,TAIL),"appending FFI tok");
+        goto done;
+    }
+
     STRY(tokval->flags&LT_NSTR,"testing for non-string tok ltvr value");
     STRY(!tokval->data,"testing for null tok ltvr data");
     data=tokval->data;
@@ -390,7 +400,7 @@ int parse_expr(TOK *tok)
 int eval_push(THREAD *thread,TOK *tok) { // engine pops
     int status=0;
     if (tok && tok->flags&TOK_EXPR && CLL_EMPTY(&tok->children))
-        STRY(parse_expr(tok),"parsing expr");
+        STRY(tokenize(tok),"tokenizing expr");
     STRY(!toks_push(toks(thread),tok),"pushing tok to eval stack");
  done:
     return status;
@@ -669,17 +679,16 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         LTV *expr_ltv=NULL,*lambda_ltv=NULL;
         TOK *map_tok=NULL;
 
+        STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
         if (ref_head) { // prep ref for iteration
-            STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
             STRY(edict_resolve(thread,&ref_tok->children,false),"resolving ref for deref");
             STRY(!(map_tok=TOK_cut(ref_tok)),"cutting ref tok for map");
             if (pop)
                 map_tok->flags|=TOK_POP;
         }
-        else { // pop/prep expression for iteration
-            STRY(!(lambda_ltv=stack_get(thread,POP)),"popping lambda");
+        else // pop/prep expression for iteration
             STRY(!(map_tok=TOK_new(TOK_EXPR,stack_get(thread,POP))),"allocating map expr");
-        }
+
         STRY(!(push(&map_tok->lambdas,lambda_ltv)),"pushing lambda into map tok");
         STRY(eval_push(thread,map_tok),"pushing map tok");
 
@@ -691,8 +700,10 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int status=0;
         if (ref_head) // popping iteration
             STRY(map(true),"delegating map w/pop");
-        else
-            STRY(eval_push(thread,TOK_new(TOK_EXPR,stack_get(thread,POP))),"pushing lambda");
+        else {
+            LTV *lambda=stack_get(thread,POP);
+            STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda)),"pushing lambda");
+        }
     done:
         return status;
     }
@@ -804,12 +815,11 @@ int expr_eval(THREAD *thread,TOK *tok)
 {
     int status=0;
     TOK *child=NULL;
-    LTV *lambda_ltv=NULL;
+    LTV *lambda=NULL;
 
-    if ((child=toks_pop(&tok->children)))
-    {
-        if ((lambda_ltv=peek(&tok->lambdas)))
-            STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda_ltv)),"pushing lambda expr");
+    if ((child=toks_pop(&tok->children))) {
+        if ((lambda=peek(&tok->lambdas)))
+            STRY(eval_push(thread,TOK_new(TOK_EXPR,lambda)),"pushing lambda expr");
         STRY(eval_push(thread,child),"pushing child");
     } else {
         thread->skip=false; // exception handlers end at end of expressions
@@ -820,13 +830,41 @@ int expr_eval(THREAD *thread,TOK *tok)
     return status;
 }
 
+int ffi_eval(THREAD *thread,TOK *tok)
+{
+    int status=0;
+    LTV *lambda=NULL;
+    STRY(!(lambda=tok_peek(tok)),"peeking in tok for ffi lambda");
+    CLL args; CLL_init(&args); // list of ffi arguments
+    LTV *rval=NULL;
+    STRY(!(rval=ref_rval_create(lambda)),"creating ffi rval ltv");
+    int marshal(char *name,LTV *type) {
+        int status=0;
+        LTV *arg=NULL, *coerced=NULL;
+        STRY(!(arg=stack_get(thread,POP)),"popping ffi arg from stack"); // FIXME: attempt to resolve by name first
+        STRY(!(coerced=ref_coerce(arg,type)),"coercing ffi arg");
+        LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
+        LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
+        LTV_release(arg);
+    done:
+        return status;
+    }
+    STRY(ref_args_marshal(lambda,marshal),"marshalling ffi args"); // pre-
+    STRY(ref_ffi_call(lambda,rval,&args),"calling ffi");
+    stack_put(thread,rval);
+    CLL_release(&args,LTVR_release);
+    TOK_free(tok);
+ done:
+    return status;
+}
+
 int file_eval(THREAD *thread,TOK *tok)
 {
     int status=0;
-    char *line;
-    int len;
+    char *line=NULL;
+    int len=0;
     TOK *expr=NULL;
-    LTV *tok_data;
+    LTV *tok_data=NULL;
 
     STRY(!tok,"validating file tok");
     STRY(!(tok_data=tok_peek(tok)),"validating file");
@@ -853,12 +891,13 @@ int tok_eval(THREAD *thread,TOK *tok)
     TRY(!tok,"testing for null tok");
     CATCH(status,0,goto done,"catching null tok");
 
-    switch(tok->flags&(TOK_FILE | TOK_EXPR | TOK_LIT | TOK_ATOM | TOK_REF))
+    switch(tok->flags&(TOK_FILE | TOK_EXPR | TOK_LIT | TOK_ATOM | TOK_REF | TOK_FFI))
     {
         case TOK_FILE: STRY(file_eval(thread,tok),"evaluating file"); break;
         case TOK_LIT : STRY(lit_eval(thread,tok), "evaluating lit");  break;
         case TOK_ATOM: STRY(atom_eval(thread,tok),"evaluating atom"); break;
         case TOK_REF : STRY(ref_eval(thread,tok), "evaluating ref");  break; // used for map
+        case TOK_FFI : STRY(ffi_eval(thread,tok), "evaluating ffi");  break;
         case TOK_EXPR: STRY(expr_eval(thread,tok),"evaluating expr"); break;
         default: TOK_free(tok); break;
     }

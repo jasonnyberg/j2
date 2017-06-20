@@ -378,7 +378,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
         {
             const char *str=NULL;
             dwarf_get_TAG_name(type_info->tag,&str);
-            fprintf(ofile,"%*c%s \"%s\"",depth*4,' ',str+7,name);
+            fprintf(ofile,"%*c%s \"%s\" ",depth*4,' ',str+7,name);
 
             switch(type_info->tag) {
                 case DW_TAG_union_type:
@@ -1304,12 +1304,14 @@ int Type_isBitField(TYPE_INFO *type_info) { return (type_info->bitsize || type_i
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 //ffi_type_void
-ffi_type *cvar_ffi_type(LTV *type)
+ffi_type *cvar_ffi_type(LTV *type,int *size)
 {
     int status=0;
+    *size=0;
     ffi_type *ft=NULL;
     LTV *ffi_type_ltv=NULL;
     TRYCATCH(!(type=ref_find_basic(type)),0,done,"resolving basic type");
+    *size=((TYPE_INFO *) type->data)->bytesize;
     if ((ffi_type_ltv=LT_get(type,FFI_TYPE,HEAD,KEEP)))
         ft=(ffi_type *) ffi_type_ltv->data;
  done:
@@ -1385,20 +1387,31 @@ int ref_ffi_prep(LTV *type)
         return ffi_ltv;
     }
 
-    int collate_child_ffi_types(LTV *ltv,int *count,ffi_type ***child_types)
+    int collate_child_ffi_types(LTV *ltv,int is_union,int *count,ffi_type ***child_types)
     {
         int status=0;
+        int largest=0;
         LTI *children=LTI_resolve(ltv,TYPE_LIST,0);
-        *count=children?CLL_len(&children->ltvs):0;
+        if (is_union)
+            *count=1;
+        else
+            *count=children?CLL_len(&children->ltvs):0;
         (*child_types)=calloc(sizeof(ffi_type *),*count+1);
         if (*count) {
-            int offset=0;
+            int size=0,largest=0,offset=0;
             void *get_child_ffi_type(CLL *lnk) {
                 int status=0;
                 LTV *child_type=((LTVR *) lnk)->ltv;
-                ffi_type *child_ffi_type=cvar_ffi_type(child_type);
+                ffi_type *child_ffi_type=cvar_ffi_type(child_type,&size);
                 STRY(!child_ffi_type,"validating child ffi type");
-                (*child_types)[offset++]=child_ffi_type;
+                if (is_union) {
+                    if (largest<size) {
+                        largest=size;
+                        (*child_types)[0]=child_ffi_type;
+                    }
+                }
+                else
+                    (*child_types)[offset++]=child_ffi_type;
             done:
                 return status?NON_NULL:NULL;
             }
@@ -1414,7 +1427,8 @@ int ref_ffi_prep(LTV *type)
         //listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags==LT_TRAVERSE_LTV)) {
             if ((*ltv)->flags&LT_TYPE) {
-                if (!cvar_ffi_type(*ltv)) {
+                int size=0;
+                if (!cvar_ffi_type((*ltv),&size)) {
                     TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
                     switch (type_info->tag) {
                         case DW_TAG_subprogram:
@@ -1448,18 +1462,16 @@ int ref_ffi_prep(LTV *type)
             if ((*ltv)->flags&LT_TYPE) {
                 TYPE_INFO *type_info=(TYPE_INFO *) (*ltv)->data;
                 char *name=attr_get((*ltv),TYPE_NAME);
+                int is_union=0;
                 switch (type_info->tag) {
                     case DW_TAG_subprogram:
                     case DW_TAG_subroutine_type: {
                         if (!LT_get(*ltv,FFI_CIF,HEAD,KEEP)) {
-                            if (name)
-                                printf("post: %s\n",name);
-
                             LTV *return_type=NULL;
                             STRY(!(return_type=create_ffi_type_ltv(*ltv)),"creating subprogram return ffi type");
                             int argc=0;
                             ffi_type **argv=NULL;
-                            STRY(collate_child_ffi_types((*ltv),&argc,&argv),"collating subprogram child ffi types");
+                            STRY(collate_child_ffi_types((*ltv),false,&argc,&argv),"collating subprogram child ffi types");
                             LTV *cif_ltv=ref_create_cvar(LTV_peek(&ref_ffi_cif,HEAD),NULL,NULL);
                             cif_ltv->flags|=LT_FFI;
                             STRY(ffi_prep_cif((ffi_cif *) cif_ltv->data,FFI_DEFAULT_ABI,argc,(ffi_type *) return_type->data,argv),
@@ -1469,24 +1481,22 @@ int ref_ffi_prep(LTV *type)
                         }
                         break;
                     }
+                    case DW_TAG_union_type:
+                        is_union=1;
+                        // fall_thru!
                     case DW_TAG_structure_type: {
-                        if (!cvar_ffi_type(*ltv)) {
+                        int size=0;
+                        if (!cvar_ffi_type((*ltv),&size)) {
                             LTV *ffi_ltv=ref_create_cvar(LTV_peek(&ref_ffi_type,HEAD),NULL,NULL);
                             ffi_ltv->flags|=LT_FFI;
                             ffi_type *ft=(ffi_type *) ffi_ltv->data;
                             int count=0;
                             ft->type=FFI_TYPE_STRUCT;
-                            STRY(collate_child_ffi_types((*ltv),&count,&ft->elements),"collating struct child ffi types");
+                            STRY(collate_child_ffi_types((*ltv),is_union,&count,&ft->elements),"collating %s child ffi types",is_union?"union":"struct");
                             LT_put((*ltv),FFI_TYPE,HEAD,ffi_ltv);
                         }
                         break;
                     }
-                    case DW_TAG_union_type:
-                        if (!cvar_ffi_type(*ltv)) {
-                            printf("Unhandled union %s\n",name);
-                        }
-
-                        break;
                     default:
                         break;
                 }
@@ -1538,21 +1548,19 @@ LTV *ref_coerce(LTV *arg,LTV *type)
     return arg; // no coersion in first cut
 }
 
-int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs)
+int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
 {
     int status=0;
     int index=0;
     void **args=NULL;
     LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
-
     LTV *cif=LT_get(cvar_type,FFI_CIF,HEAD,KEEP);
 
-    LTI *children=LTI_resolve(cvar_type,TYPE_LIST,0);
-    int arity=children?CLL_len(&children->ltvs):0;
+    int arity=CLL_len(coerced_args);
     args=calloc(sizeof(void *),arity);
 
     void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; }
-    CLL_map(&children->ltvs,FWD,index_arg);
+    CLL_map(coerced_args,FWD,index_arg);
 
     ffi_call((ffi_cif *) cif->data,lambda->data,rval->data,args); // no return value
 
@@ -1566,10 +1574,7 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs)
 // New name idea: GUT, for grand unified theory
 
 
-int ffi_test(int x)
-{
-    return x*2;
-}
+int square(int x) { return x*x; }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

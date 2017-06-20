@@ -166,6 +166,6 @@ extern int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
 extern LTV *ref_coerce(LTV *arg,LTV *type);
 extern int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
 
-extern int ffi_test(int x);
+extern int square(int x);
 
 #endif

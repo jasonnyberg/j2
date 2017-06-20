@@ -425,9 +425,8 @@ int LTV_wildcard(LTV *ltv)
 
 int LTI_hide(LTI *lti)
 {
-    //int len=strlen(lti->name);
-    //return series(lti->name,len,NULL," ",NULL)<len;
-    return 0;
+    int len=strlen(lti->name);
+    return series(lti->name,len,NULL," ",NULL)<len && !show_ref;
 }
 
 int LTV_hide(LTV *ltv) { return !show_ref && ((ltv->flags&LT_TYPE)); }

@@ -42,8 +42,6 @@
  *     [type_info]...
  */
 
-#define DL_HDL   "mod hdl"   // a module's dynamic linker handle
-
 #define TYPE_NAME "type name" // a die's type name
 #define TYPE_BASE "type base" // a die's base's ltv
 #define TYPE_LIST "type list" // type's children, in die order
@@ -51,8 +49,8 @@
 #define CVAR_SYMB "cvar symb" // what kind of cvar is this (i.e. what to cast ltv->data to)
 #define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
 
-#define FFI_TYPE "ffi type"   // FFI data assocated with type
-#define FFI_CIF  "ffi cif"    // FFI data assocated with type
+#define FFI_TYPE  "ffi type"  // FFI data assocated with type
+#define FFI_CIF   "ffi cif"   // FFI data assocated with type
 
 #define DIE_FORMAT "\"%s\""       // format for a die's DOT-language element id
 #define CVAR_FORMAT "\"CVAR_%x\"" // format for a CVAR's DOT-language element id
@@ -167,5 +165,8 @@ extern LTV *ref_coerce(LTV *arg,LTV *type);
 extern int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
 
 extern int square(int x);
+
+extern char *argv_zero;
+extern int ref_bootstrap(int argc,char *argv[]);
 
 #endif

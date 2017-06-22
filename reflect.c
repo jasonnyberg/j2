@@ -39,6 +39,8 @@
 #include "listree.h"
 #include "reflect.h"
 
+char *argv_zero=NULL;
+
 // initialized/populated during bootstrap
 CLL ref_mod,
     ref_type_info,
@@ -950,9 +952,10 @@ int ref_curate_module(LTV *module,int bootstrap)
             return NULL;
         }
 
-        STRY(!(dlhandle=dlopen(filename,RTLD_LAZY)),"opening module for dynamic linking");
-        STRY(!attr_imm(module,DL_HDL,(long long) dlhandle),"stashing dl handle");
+        char *f=!strcmp(filename,argv_zero)?NULL:filename;
+        STRY(!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE)),"in dlopen");
         STRY(ltv_traverse(index,resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
+        STRY(dlclose(dlhandle),"in dlclose");
 
         LT_put(module,"type",TAIL,types);
         LT_put(module,"global_type",TAIL,global_types);
@@ -1582,6 +1585,19 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
 
 
 int square(int x) { return x*x; }
+
+int ref_bootstrap(int argc,char *argv[])
+{
+    argv_zero=argv[0];
+    LTV *ref_ltv=LTV_new("build/libreflect.so",-1,LT_NONE);
+    ref_preview_module(ref_ltv);
+    try_reset();
+    try_depth=0;
+    ref_curate_module(ref_ltv,1);
+    print_ltv(stdout,NULL,ref_ltv,NULL,3);
+    LTV_release(ref_ltv);
+    return 0;
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -18,6 +18,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "edict.h"
+#include "reflect.h"
 
-int main(int argc, char *argv[]) { edict(argc,argv); }
+int main(int argc, char *argv[]) { return ref_bootstrap(argc,argv); }

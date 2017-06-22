@@ -987,6 +987,7 @@ void edict_destroy(EDICT *edict)
 int edict(int argc,char *argv[])
 {
     int status=0;
+    ref_bootstrap(argc,argv);
     EDICT *edict;
     try_reset();
     try_depth=1; // superficial info only

@@ -6,3 +6,4 @@ compile: cmake; make -C build
 clean: cmake; make -C build clean
 run: ; ./jj
 compilerun: compile run
+install: cmake; sudo make -C build install

@@ -295,12 +295,16 @@ LTV *ref_create_cvar(LTV *type,void *data,char *member)
         case DW_TAG_structure_type:
         case DW_TAG_union_type:
             if (member) {
-                STRY(!(member_type=ref_get_child(basic_type,member)),"retrieving cvar member");
+                if ((status=!(member_type=ref_get_child(basic_type,member))))
+                    goto done; // fail w/o message
                 TYPE_INFO *member_type_info=(TYPE_INFO *) member_type->data;
-                return ref_create_cvar(member_type,data+member_type_info->data_member_location,NULL);
+                cvar=ref_create_cvar(member_type,data+member_type_info->data_member_location,NULL);
+                goto done;
             }
             break;
         default:
+            if ((status=member!=NULL))
+                goto done; // fail w/o message
             break;
     }
 
@@ -407,8 +411,12 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                     fprintf(ofile,"0x%x",type_info->const_value);
                     break;
                 case DW_TAG_member:
-                    LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
-                    break;
+                    if (type_info->flags&TYPEF_BYTESIZE)
+                        ; /* fall thru! */
+                    else {
+                        LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                        break;
+                    }
                 case DW_TAG_base_type: {
                     TYPE_UVALUE uval;
                     char buf[64];
@@ -1456,7 +1464,6 @@ int ref_ffi_prep(LTV *type)
         return status?NON_NULL:NULL;
     }
 
-
     void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         if ((*flags==LT_TRAVERSE_LTV)) {
             if ((*ltv)->flags&LT_TYPE) {
@@ -1559,7 +1566,7 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
     int arity=CLL_len(coerced_args);
     args=calloc(sizeof(void *),arity);
 
-    void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; }
+    void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; return NULL; }
     CLL_map(coerced_args,FWD,index_arg);
 
     ffi_call((ffi_cif *) cif->data,lambda->data,rval->data,args); // no return value

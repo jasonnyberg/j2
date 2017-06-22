@@ -94,12 +94,6 @@ typedef struct TOK {
     TOK_FLAGS flags;
 } TOK;
 
-TOK *TOK_new(TOK_FLAGS flags,LTV *ltv);
-void TOK_free(TOK *tok);
-
-void show_tok(FILE *ofile,char *pre,TOK *tok,char *post);
-void show_toks(FILE *ofile,char *pre,CLL *toks,char *post);
-
 //////////////////////////////////////////////////
 // REPL Thread
 //////////////////////////////////////////////////
@@ -149,10 +143,10 @@ TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
 
 TOK *TOK_cut(TOK *tok) { return tok?(TOK *)CLL_cut(&tok->lnk):NULL; } // take it out of any list it's in
 
-void TOK_release(CLL *lnk) { TOK_free((TOK *) lnk); }
-
 void TOK_free(TOK *tok)
 {
+    void TOK_release(CLL *lnk) { TOK_free((TOK *) lnk); }
+
     if (!tok) return;
     TOK_cut(tok);
     CLL_release(&tok->ltvs,LTVR_release);
@@ -178,6 +172,8 @@ void show_tok_flags(FILE *ofile,TOK *tok)
     if (tok->flags&TOK_REF)     fprintf(ofile,"REF ");
     if (tok->flags&TOK_FFI)     fprintf(ofile,"FFI ");
 }
+
+void show_toks(FILE *ofile,char *pre,CLL *toks,char *post);
 
 void show_tok(FILE *ofile,char *pre,TOK *tok,char *post) {
     if (pre) fprintf(ofile,"%s",pre);
@@ -210,6 +206,37 @@ void show_toks(FILE *ofile,char *pre,CLL *toks,char *post)
 CLL *dict(THREAD *thread) { return thread?&thread->dict:NULL; }
 CLL *toks(THREAD *thread) { return thread?&thread->toks:NULL; }
 CLL *exceptions(THREAD *thread) { return thread?&thread->exceptions:NULL; }
+
+//////////////////////////////////////////////////
+
+TOK *reftok_init(LTV *ltv)
+{
+    TOK *ref_tok=TOK_new(TOK_REF,ltv);
+    REF_create(ltv->data,ltv->len,&ref_tok->children);
+    return ref_tok;
+}
+
+int reftok_put(LTV *root,TOK *ref_tok,LTV *ltv)
+{
+    CLL *ref=&ref_tok->children;
+    REF *ref_head=REF_HEAD(ref);
+    REF_resolve(root,ref,true);
+    REF_assign(ref_head,ltv);
+    REF_reset(ref_head,NULL);
+    return 0;
+}
+
+LTV *reftok_get(LTV *root,TOK *ref_tok,int pop)
+{
+    CLL *ref=&ref_tok->children;
+    REF *ref_head=REF_HEAD(ref);
+    REF_resolve(root,ref,true);
+    LTV *ltv=REF_ltv(ref_head);
+    if (pop && ltv)
+        REF_remove(ref_head);
+    REF_reset(ref_head,NULL);
+    return ltv;
+}
 
 //////////////////////////////////////////////////
 
@@ -593,7 +620,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     int deref() {
         int status=0;
         if (edict_resolve(thread,&ref_tok->children,false) || !REF_ltv(ref_head)) // if lookup failed, push copy to stack
-            STRY(!stack_put(thread,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref back to stack");
+            STRY(!stack_put(thread,LTV_dup(tok_peek(ref_tok))),"pushing unresolved ref (implicit lit) back to stack");
         else
             STRY(!stack_put(thread,REF_ltv(ref_head)),"pushing resolved ref to stack");
     done:
@@ -632,7 +659,6 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         int status=0;
         LTV *scope=NULL;
         STRY(!(scope=stack_get(thread,POP)),"popping scope from stack");
-        STRY(!LTI_resolve(scope,"$",true),"creating local stack");
         STRY(!push(dict(thread),scope),"pushing new local stack");
     done:
         return status;

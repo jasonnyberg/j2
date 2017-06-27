@@ -31,10 +31,9 @@
 
 #include "trace.h" // lttng
 
-CLL ltv_repo,ltvr_repo,lti_repo,ro_list;
+CLL ro_list;
 int ltv_count=0,ltvr_count=0,lti_count=0;
 int show_ref=0;
-
 
 
 //////////////////////////////////////////////////
@@ -101,12 +100,9 @@ LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 // get a new LTV and prepare for insertion
 LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
 {
-    static CLL *repo=NULL;
-    if (!repo) repo=CLL_init(&ltv_repo);
-
     LTV *ltv=NULL;
     if ((flags&LT_NAP) || data) { // null ptr is error
-        if ((ltv=(LTV *) CLL_get(repo,POP,TAIL)) || (ltv=NEW(LTV))) {
+        if ((ltv=NEW(LTV))) {
             ZERO(*ltv);
             ltv_count++;
             if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
@@ -120,8 +116,7 @@ void LTV_free(LTV *ltv)
 {
     if (ltv) {
         LTV_renew(ltv,NULL,0,0);
-        ZERO(*ltv);
-        CLL_put(&ltv_repo,ltv->repo,HEAD);
+        RELEASE(ltv);
         ltv_count--;
     }
 }
@@ -145,12 +140,10 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
 // get a new LTVR
 LTVR *LTVR_new(LTV *ltv)
 {
-    static CLL *repo=NULL;
-    if (!repo) repo=CLL_init(&ltvr_repo);
-
-    LTVR *ltvr=(LTVR *) CLL_get(repo,POP,TAIL);
-    if (ltvr || (ltvr=NEW(LTVR))) {
+    LTVR *ltvr=NEW(LTVR);
+    if (ltvr) {
         ZERO(*ltvr);
+        CLL_init(&ltvr->lnk);
         ltvr->ltv=ltv;
         ltv->refs++;
         ltvr_count++;
@@ -165,8 +158,7 @@ LTV *LTVR_free(LTVR *ltvr)
         if (!CLL_EMPTY(&ltvr->lnk)) { CLL_cut(&ltvr->lnk); }
         if ((ltv=ltvr->ltv))
             ltv->refs--;
-        CLL_put(&ltvr_repo,ltvr->repo,HEAD);
-        ltvr->flags=0;
+        RELEASE(ltvr);
         ltvr_count--;
     }
     return ltv;
@@ -176,11 +168,8 @@ LTV *LTVR_free(LTVR *ltvr)
 // get a new LTI and prepare for insertion
 LTI *LTI_new(char *name,int len)
 {
-    static CLL *repo=NULL;
-    if (!repo) repo=CLL_init(&lti_repo);
-
     LTI *lti;
-    if (name && ((lti=(LTI *) CLL_get(repo,POP,TAIL)) || (lti=NEW(LTI)))) {
+    if (name && (lti=NEW(LTI))) {
         ZERO(*lti);
         lti_count++;
         lti->name=bufdup(name,len);
@@ -193,8 +182,7 @@ void LTI_free(LTI *lti)
 {
     if (lti) {
         RELEASE(lti->name);
-        ZERO(*lti);
-        CLL_put(&lti_repo,lti->repo,HEAD);
+        RELEASE(lti);
         lti_count--;
     }
 }
@@ -697,7 +685,6 @@ LTV *LT_get(LTV *parent,char *name,int end,int pop)
 // special case; client creates ref, which acts as sentinel
 //////////////////////////////////////////////////
 
-CLL ref_repo;
 int ref_count=0;
 
 REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
@@ -707,14 +694,12 @@ LTV *REF_root(REF *ref) { return ref?LTV_peek(&ref->root,HEAD):NULL; }
 
 REF *REF_new(char *data,int len)
 {
-    static CLL *repo=NULL;
-    if (!repo) CLL_init(&ref_repo);
     int rev=data[0]=='-';
     if (len-rev==0)
         return NULL;
 
     REF *ref=NULL;
-    if ((ref=refpop(repo)) || ((ref=NEW(REF)) && CLL_init(&ref->lnk)))
+    if ((ref=NEW(REF)) && CLL_init(&ref->lnk))
     {
         CLL_init(&ref->keys);
         LTV_enq(&ref->keys,LTV_new(data+rev,len-rev,LT_DUP|LT_ESC),HEAD);
@@ -757,13 +742,11 @@ LTV *REF_reset(REF *ref,LTV *newroot)
 void REF_free(CLL *lnk)
 {
     if (!lnk) return;
-
     REF *ref=(REF *) lnk;
     CLL_cut(&ref->lnk); // take it out of any list it's in
     REF_reset(ref,NULL);
     CLL_release(&ref->keys,LTVR_release);
-
-    refpush(&ref_repo,ref);
+    RELEASE(ref);
     ref_count--;
 }
 

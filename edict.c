@@ -72,7 +72,6 @@ int debug=DEBUG_BAIL|DEBUG_ERR;
 // REPL Tokens
 //////////////////////////////////////////////////
 
-CLL tok_repo;
 int tok_count=0;
 
 typedef enum {
@@ -125,12 +124,10 @@ LTV *tok_peek(TOK *tok)          { return peek(&tok->ltvs);     }
 
 TOK *TOK_new(TOK_FLAGS flags,LTV *ltv)
 {
-    static CLL *repo=NULL;
-    if (!repo) repo=CLL_init(&tok_repo);
-
     TOK *tok=NULL;
-    if (ltv && (tok=toks_pop(repo)) || ((tok=NEW(TOK)) && CLL_init(&tok->lnk)))
+    if (ltv && (tok=NEW(TOK)))
     {
+        CLL_init(&tok->lnk);
         CLL_init(&tok->ltvs);
         CLL_init(&tok->lambdas);
         CLL_init(&tok->children);
@@ -156,7 +153,7 @@ void TOK_free(TOK *tok)
     else
         CLL_release(&tok->children,TOK_release);
 
-    toks_push(&tok_repo,tok);
+    RELEASE(tok);
     tok_count--;
 }
 

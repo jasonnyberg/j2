@@ -62,7 +62,6 @@ typedef enum {
 } LTV_FLAGS;
 
 typedef struct {
-    CLL repo[0]; // union without union semantics
     union {
         CLL ltvs;
         RBR ltis;
@@ -74,14 +73,12 @@ typedef struct {
 } LTV; // LisTree Value
 
 typedef struct {
-    CLL repo[0]; // union without union semantics
     CLL lnk;
     LTV *ltv;
     LTV_FLAGS flags;
 } LTVR; // LisTree Value Reference
 
 typedef struct {
-    CLL repo[0]; // union without union semantics
     RBN rbn;
     CLL ltvs;
     char *name;

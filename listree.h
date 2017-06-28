@@ -45,20 +45,19 @@ typedef enum {
     LT_CVAR =1<<0x05, // LTV data is a C variable
     LT_TYPE =1<<0x06, // CVAR of type TYPE_INFO (for reflection)
     LT_FFI  =1<<0x07, // CVAR of type ffi_type (for reflection)
-    LT_NIL  =1<<0x08, // false
-    LT_NULL =1<<0x09, // empty (as opposed to false)
+    LT_CIF  =1<<0x08, // CVAR of type ffi_cif (for reflection)
+    LT_NULL =1<<0x09, // empty
     LT_IMM  =1<<0x0a, // immediate value, not a pointer
     LT_NOWC =1<<0x0b, // do not do wildcard matching
     LT_RO   =1<<0x0c, // META: disallow release
     LT_AVIS =1<<0x0d, // META: absolute traversal visitation flag
     LT_RVIS =1<<0x0e, // META: recursive traversal visitation flag
     LT_LIST =1<<0x0f, // META: hold children in unlabeled list, rather than default rbtree
-    LT_NAP  =LT_IMM|LT_NIL|LT_NULL,         // not a pointer
+    LT_NAP  =LT_IMM|LT_NULL,                // not a pointer
     LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
     LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
-    LT_VOID =LT_NIL|LT_NULL,                // a placeholder node, internal use only!
-    LT_REF  =LT_FFI|LT_TYPE,                // used for reflection; visibility controlled by "show_ref"
     LT_META =LT_RO|LT_AVIS|LT_RVIS|LT_LIST, // need to be preserved during LTV_renew
+    LT_REF  =LT_TYPE|LT_FFI|LT_CIF,         // used for reflection; visibility controlled by "show_ref"
 } LTV_FLAGS;
 
 typedef struct {
@@ -91,15 +90,15 @@ extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
 extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
 extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 
+extern LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags);
-extern LTV *LTV_new(void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
-extern LTVR *LTVR_new(LTV *ltv);
+extern LTVR *LTVR_init(LTVR *ltvr,LTV *ltv);
 extern LTV *LTVR_free(LTVR *ltvr);
 
-extern LTI *LTI_new(char *name,int len);
+extern LTI *LTI_init(LTI *lti,char *name,int len);
 extern void LTI_free(LTI *lti);
 
 //////////////////////////////////////////////////
@@ -131,9 +130,7 @@ extern void *listree_acyclic(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVER
 // Dictionary
 //////////////////////////////////////////////////
 
-#define LTV_NIL  LTV_new(NULL,0,LT_NIL)
-#define LTV_NULL LTV_new(NULL,0,LT_NULL)
-#define LTV_VOID LTV_new(NULL,0,LT_VOID)
+#define LTV_NULL LTV_init(NEW(LTV),NULL,0,LT_NULL)
 
 extern LTI *LTI_first(LTV *ltv);
 extern LTI *LTI_last(LTV *ltv);

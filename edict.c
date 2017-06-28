@@ -157,7 +157,7 @@ void TOK_free(TOK *tok)
     tok_count--;
 }
 
-TOK *TOK_expr(char *buf,int len) { return TOK_new(TOK_EXPR,LTV_new(buf,len,LT_NONE)); } // ownership of buf is external
+TOK *TOK_expr(char *buf,int len) { return TOK_new(TOK_EXPR,LTV_init(NEW(LTV),buf,len,LT_NONE)); } // ownership of buf is external
 
 void show_tok_flags(FILE *ofile,TOK *tok)
 {
@@ -376,7 +376,7 @@ int tokenize(TOK *tok)
     int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
     TOK *append(TOK *tok,int type,char *data,int len,int adv) {
-        TOK *subtok=TOK_new(type,LTV_new(data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
+        TOK *subtok=TOK_new(type,LTV_init(NEW(LTV),data,len,type==TOK_LIT?LT_DUP:LT_NONE)); // only LITs need to be duped
         if (!subtok) return NULL;
         advance(adv);
         return (TOK *) CLL_put(&tok->children,&subtok->lnk,TAIL);
@@ -515,7 +515,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
             FILE *ifile=strncmp("stdin",ifilename,5)?fopen(ifilename,"r"):stdin;
             if (ifile) {
-                TOK *file_tok=TOK_new(TOK_FILE,LTV_new((void *) ifile,sizeof(FILE *),LT_IMM));
+                TOK *file_tok=TOK_new(TOK_FILE,LTV_init(NEW(LTV),(void *) ifile,sizeof(FILE *),LT_IMM));
                 STRY(eval_push(thread,file_tok),"pushing file");
             }
             myfree(ifilename,strlen(ifilename)+1);
@@ -635,7 +635,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
 
     exception:
         TOK_free(ref_tok);
-        throw(LTV_new("exception: assign",-1,0));
+        throw(LTV_init(NEW(LTV),"exception: assign",-1,0));
     done:
         return status;
     }
@@ -677,7 +677,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
     }
 
     int function_close() {
-        return eval_push(thread,TOK_new(TOK_EXPR,LTV_new(">/",2,LT_NONE))) || // to close and delete lambda scope
+        return eval_push(thread,TOK_new(TOK_EXPR,LTV_init(NEW(LTV),">/",2,LT_NONE))) || // to close and delete lambda scope
             eval_push(thread,TOK_new(TOK_EXPR,peek(dict(thread)))); // to eval lambda
     }
 
@@ -690,7 +690,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
         STRY(!(buf=mymalloc(a->len+b->len)),"allocating merge buf");
         strncpy(buf,a->data,a->len);
         strncpy(buf+a->len,b->data,b->len);
-        STRY(!stack_put(thread,LTV_new(buf,a->len+b->len,LT_OWN)),"pushing merged LTV");
+        STRY(!stack_put(thread,LTV_init(NEW(LTV),buf,a->len+b->len,LT_OWN)),"pushing merged LTV");
         LTV_release(a);
         LTV_release(b);
     done:
@@ -893,7 +893,7 @@ int file_eval(THREAD *thread,TOK *tok)
     STRY(!(tok_data=tok_peek(tok)),"validating file");
     TRYCATCH(!CLL_EMPTY(exceptions(thread)),0,close_file,"checking for file read during exception");
     TRYCATCH((line=balanced_readline((FILE *) tok_data->data,&len))==NULL,0,close_file,"reading from file");
-    TRYCATCH(!(expr=TOK_new(TOK_EXPR,LTV_new(line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
+    TRYCATCH(!(expr=TOK_new(TOK_EXPR,LTV_init(NEW(LTV),line,len,LT_OWN))),TRY_ERR,free_line,"allocating expr tok");
     TRYCATCH(eval_push(thread,expr),TRY_ERR,free_expr,"enqueing expr token");
     goto done; // success!
 
@@ -958,7 +958,7 @@ int edict_init(EDICT *edict,char *buf)
     int status=0;
     STRY(!edict,"validating edict");
     CLL_init(&edict->threads);
-    STRY(!(edict->root=LTV_new("ROOT",TRY_ERR,LT_RO)),"creating edict root");
+    STRY(!(edict->root=LTV_init(NEW(LTV),"ROOT",TRY_ERR,LT_RO)),"creating edict root");
     STRY(!LTI_resolve(edict->root,"$",true),"creating global stack");
 
     THREAD *thread=NULL;

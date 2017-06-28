@@ -75,7 +75,7 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
             if (!result) return (LTI *) *rbn; // found it!
             else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
         }
-        if (insert && (lti=LTI_new(name,len))) {
+        if (insert && (lti=LTI_init(NEW(LTI),name,len))) {
             rb_link_node(&lti->rbn,parent,rbn); // add
             rb_insert_color(&lti->rbn,rbr); // rebalance
         }
@@ -98,16 +98,13 @@ LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 }
 
 // get a new LTV and prepare for insertion
-LTV *LTV_new(void *data,int len,LTV_FLAGS flags)
+LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 {
-    LTV *ltv=NULL;
-    if ((flags&LT_NAP) || data) { // null ptr is error
-        if ((ltv=NEW(LTV))) {
-            ZERO(*ltv);
-            ltv_count++;
-            if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
-            LTV_renew(ltv,data,len,flags);
-        }
+    if (ltv && ((flags&LT_NAP) || data)) { // null ptr is error
+        ZERO(*ltv);
+        if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
+        LTV_renew(ltv,data,len,flags);
+        ltv_count++;
     }
     return ltv;
 }
@@ -138,10 +135,9 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
 
 
 // get a new LTVR
-LTVR *LTVR_new(LTV *ltv)
+LTVR *LTVR_init(LTVR *ltvr,LTV *ltv)
 {
-    LTVR *ltvr=NEW(LTVR);
-    if (ltvr) {
+    if (ltvr && ltv) {
         ZERO(*ltvr);
         CLL_init(&ltvr->lnk);
         ltvr->ltv=ltv;
@@ -166,14 +162,13 @@ LTV *LTVR_free(LTVR *ltvr)
 
 
 // get a new LTI and prepare for insertion
-LTI *LTI_new(char *name,int len)
+LTI *LTI_init(LTI *lti,char *name,int len)
 {
-    LTI *lti;
-    if (name && (lti=NEW(LTI))) {
+    if (lti && name) {
         ZERO(*lti);
-        lti_count++;
         lti->name=bufdup(name,len);
         CLL_init(&lti->ltvs);
+        lti_count++;
     }
     return lti;
 }
@@ -338,7 +333,7 @@ LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
 
 LTI *LTI_resolve(LTV *ltv,char *name,int insert)
 {
-    LTV *nameltv=LTV_new(name,-1,LT_NOWC);
+    LTV *nameltv=LTV_init(NEW(LTV),name,-1,LT_NOWC);
     LTI *lti=LTI_lookup(ltv,nameltv,insert);
     LTV_free(nameltv);
     return lti;
@@ -355,7 +350,7 @@ LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    if (ltvs && ltv && (ltvr=LTVR_new(ltv))) {
+    if (ltvs && ltv && (ltvr=LTVR_init(NEW(LTVR),ltv))) {
         if (CLL_put(ltvs,&ltvr->lnk,end)) {
             if (ltvr_ret) *ltvr_ret=ltvr;
             return ltv; //!!
@@ -400,7 +395,7 @@ LTV *LTV_dup(LTV *ltv)
     int flags=ltv->flags & ~LT_FREE;
     if (!(flags&LT_NAP))
         flags |= LT_DUP;
-    return LTV_new(ltv->data,ltv->len,flags);
+    return LTV_init(NEW(LTV),ltv->data,ltv->len,flags);
 }
 
 int LTV_wildcard(LTV *ltv)
@@ -435,9 +430,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 else fprintf(ofile,"%*c[",depth*4,' ');
                 if      ((*ltv)->flags&LT_CVAR)            ref_print_cvar(ofile,(*ltv),depth);
                 else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"IMM 0x%x",(*ltv)->data);
-                else if (((*ltv)->flags&LT_VOID)==LT_VOID) fprintf(ofile,"<void>");
                 else if ((*ltv)->flags&LT_NULL)            fprintf(ofile,"<null>");
-                else if ((*ltv)->flags&LT_NIL)             fprintf(ofile,"<nil>");
                 else if ((*ltv)->flags&LT_BIN)             hexdump(ofile,(*ltv)->data,(*ltv)->len);
                 else                                       fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
                 if (post) fprintf(ofile,"%s",post);
@@ -526,12 +519,8 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 ref_dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"%x (imm)\" shape=box style=filled fillcolor=gold color=%s]\n",ltv,ltv->data,color);
-        else if (ltv->flags==LT_VOID)
-            fprintf(ofile,"\"LTV%x\" [label=\"\" shape=point style=filled fillcolor=purple fillcolor=pink color=%s]\n",ltv,color);
         else if (ltv->flags&LT_NULL)
-            fprintf(ofile,"\"LTV%x\" [label=\"NULL\" shape=box style=filled fillcolor=pink2 color=%s]\n",ltv,color);
-        else if (ltv->flags&LT_NIL)
-            fprintf(ofile,"\"LTV%x\" [label=\"NIL\" shape=box style=filled fillcolor=pink3 color=%s]\n",ltv,color);
+            fprintf(ofile,"\"LTV%x\" [label=\"\" shape=point style=filled fillcolor=purple fillcolor=pink color=%s]\n",ltv,color);
         else
             fprintf(ofile,"\"LTV%x\" [label=\"\" shape=box style=filled height=.1 width=.3 fillcolor=gray color=%s]\n",ltv,color);
     }
@@ -601,12 +590,8 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 ref_dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
-        else if (ltv->flags==LT_VOID)
+        else if (ltv->flags==LT_NULL)
             fprintf(ofile,"\"LTV%x\" [label=\"\" shape=point style=filled color=purple]\n",ltv);
-        else if (ltv->flags&LT_NULL)
-            fprintf(ofile,"\"LTV%x\" [label=\"NULL\" shape=box style=filled]\n",ltv);
-        else if (ltv->flags&LT_NIL)
-            fprintf(ofile,"\"LTV%x\" [label=\"NIL\" shape=box style=filled]\n",ltv);
         else
             fprintf(ofile,"\"LTV%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
     }
@@ -692,17 +677,16 @@ REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
 
 LTV *REF_root(REF *ref) { return ref?LTV_peek(&ref->root,HEAD):NULL; }
 
-REF *REF_new(char *data,int len)
+REF *REF_init(REF *ref,char *data,int len)
 {
     int rev=data[0]=='-';
     if (len-rev==0)
         return NULL;
 
-    REF *ref=NULL;
-    if ((ref=NEW(REF)) && CLL_init(&ref->lnk))
+    if (ref && CLL_init(&ref->lnk))
     {
         CLL_init(&ref->keys);
-        LTV_enq(&ref->keys,LTV_new(data+rev,len-rev,LT_DUP|LT_ESC),HEAD);
+        LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+rev,len-rev,LT_DUP|LT_ESC),HEAD);
         CLL_init(&ref->root);
         ref->lti=NULL;
         ref->ltvr=NULL;
@@ -722,7 +706,7 @@ LTV *REF_reset(REF *ref,LTV *newroot)
     if (root && ref->lti) {
         void *prune_placeholders(CLL *lnk) {
             LTVR *ltvr=(LTVR *) lnk;
-            if (ltvr->ltv->flags==LT_VOID && LTV_empty(ltvr->ltv))
+            if (ltvr->ltv->flags==LT_NULL && LTV_empty(ltvr->ltv))
                 LTVR_release(lnk);
         }
         CLL_map(&ref->lti->ltvs,FWD,prune_placeholders);
@@ -770,12 +754,12 @@ int REF_create(char *data,int len,CLL *refs)
 
     while (len) { // parse ref keys
         STRY(!(tlen=name()),"parsing ref name"); // mandatory
-        STRY(!(ref=REF_new(data,tlen)),"allocating name ref");
+        STRY(!(ref=REF_init(NEW(REF),data,tlen)),"allocating name ref");
         STRY(!CLL_put(refs,&ref->lnk,HEAD),"enqueing name ref");
         advance(tlen);
 
         while ((tlen=val())) { // parse vals (optional)
-            STRY(!LTV_enq(&ref->keys,LTV_new(data+1,tlen-2,0),TAIL),"enqueueing val key");
+            STRY(!LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+1,tlen-2,0),TAIL),"enqueueing val key");
             advance(tlen);
         }
 
@@ -831,7 +815,7 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
         goto done; // success!
 
     install_placeholder:
-        STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_VOID:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
+        STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_NULL:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
 
     done:
         return status?NON_NULL:NULL;

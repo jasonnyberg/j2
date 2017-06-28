@@ -128,6 +128,7 @@ typedef enum {
 
 typedef struct
 {
+    LTV ltv;
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
     Dwarf_Off die;
@@ -146,8 +147,19 @@ typedef struct
     Dwarf_Unsigned addr; // from loclist
     Dwarf_Bool external;
     void *dladdr; // address resolved via dynamic linker
-} TYPE_INFO;
+} TYPE_INFO_LTV;
 
+typedef struct
+{
+    LTV ltv;
+    ffi_type ft;
+} FFI_TYPE_LTV;
+
+typedef struct
+{
+    LTV ltv;
+    ffi_cif fc;
+} FFI_CIF_LTV;
 
 extern CLL ref_mod,ref_type_info,ref_ffi_cif,ref_ffi_type;
 

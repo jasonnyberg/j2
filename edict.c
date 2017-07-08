@@ -18,30 +18,26 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
-#include <libgen.h> // basename
-
-#include "cll.h"
 
 #define _GNU_SOURCE
 #define _C99
+#include <stddef.h>
+#include <stdio.h>
+#include <string.h>
 #include <stdlib.h>
+
 #include "util.h"
+#include "cll.h"
 #include "listree.h"
 #include "reflect.h"
-
-#include "trace.h" // lttng
-
 
 //////////////////////////////////////////////////
 // Utils
 //////////////////////////////////////////////////
 
-LTV *push(CLL *cll,LTV *ltv) { return LTV_enq((cll),(ltv),HEAD); }
-LTV *pop(CLL *cll)           { LTV_deq((cll),HEAD); }
-LTV *peek(CLL *cll)          { LTV_peek((cll),HEAD); }
+LTV *push(CLL *cll,LTV *ltv) { return LTV_enq(cll,ltv,HEAD); }
+LTV *pop(CLL *cll)           { LTV_deq(cll,HEAD); }
+LTV *peek(CLL *cll)          { LTV_peek(cll,HEAD); }
 
 //////////////////////////////////////////////////
 
@@ -984,7 +980,6 @@ void edict_destroy(EDICT *edict)
 int edict(int argc,char *argv[])
 {
     int status=0;
-    ref_bootstrap(argc,argv);
     EDICT *edict;
     try_reset();
     try_depth=1; // superficial info only

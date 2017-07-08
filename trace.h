@@ -86,7 +86,7 @@ TRACEPOINT_LOGLEVEL(edict,error,    TRACE_ERR)
 TRACEPOINT_LOGLEVEL(edict,alloc,    TRACE_DEBUG_LINE)
 TRACEPOINT_LOGLEVEL(edict,dealloc,  TRACE_DEBUG)
 
-#endif /* EDUCT_TP_H */
+#endif /* EDICT_TP_H */
 
 #include <lttng/tracepoint-event.h>
 #define TSTART(status,msg)        tracepoint(edict,start,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)

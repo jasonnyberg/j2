@@ -39,13 +39,7 @@
 #include "listree.h"
 #include "reflect.h"
 
-char *argv_zero=NULL;
-
-// initialized/populated during bootstrap
-CLL ref_mod,
-    ref_type_info,
-    ref_ffi_cif,
-    ref_ffi_type;
+LTV *ref_mod=NULL;// initialized/populated during bootstrap
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf);
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf);
@@ -223,7 +217,6 @@ int print_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
     if (type_info->flags&TYPEF_EXTERNAL)   fprintf(ofile,"|external %u",    type_info->external);
     if (type_info->flags&TYPEF_SYMBOLIC)   fprintf(ofile,"|symbolic");
     if (type_info->dladdr)                 fprintf(ofile,"|dladdr 0x%x",    type_info->dladdr);
-    if (type_info->flags&TYPEF_DQ)         fprintf(ofile,"|dq");
     return status;
 }
 
@@ -233,9 +226,7 @@ int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
     fprintf(ofile,CVAR_FORMAT " [shape=record label=\"{",type_info);
     print_type_info(ofile,type_info);
     fprintf(ofile,"}\"");
-    if (type_info->flags&TYPEF_DQ)
-        fprintf(ofile," color=orange");
-    else if (type_info->flags&TYPEF_UPPERBOUND)
+    if (type_info->flags&TYPEF_UPPERBOUND)
         fprintf(ofile," color=white");
     switch (type_info->tag) {
         case DW_TAG_compile_unit:     fprintf(ofile," style=filled fillcolor=red rank=max"); break;
@@ -683,6 +674,9 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                             type_info->addr=llbuf->ld_s[j].lr_number;
                             type_info->flags|=TYPEF_ADDR;
                             break;
+                        case DW_OP_GNU_push_tls_address: // THREAD LOCAL STORAGE
+                            type_info->tag=0; // disqualify TLS variables
+                            break;
                         case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
                         case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u: // llbuf->ld_s[j].lr_number
                         case DW_OP_fbreg: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
@@ -697,7 +691,6 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                         case DW_OP_GNU_encoded_addr:
                         case DW_OP_GNU_implicit_pointer:
                         case DW_OP_GNU_entry_value:
-                        case DW_OP_GNU_push_tls_address: // something to do with stack local variables?
                         case DW_OP_call_frame_cfa:
                         case DW_OP_deref:
                         case DW_OP_skip:
@@ -741,6 +734,22 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         dwarf_dealloc(dbg,atlist[atcnt],DW_DLA_ATTR);
     }
     dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
+
+    // Disqualify certain nodes
+    switch (type_info->tag) {
+        case 0: // populate_type_info rejected it
+        case  DW_TAG_label:
+            type_info->tag=0;
+        case DW_TAG_variable:
+        case DW_TAG_subprogram:
+            if (type_info->depth>1)
+                type_info->tag=0;
+            else if (!(type_info->flags&TYPEF_EXTERNAL))
+                type_info->tag=0;
+            break;
+        default:
+            break;
+    }
 
  done:
     return status;
@@ -808,21 +817,15 @@ int ref_curate_module(LTV *module,int bootstrap)
     int status=0;
     CU_DATA cu_data;
 
-    if (bootstrap) { // stash it for future reference
-        CLL_init(&ref_mod);
-        CLL_init(&ref_type_info);
-        CLL_init(&ref_ffi_type);
-        CLL_init(&ref_ffi_cif);
-        LTV_enq(&ref_mod,module,HEAD);
-    }
+    if (bootstrap) // stash it for future reference
+        ref_mod=module;
 
-    LTV *compile_units=LTV_NULL,*index=LTV_NULL;
+    LTV *index=LTV_NULL;
     char *filename=FORMATA(filename,module->len,"%s",module->data);
 
     int resolve_symbols()
     {
         int status=0;
-        LTV *types=LTV_NULL,*global_types=LTV_NULL,*globals=LTV_NULL;
         void *dlhandle=NULL;
 
         int derive_symbolic_name(TYPE_INFO_LTV *type_info)
@@ -837,19 +840,35 @@ int ref_curate_module(LTV *module,int bootstrap)
             char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_NAME):NULL;
             char *composite_name=NULL;
 
-            void categorize_symbolic(LTV *category,char *sym) {
+            void categorize_symbolic(char *sym,int link) {
                 type_info->flags|=TYPEF_SYMBOLIC;
                 attr_del(&type_info->ltv,TYPE_NAME);
                 attr_set(&type_info->ltv,TYPE_NAME,sym);
-                if (category && !LT_get(category,sym,HEAD,KEEP)) { // if not a dup, place item into category
-                    LT_put(category,sym,TAIL,&type_info->ltv);
-                    if (category==global_types) { // dynamically link globals
+                TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) LT_get(module,sym,HEAD,KEEP);
+
+                const char *is;
+                dwarf_get_TAG_name(type_info->tag,&is);
+                //printf(CODE_BLUE "installing %s(%p), %d/%s" CODE_RESET "\n",sym,type_info,type_info->tag,is);
+
+                if (!type_info->tag)
+                    printf(CODE_RED "installing invalid type info" CODE_RESET "\n");
+                else if (LT_get(module,sym,HEAD,KEEP)) {
+                    if (type_info->tag!=til->tag) {
+                        const char *was;
+                        dwarf_get_TAG_name(type_info->tag,&is);
+                        dwarf_get_TAG_name(til->tag,&was);
+                        printf(CODE_RED "type info tag conflict: %s(%p vs. %p), installing %d/%s but found %d/%s" CODE_RESET "\n",
+                               sym,type_info,til,type_info->tag,is,til->tag,was);
+                    }
+                } else { // if not a dup, place item into module
+                    LT_put(module,sym,TAIL,&type_info->ltv);
+                    if (link) { // dynamically link globals
                         if (!type_info->dladdr) {
                             type_info->dladdr=dlsym(dlhandle,sym);
-                            LT_put(globals,sym,HEAD,ref_create_cvar(&type_info->ltv,type_info->dladdr,NULL));
+                            //LT_put(module,sym,HEAD,ref_create_cvar(&type_info->ltv,type_info->dladdr,NULL));
                         }
                     } else if (base_symb) { // dedup types (not global types) to get here, base must already be installed in "types"
-                        TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(types,base_symb,HEAD,KEEP);
+                        TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
                         if (symb_base && symb_base!=base_info) { // may already be correct
                             attr_del(&type_info->ltv,TYPE_BASE);
                             LT_put(&type_info->ltv,TYPE_BASE,TAIL,&symb_base->ltv);
@@ -860,23 +879,25 @@ int ref_curate_module(LTV *module,int bootstrap)
             }
 
             switch(type_info->tag) {
+                case 0:
+                    break;
                 case DW_TAG_structure_type:
                     if (type_name)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"struct %s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"struct %s",type_name),0);
                     break;
                 case DW_TAG_union_type:
                     if (type_name)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"union %s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"union %s",type_name),0);
                     break;
                 case DW_TAG_enumeration_type:
                     if (type_name)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"enum %s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"enum %s",type_name),0);
                     break;
                 case DW_TAG_pointer_type:
                     if (!(type_info->flags&TYPEF_BASE))
                         base_symb="void";
                     if (base_symb)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"(%s)*",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)*",base_symb),0);
                     break;
                 case DW_TAG_array_type:
                     if (base_symb) {
@@ -887,47 +908,47 @@ int ref_curate_module(LTV *module,int bootstrap)
                                 type_info->bytesize=base_info->bytesize * (subrange->upper_bound+1);
                                 type_info->flags|=TYPEF_BYTESIZE;
                             }
-                            categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb)+20,"(%s)[%d]",base_symb,subrange->upper_bound+1));
+                            categorize_symbolic(FORMATA(composite_name,strlen(base_symb)+20,"(%s)[%d]",base_symb,subrange->upper_bound+1),0);
                         }
                         else
-                            categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"(%s)[]",base_symb));
+                            categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)[]",base_symb),0);
                     }
                     break;
                 case DW_TAG_volatile_type:
                     if (base_symb)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"volatile %s",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"volatile %s",base_symb),0);
                     break;
                 case DW_TAG_const_type:
                     if (base_symb)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"const %s",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"const %s",base_symb),0);
                     break;
                 case DW_TAG_base_type:
                 case DW_TAG_enumerator:
                     if (type_name)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
                     break;
                 case DW_TAG_typedef:
                     if (type_name)
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
                     else if (base_symb) // anonymous typedef
-                        categorize_symbolic(types,FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb),0);
                     break;
                 case DW_TAG_subprogram:
                 case DW_TAG_subroutine_type:
                     if (type_name) // GLOBAL!
-                        categorize_symbolic(global_types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),1);
                     break;
                 case DW_TAG_variable:
                     if (type_name) // GLOBAL!
-                        categorize_symbolic(global_types,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),1);
                     break;
-                case DW_TAG_compile_unit:
+                    //case DW_TAG_compile_unit:
                 case DW_TAG_subrange_type:
-                case DW_TAG_member:
-                case DW_TAG_formal_parameter:
-                case DW_TAG_unspecified_parameters: // varargs
+                    //case DW_TAG_member:
+                    //case DW_TAG_formal_parameter:
+                    //case DW_TAG_unspecified_parameters: // varargs
                     if (type_name) // still want to dedup!
-                        categorize_symbolic(NULL,FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
                     break;
                 default: // no name
                     break;
@@ -945,37 +966,12 @@ int ref_curate_module(LTV *module,int bootstrap)
             return NULL;
         }
 
-        char *f=!strcmp(filename,argv_zero)?NULL:filename;
+        char *f=bootstrap?NULL:filename;
         STRY(!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE)),"in dlopen");
         STRY(ltv_traverse(index,resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
         STRY(dlclose(dlhandle),"in dlclose");
-
-        LT_put(module,"type",TAIL,types);
-        LT_put(module,"global_type",TAIL,global_types);
-        LT_put(module,"global",TAIL,globals);
         //graph_types_to_file("/tmp/types.dot",types);
 
-        if (bootstrap) {
-            STRY(!LTV_enq(&ref_type_info,LT_get(types,"TYPE_INFO_LTV",HEAD,KEEP),HEAD),"stashing TYPE_INFO_LTV's TYPE_INFO");
-            STRY(!LTV_enq(&ref_ffi_type, LT_get(types,"ffi_type", HEAD,KEEP),HEAD),"stashing ffi_type's TYPE_INFO");
-            STRY(!LTV_enq(&ref_ffi_cif,  LT_get(types,"ffi_cif",  HEAD,KEEP),HEAD),"stashing ffi_cif's TYPE_INFO");
-        }
-
-    done:
-        return status;
-    }
-
-    int backfill_type_info_cvars() {
-        int status=0;
-        void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-            if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
-                if ((*ltv)->flags&LT_TYPE && !LT_get((*ltv),CVAR_TYPE,HEAD,KEEP))
-                    STRY(!LT_put((*ltv),CVAR_TYPE,HEAD,LTV_peek(&ref_type_info,HEAD)),"post-processing a nominal TYPE_INFO");
-        done:
-            return status?NON_NULL:NULL;
-        }
-
-        STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),listree_acyclic,traverse_types)!=NULL,"traversing module");
     done:
         return status;
     }
@@ -989,28 +985,14 @@ int ref_curate_module(LTV *module,int bootstrap)
             int sib_op(Dwarf_Debug dbg,Dwarf_Die die)   { return work_op(parent,die,depth); }
             int child_op(Dwarf_Debug dbg,Dwarf_Die die) { return work_op(&type_info->ltv,die,depth+1); }
 
-            int disqualify() {
-                switch (type_info->tag) {
-                    case 0: // populate_type_info rejected it
-                    case  DW_TAG_label:
-                        return true;
-                    case DW_TAG_variable:
-                    case DW_TAG_subprogram:
-                        if (!(type_info->flags&TYPEF_EXTERNAL))
-                            return true;
-                        break;
-                    default:
-                        break;
-                }
-                return false;
-            }
-
             int link2parent(char *name) {
                 int status=0;
                 switch(type_info->tag) {
+                    case 0: // rejected
+                        break;
                     case DW_TAG_compile_unit:
                         if (!LTV_empty(&type_info->ltv) && name)
-                            STRY(!LT_put(compile_units,name,TAIL,&type_info->ltv),"linking cu to module");
+                            STRY(!LT_put(module,name,TAIL,&type_info->ltv),"linking cu to module");
                         break;
                     case DW_TAG_subprogram:
                     case DW_TAG_variable:
@@ -1049,14 +1031,13 @@ int ref_curate_module(LTV *module,int bootstrap)
 
             if (!(type_info=(TYPE_INFO_LTV *) LT_get(index,offset_str,HEAD,KEEP))) { // may have been curated previously
                 STRY(!(type_info=NEW(TYPE_INFO_LTV)),"creating a type_info item");
+                type_info->depth=depth;
                 LTV_init(&type_info->ltv,type_info,sizeof(TYPE_INFO_LTV),LT_OWN|LT_BIN|LT_CVAR|LT_TYPE); // special derived LTV!
                 STRY(populate_type_info(dbg,die,type_info,&cu_data),"populating die type info");
-                TRYCATCH(!type_info->tag,0,reject,"checking for hard reject");
                 if ((name=get_diename(dbg,die))) // name is allocated from heap...
                     STRY(!attr_own(&type_info->ltv,TYPE_NAME,name),"naming type info");
-                if (!disqualify())
-                    STRY(link2parent(name),"linking die to parent");
 
+                STRY(link2parent(name),"linking die to parent");
                 STRY(!LT_put(index,type_info->id_str,TAIL,&type_info->ltv),"indexing type info");
 
                 if (type_info->tag!=DW_TAG_compile_unit || LT_get(module,name,HEAD,KEEP))
@@ -1075,9 +1056,6 @@ int ref_curate_module(LTV *module,int bootstrap)
                 }
             }
             STRY(traverse_sibling(dbg,die,sib_op),"traversing sibling");
-            goto done; // success!
-        reject:
-            LTV_release(&type_info->ltv);
         done:
             return status;
         }
@@ -1087,11 +1065,7 @@ int ref_curate_module(LTV *module,int bootstrap)
 
     STRY(traverse_cus(filename,curate_die,&cu_data),"traversing module compute units");
     resolve_symbols();
-    //backfill_type_info_cvars();
-    //dump_module_simple("/tmp/simple.dot",module);
     LTV_release(index);
-    LTV_release(compile_units);
-
     ref_ffi_prep(module);
 
  done:
@@ -1567,25 +1541,25 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
 }
 
 
-
-
-// New name idea: GUT, for grand unified theory
-
-
-int square(int x) { return x*x; }
-
-int ref_bootstrap(int argc,char *argv[])
+int ref_bootstrap(LTV *ltv)
 {
-    argv_zero=argv[0];
+    Dl_info dl_info;
+    dladdr((void *)ref_bootstrap, &dl_info);
+    fprintf(stderr, "module %s loaded\n", dl_info.dli_fname);
+
     LTV *ref_ltv=LTV_init(NEW(LTV),"build/libreflect.so",-1,LT_NONE);
+    LT_put(ltv,"reflection",HEAD,ref_ltv);
+
     ref_preview_module(ref_ltv);
-    try_reset();
-    try_depth=0;
     ref_curate_module(ref_ltv,1);
-    print_ltv(stdout,NULL,ref_ltv,NULL,3);
-    LTV_release(ref_ltv);
+    print_ltv(stdout,NULL,ref_ltv,NULL,0);
+
     return 0;
 }
+
+
+LTV *ref_type_info(char *typename) { return LT_get(ref_mod,typename,HEAD,KEEP); }
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

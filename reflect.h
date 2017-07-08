@@ -46,8 +46,8 @@
 #define TYPE_BASE "type base" // a die's base's ltv
 #define TYPE_LIST "type list" // type's children, in die order
 
-#define CVAR_SYMB "cvar symb" // what kind of cvar is this (i.e. what to cast ltv->data to)
-#define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
+//#define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
+#define CVAR_TYPE TYPE_BASE // cvar's associated TYPE_INFO
 
 #define FFI_TYPE  "ffi type"  // FFI data assocated with type
 #define FFI_CIF   "ffi cif"   // FFI data assocated with type
@@ -108,27 +108,27 @@ typedef struct {
 } CU_DATA;
 
 typedef enum {
-    TYPEF_DQ         = 1<<0x0,
-    TYPEF_BASE       = 1<<0x1,
-    TYPEF_CONSTVAL   = 1<<0x2,
-    TYPEF_BYTESIZE   = 1<<0x3,
-    TYPEF_BITSIZE    = 1<<0x4,
-    TYPEF_BITOFFSET  = 1<<0x5,
-    TYPEF_ENCODING   = 1<<0x6,
-    TYPEF_UPPERBOUND = 1<<0x7,
-    TYPEF_LOWPC      = 1<<0x8,
-    TYPEF_MEMBERLOC  = 1<<0x9,
-    TYPEF_LOCATION   = 1<<0xa,
-    TYPEF_ADDR       = 1<<0xb,
-    TYPEF_EXTERNAL   = 1<<0xc,
-    TYPEF_VECTOR     = 1<<0xe,
-    TYPEF_SYMBOLIC   = 1<<0xf
+    TYPEF_BASE       = 1<<0x0,
+    TYPEF_CONSTVAL   = 1<<0x1,
+    TYPEF_BYTESIZE   = 1<<0x2,
+    TYPEF_BITSIZE    = 1<<0x3,
+    TYPEF_BITOFFSET  = 1<<0x4,
+    TYPEF_ENCODING   = 1<<0x5,
+    TYPEF_UPPERBOUND = 1<<0x6,
+    TYPEF_LOWPC      = 1<<0x7,
+    TYPEF_MEMBERLOC  = 1<<0x8,
+    TYPEF_LOCATION   = 1<<0x9,
+    TYPEF_ADDR       = 1<<0xa,
+    TYPEF_EXTERNAL   = 1<<0xb,
+    TYPEF_VECTOR     = 1<<0xc,
+    TYPEF_SYMBOLIC   = 1<<0xd
 } TYPE_FLAGS;
 
 
 typedef struct
 {
     LTV ltv;
+    int depth;
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
     Dwarf_Off die;
@@ -161,12 +161,13 @@ typedef struct
     ffi_cif fc;
 } FFI_CIF_LTV;
 
-extern CLL ref_mod,ref_type_info,ref_ffi_cif,ref_ffi_type;
+extern LTV *ref_mod;
 
 extern LTV *ref_create_cvar(LTV *type,void *data,char *member);
 extern LTV *ref_assign_cvar(LTV *cvar,LTV *ltv);
 extern int ref_print_cvar(FILE *ofile,LTV *ltv,int depth);
 extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
+
 extern int ref_curate_module(LTV *mod_ltv,int bootstrap);
 extern int ref_preview_module(LTV *mod_ltv);
 extern int ref_ffi_prep(LTV *type);
@@ -176,9 +177,7 @@ extern int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
 extern LTV *ref_coerce(LTV *arg,LTV *type);
 extern int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
 
-extern int square(int x);
-
-extern char *argv_zero;
-extern int ref_bootstrap(int argc,char *argv[]);
+extern int ref_bootstrap(LTV *ltv);
+extern LTV *ref_type_info(char *typename);
 
 #endif

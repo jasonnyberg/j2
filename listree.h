@@ -130,7 +130,9 @@ extern void *listree_acyclic(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVER
 // Dictionary
 //////////////////////////////////////////////////
 
-#define LTV_NULL LTV_init(NEW(LTV),NULL,0,LT_NULL)
+#define LTV_NULL      LTV_init(NEW(LTV),NULL,0,LT_NULL)
+#define LTV_ZERO      LTV_init(NEW(LTV),NULL,sizeof(NULL),LT_IMM)
+#define LTV_NULL_LIST LTV_init(NEW(LTV),NULL,0,LT_NULL|LT_LIST)
 
 extern LTI *LTI_first(LTV *ltv);
 extern LTI *LTI_last(LTV *ltv);

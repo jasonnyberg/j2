@@ -31,10 +31,7 @@
 #include <errno.h>
 
 #include <dlfcn.h>
-//#include <arpa/inet.h>
-unsigned htonl(unsigned x) { return x; }
-unsigned ntohl(unsigned x) { return x; }
-
+#include <arpa/inet.h>
 
 #include "util.h"
 #include "cll.h"
@@ -44,19 +41,26 @@ unsigned ntohl(unsigned x) { return x; }
 
 
 sem_t vm_process_access,vm_process_escapement;
+pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 __attribute__((constructor))
 static void init(void)
 {
     sem_init(&vm_process_access,1,0); // allows first wait through
     sem_init(&vm_process_escapement,0,0); // blocks on first wait
+
+    Dl_info dl_info;
+    dladdr((void *)init, &dl_info);
+    fprintf(stderr, CODE_RED "module name is: %s" CODE_RESET "\n", dl_info.dli_fname);
 }
 
-//////////////////////////////////////////////////
-// VM
-//////////////////////////////////////////////////
+#define RDLOCK pthread_rwlock_rdlock(&vm_rwlock)
+#define WRLOCK pthread_rwlock_wrlock(&vm_rwlock)
+#define UNLOCK pthread_rwlock_unlock(&vm_rwlock)
 
-
+//////////////////////////////////////////////////
+// Processor
+//////////////////////////////////////////////////
 int vm_env_enq(LTV *root,VM_ENV *env)
 {
     int status=0;
@@ -85,6 +89,9 @@ void *vm_thunk(void *udata)
     return status?NON_NULL:NULL;
 }
 
+//////////////////////////////////////////////////
+// Environment
+//////////////////////////////////////////////////
 LTV *vm_res_put(VM_ENV *env,int res,LTV *tos) { return LTV_enq(&env->ros[res],env->tos[res],HEAD),env->tos[res]=tos; }
 LTV *vm_res_get(VM_ENV *env,int res,int pop) { LTV *tos=env->tos[res]; if (pop) env->tos[res]=LTV_deq(&env->ros[res],HEAD); return tos; }
 
@@ -99,6 +106,17 @@ LTV *vm_tos_get(VM_ENV *env,int pop)
     return tos?tos:CLL_map(&env->ros[VMRES_STACK],FWD,op);
 }
 
+LTV *vm_context_push(VM_ENV *env,LTV *ltv)
+{
+    vm_res_put(env,VMRES_DICT,ltv);
+    vm_res_put(env,VMRES_STACK,LTV_NULL_LIST);
+}
+
+LTV *vm_context_pop(VM_ENV *env)
+{
+    return NULL;
+}
+
 int vm_env_init(VM_ENV *env,LTV *seed,LTV *code)
 {
     int status=0;
@@ -106,15 +124,20 @@ int vm_env_init(VM_ENV *env,LTV *seed,LTV *code)
     LTV_init(&env->ltv,"env0",-1,LT_NONE);
     for (int res=0;res<VMRES_COUNT;res++)
         CLL_init(&env->ros[res]);
+
     STRY(!vm_res_put(env, VMRES_STACK, LTV_NULL_LIST),"pushing stack root");
-    STRY(!vm_res_put(env, VMRES_DICT,  LTV_NULL_LIST),"pushing dict root");
     STRY(!vm_res_put(env, VMRES_CODE,  code),"pushing code");
     STRY(!vm_res_put(env, VMRES_IP,    LTV_ZERO),"pushing IP");
+    STRY(!vm_res_put(env, VMRES_DICT,  LTV_NULL_LIST),"pushing dict root");
+
     STRY(!vm_res_qput(env,VMRES_STACK, seed),"enqueing env's stack seed");
  done:
     return status;
 }
 
+//////////////////////////////////////////////////
+// Bytecode Interpreter
+//////////////////////////////////////////////////
 int vm_eval(VM_ENV *env)
 {
     int status=0;
@@ -128,7 +151,7 @@ int vm_eval(VM_ENV *env)
     LTV *ltv=NULL;
     VM_BC_LTV *extended=NULL;
 
-    for (;(*ip)<len && data[*ip];(*ip)++) {
+    for (;!status && (*ip)<len && data[*ip];(*ip)++) {
         switch(data[*ip]) {
             case VMOP_LTV: // length!; data is a lit
                 extended=(VM_BC_LTV *) (data+(*ip)+1);
@@ -136,77 +159,88 @@ int vm_eval(VM_ENV *env)
                 flags=ntohl(extended->flags);
                 STRY(!(ltv=LTV_init(NEW(LTV),extended->data,length,flags)),"creating ltv");
                 (*ip)+=(sizeof(length)+sizeof(flags)+length);
-
                 STRY(!LTV_enq(&env->tos[VMRES_STACK]->sub.ltvs,ltv,HEAD),"pushing ltv to stack");
                 break;
 
-            case VMOP_PROCESSOR_CREATE:
-                // create env
-                // init env
-                // enq env
-                pthread_create(NEW(pthread_t),NULL,&vm_thunk,NULL); // create thread
+            case VMOP_YIELD:
                 break;
 
-            case VMOP_PROCESS_CREATE:
-            case VMOP_PROCESS_YIELD:
-            case VMOP_PROCESS_DELETE:
-                break;
-            case VMOP_REF_CREATE: // push current ref tos, peek stack, create/resolve new ref, pop/release stack on success, releas
-                STRY(!(ltv=vm_tos_get(env,POP)),"peeking TOS");
-                STRY(!LTV_enq(&env->ros[VMRES_REF],env->tos[VMRES_REF],HEAD),"pushing ref");
-                STRY(!(env->tos[VMRES_REF]=LTV_NULL_LIST),"creating new ref");
+            case VMOP_SCOPE_OPEN: WRLOCK;
+
+                UNLOCK; break;
+            case VMOP_SCOPE_CLOSE: WRLOCK;
+                UNLOCK; break;
+
+            case VMOP_FUNCTION_OPEN: WRLOCK;
+                UNLOCK; break;
+            case VMOP_FUNCTION_CLOSE: WRLOCK;
+                UNLOCK; break;
+
+            case VMOP_REF_CREATE: RDLOCK; // push current ref tos, peek stack, create/resolve new ref, pop/release stack on success, releas
+                TRYCATCH(!(ltv=vm_tos_get(env,POP)),status,ref_create_done,"peeking TOS");
+                TRYCATCH(!LTV_enq(&env->ros[VMRES_REF],env->tos[VMRES_REF],HEAD),status,ref_create_done,"pushing ref");
+                TRYCATCH(!(env->tos[VMRES_REF]=LTV_NULL_LIST),status,ref_create_done,"creating new ref");
                 REF_create(ltv->data,ltv->len,&env->tos[VMRES_REF]->sub.ltvs);
-                break;
-            case VMOP_REF_INSERT:
-                STRY(REF_resolve(env->tos[VMRES_DICT],&env->tos[VMRES_REF]->sub.ltvs,true),"resolving ref");
-                break;
-            case VMOP_REF_RESOLVE:
-                STRY(REF_resolve(env->tos[VMRES_DICT],&env->tos[VMRES_REF]->sub.ltvs,false),"resolving ref");
-                break;
-            case VMOP_REF_RRESOLVE:
-                break;
-            case VMOP_REF_ITER_KEEP:
-                STRY(REF_iterate(&env->tos[VMRES_REF]->sub.ltvs,false),"iterating ref");
-                break;
-            case VMOP_REF_ITER_POP:
-                STRY(REF_iterate(&env->tos[VMRES_REF]->sub.ltvs,true),"iterating ref");
-                break;
-            case VMOP_REF_ASSIGN:
-                STRY(REF_assign(REF_HEAD(&env->tos[VMRES_REF]->sub.ltvs),ltv),"assigning ref");
-                break;
-            case VMOP_REF_REMOVE:
-                STRY(REF_remove(REF_HEAD(&env->tos[VMRES_REF]->sub.ltvs)),"removing ref");
-                break;
-            case VMOP_REF_DELETE: // delete refs, delete ref, pop new ref tos from ros
-                STRY(REF_delete(&env->tos[VMRES_REF]->sub.ltvs),"deleting ref");
+            ref_create_done:
+                UNLOCK; break;
+            case VMOP_REF_INSERT: WRLOCK;
+                TRYCATCH(REF_resolve(env->tos[VMRES_DICT],&env->tos[VMRES_REF]->sub.ltvs,true),status,ref_insert_done,"resolving ref");
+            ref_insert_done:
+                UNLOCK; break;
+            case VMOP_REF_RESOLVE: RDLOCK;
+                TRYCATCH(REF_resolve(env->tos[VMRES_DICT],&env->tos[VMRES_REF]->sub.ltvs,false),status,ref_resolve_done,"resolving ref");
+            ref_resolve_done:
+                UNLOCK; break;
+            case VMOP_REF_RRESOLVE: RDLOCK;
+                UNLOCK; break;
+            case VMOP_REF_ITER_KEEP: RDLOCK;
+                TRYCATCH(REF_iterate(&env->tos[VMRES_REF]->sub.ltvs,false),status,ref_iter_keep_done,"iterating ref");
+            ref_iter_keep_done:
+                UNLOCK; break;
+            case VMOP_REF_ITER_POP: WRLOCK;
+                TRYCATCH(REF_iterate(&env->tos[VMRES_REF]->sub.ltvs,true),status,ref_iter_pop_done,"iterating ref");
+            ref_iter_pop_done:
+                UNLOCK; break;
+            case VMOP_REF_ASSIGN:  WRLOCK;
+                TRYCATCH(REF_assign(REF_HEAD(&env->tos[VMRES_REF]->sub.ltvs),ltv),status,ref_assign_done,"assigning ref");
+            ref_assign_done:
+                UNLOCK; break;
+            case VMOP_REF_REMOVE: WRLOCK;
+                TRYCATCH(REF_remove(REF_HEAD(&env->tos[VMRES_REF]->sub.ltvs)),status,ref_remove_done,"removing ref");
+            ref_remove_done:
+                UNLOCK; break;
+            case VMOP_REF_DELETE: // delete refs, delete ref, pop new ref tos from ros WRLOCK;
+                TRYCATCH(REF_delete(&env->tos[VMRES_REF]->sub.ltvs),status,ref_delete_done,"deleting ref");
                 LTV_release(env->tos[VMRES_REF]);
-                STRY(!(env->tos[VMRES_REF]=(LTV *) CLL_get(&env->ros[VMRES_REF],POP,HEAD)),"popping ref");
-                break;
-            case VMOP_PRINT_STACK: // dump stack
+                TRYCATCH(!(env->tos[VMRES_REF]=(LTV *) CLL_get(&env->ros[VMRES_REF],POP,HEAD)),status,ref_delete_done,"popping ref");
+            ref_delete_done:
+                UNLOCK; break;
+
+            case VMOP_PRINT_STACK: RDLOCK;
                 print_ltvs(stdout,CODE_BLUE,&env->tos[VMRES_STACK]->sub.ltvs,CODE_RESET "\n",0);
-                break;
-            case VMOP_GRAPH_STACK: // dump stack
+                UNLOCK; break;
+            case VMOP_GRAPH_STACK: RDLOCK;
                 graph_ltvs_to_file("/tmp/jj.dot",&env->tos[VMRES_STACK]->sub.ltvs,0,"tos");
-                break;
+                UNLOCK; break;
             default:
                 break;
         }
     }
 
- halt:
  done:
     return status;
 }
 
-LTV *vm_encode(VM_CMD cmd[])
+//////////////////////////////////////////////////
+// Assembler
+//////////////////////////////////////////////////
+LTV *vm_asm(VM_CMD cmd[])
 {
     char *buf=NULL;
     size_t len=0;
     FILE *stream=open_memstream(&buf,&len);
-    LTV *ltv=NULL;
     unsigned unsigned_val;
-
-    while (cmd->op) {
+    for (;cmd->op;cmd++) {
         fwrite(&cmd->op,1,1,stream);
         switch (cmd->len) {
             case 0: break;
@@ -221,71 +255,32 @@ LTV *vm_encode(VM_CMD cmd[])
                 fwrite(cmd->data,1,cmd->len,stream);
                 break;
         }
-        cmd++;
     }
-
     fputc(0,stream);
     fclose(stream);
-    ltv=LTV_init(NEW(LTV),buf,len,LT_OWN|LT_BIN);
-    return ltv;
+    return LTV_init(NEW(LTV),buf,len,LT_OWN|LT_BIN);
 }
 
-int vm_decode(LTV *bytecode_ltv)
+VM_CMD test[] = {
+    { VMOP_LTV,-1,LT_DUP,"test item 1" },
+    { VMOP_LTV,-1,LT_DUP,"test item 2" },
+    { VMOP_LTV,-1,LT_DUP,"test item 3" },
+    { VMOP_LTV,-1,LT_DUP,"test item 4" },
+    { VMOP_PRINT_STACK },
+    { VMOP_NULL }
+};
+
+int vm_thread(LTV *env,LTV *code)
 {
-    int status=0;
-    int ip_local=0;
-
-    char *data=(char *) bytecode_ltv->data;
-    int len=bytecode_ltv->len;
-    int *ip=&ip_local;
-
-    unsigned length,flags;
-    LTV *ltv=NULL;
-    VM_BC_LTV *extended=NULL;
-
-    for (;(*ip)<len && data[*ip];(*ip)++) {
-        printf(CODE_BLUE "0x%08x %d",*ip,data[*ip]);
-        switch(data[*ip]) {
-            case VMOP_LTV: // length!; data is a lit
-                extended=(VM_BC_LTV *) (data+(*ip)+1);
-                length=ntohl(extended->length);
-                flags=ntohl(extended->flags);
-                ltv=NEW(LTV);
-                LTV_init(ltv,extended->data,length,flags);
-                (*ip)+=(sizeof(length)+sizeof(flags)+length);
-
-                print_ltv(stdout,CODE_RED " LTV \"",ltv,"\"",0);
-                LTV_release(ltv);
-                break;
-            default:
-                break;
-        }
-        printf(CODE_RESET "\n");
-    }
- done:
-    return status;
 }
-
 
 int vm_init(int argc,char *argv[])
 {
     int status=0;
-
     LTV *root=LTV_NULL_LIST;
 
-    VM_CMD sequence[] = {
-        { .op=VMOP_LTV, .len=-1, .flags=LT_DUP, .data="test item 1" },
-        { .op=VMOP_LTV, .len=-1, .flags=LT_DUP, .data="test item 2" },
-        { .op=VMOP_LTV, .len=-1, .flags=LT_DUP, .data="test item 3" },
-        { .op=VMOP_LTV, .len=-1, .flags=LT_DUP, .data="test item 4" },
-        { .op=VMOP_PRINT_STACK },
-        { .op=VMOP_NULL }
-    };
-
-    vm_decode(vm_encode(sequence));
-
     VM_ENV *env=NEW(VM_ENV);
-    vm_env_init(env,root,vm_encode(sequence));
+    vm_env_init(env,root,vm_asm(test)); // initial env is root LTV
     vm_env_enq(root,env);
     vm_thunk(root);
 

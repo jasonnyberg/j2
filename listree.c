@@ -31,10 +31,7 @@
 
 #include "trace.h" // lttng
 
-CLL ro_list;
-int ltv_count=0,ltvr_count=0,lti_count=0;
 int show_ref=0;
-
 
 //////////////////////////////////////////////////
 // LisTree
@@ -104,7 +101,6 @@ LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags)
         ZERO(*ltv);
         if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
         LTV_renew(ltv,data,len,flags);
-        ltv_count++;
     }
     return ltv;
 }
@@ -114,7 +110,6 @@ void LTV_free(LTV *ltv)
     if (ltv) {
         LTV_renew(ltv,NULL,0,0);
         RELEASE(ltv);
-        ltv_count--;
     }
 }
 
@@ -142,7 +137,6 @@ LTVR *LTVR_init(LTVR *ltvr,LTV *ltv)
         CLL_init(&ltvr->lnk);
         ltvr->ltv=ltv;
         ltv->refs++;
-        ltvr_count++;
     }
     return ltvr;
 }
@@ -155,7 +149,6 @@ LTV *LTVR_free(LTVR *ltvr)
         if ((ltv=ltvr->ltv))
             ltv->refs--;
         RELEASE(ltvr);
-        ltvr_count--;
     }
     return ltv;
 }
@@ -168,7 +161,6 @@ LTI *LTI_init(LTI *lti,char *name,int len)
         ZERO(*lti);
         lti->name=bufdup(name,len);
         CLL_init(&lti->ltvs);
-        lti_count++;
     }
     return lti;
 }
@@ -178,7 +170,6 @@ void LTI_free(LTI *lti)
     if (lti) {
         RELEASE(lti->name);
         RELEASE(lti);
-        lti_count--;
     }
 }
 

@@ -34,31 +34,32 @@ enum
 {
     VMOP_NULL=0, // null terminator
 
+    VMOP_RDLOCK,
+    VMOP_WRLOCK,
+    VMOP_UNLOCK,
+
     VMOP_LTV,
-
-    VMOP_YIELD,
-
-    VMOP_SCOPE_OPEN,
-    VMOP_SCOPE_CLOSE,
-
-    VMOP_FUNCTION_OPEN,
-    VMOP_FUNCTION_CLOSE,
+    VMOP_DUP,
 
     VMOP_REF_CREATE,
-    VMOP_REF_CREATE_LIT,
-    VMOP_REF_INSERT, // force create
+    VMOP_REF_INSERT, // force create on top context
     VMOP_REF_ASSIGN,
     VMOP_REF_REMOVE,
     VMOP_REF_RESOLVE,
-    VMOP_REF_RRESOLVE,
     VMOP_REF_ITER_KEEP,
     VMOP_REF_ITER_POP,
     VMOP_REF_RESET,
     VMOP_REF_DELETE,
 
+    VMOP_EVAL,
+
+    VMOP_SCOPE_OPEN,
+    VMOP_SCOPE_CLOSE,
+
+    VMOP_YIELD,
+
     VMOP_PRINT_STACK,
     VMOP_GRAPH_STACK,
-
     VMOP_PRINT_REF,
     VMOP_GRAPH_REF,
 };
@@ -74,22 +75,19 @@ enum
     VMRES_COUNT
 };
 
-typedef struct
-{
+typedef struct {
     LTV ltv;
     LTV *tos[VMRES_COUNT]; // top of each res stack
     CLL ros[VMRES_COUNT]; // stack of code/stack/dict/refs
 } VM_ENV;
 
-typedef struct
-{
+typedef struct {
     unsigned length;
     unsigned flags;
     char data[0];
 } VM_BC_LTV; // packed extended bytecode
 
-typedef struct
-{
+typedef struct {
     char op;
     int len;
     LTV_FLAGS flags;

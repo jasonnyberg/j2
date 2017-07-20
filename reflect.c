@@ -41,6 +41,17 @@
 
 LTV *ref_mod=NULL;// initialized/populated during bootstrap
 
+__attribute__((constructor))
+static void init(void)
+{
+    Dl_info dl_info;
+    dladdr((void *)init, &dl_info);
+    fprintf(stderr, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
+    ref_mod=LTV_init(NEW(LTV),(char *) dl_info.dli_fname,strlen(dl_info.dli_fname),LT_DUP);
+    try_depth=1;
+    ref_curate_module(ref_mod,true);
+}
+
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf);
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf);
 TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval);
@@ -816,9 +827,6 @@ int ref_curate_module(LTV *module,int bootstrap)
 {
     int status=0;
     CU_DATA cu_data;
-
-    if (bootstrap) // stash it for future reference
-        ref_mod=module;
 
     LTV *index=LTV_NULL;
     char *filename=FORMATA(filename,module->len,"%s",module->data);

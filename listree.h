@@ -158,6 +158,8 @@ extern void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label);
 extern void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label);
 
+extern CLL *LTV_list(LTV *ltv);
+
 #define LTV_enq(ltvs,ltv,end) LTV_put((ltvs),(ltv),(end),NULL)
 #define LTV_deq(ltvs,end)     LTV_get((ltvs),POP,(end),NULL,NULL)
 #define LTV_peek(ltvs,end)    LTV_get((ltvs),KEEP,(end),NULL,NULL)

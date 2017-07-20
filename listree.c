@@ -634,6 +634,10 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
 //////////////////////////////////////////////////
 //////////////////////////////////////////////////
 
+CLL *LTV_list(LTV *ltv)
+{
+    return (ltv && ltv->flags&LT_LIST)? &ltv->sub.ltvs:NULL;
+}
 
 LTV *LT_put(LTV *parent,char *name,int end,LTV *child)
 {

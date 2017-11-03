@@ -36,28 +36,28 @@ extern int show_ref;
 #define RBN struct rb_node
 
 typedef enum {
-    LT_NONE =0x0,
-    LT_DUP  =1<<0x00, // bufdup'ed on LTV_new, not ref to existing buf
-    LT_OWN  =1<<0x01, // handed malloc'ed buffer, responsible for freeing
-    LT_DEP  =1<<0x02, // dependent upon another ltv's data
-    LT_ESC  =1<<0x03, // strip escapes (changes buf contents and len!)
-    LT_BIN  =1<<0x04, // data is binary/unprintable
-    LT_CVAR =1<<0x05, // LTV data is a C variable
-    LT_TYPE =1<<0x06, // CVAR of type TYPE_INFO (for reflection)
-    LT_FFI  =1<<0x07, // CVAR of type ffi_type (for reflection)
-    LT_CIF  =1<<0x08, // CVAR of type ffi_cif (for reflection)
-    LT_NULL =1<<0x09, // empty
-    LT_IMM  =1<<0x0a, // immediate value, not a pointer
-    LT_NOWC =1<<0x0b, // do not do wildcard matching
-    LT_RO   =1<<0x0c, // META: disallow release
-    LT_AVIS =1<<0x0d, // META: absolute traversal visitation flag
-    LT_RVIS =1<<0x0e, // META: recursive traversal visitation flag
-    LT_LIST =1<<0x0f, // META: hold children in unlabeled list, rather than default rbtree
+    LT_NONE =0,
+    LT_DUP  =0x0001, // bufdup'ed on LTV_new, not ref to existing buf
+    LT_OWN  =0x0002, // handed malloc'ed buffer, responsible for freeing
+    LT_ESC  =0x0004, // strip escapes (changes buf contents and len!)
+    LT_BIN  =0x0008, // data is binary/unprintable
+    LT_REFS =0x0010, // LTV holds a list of REFs (implies LT_LIST)
+    LT_CVAR =0x0020, // LTV data is a C variable
+    LT_TYPE =0x0040, // CVAR of type TYPE_INFO (for reflection)
+    LT_FFI  =0x0080, // CVAR of type ffi_type (for reflection)
+    LT_CIF  =0x0100, // CVAR of type ffi_cif (for reflection)
+    LT_NULL =0x0200, // empty
+    LT_IMM  =0x0400, // immediate value, not a pointer
+    LT_NOWC =0x0800, // do not do wildcard matching
+    LT_RO   =0x1000, // META: disallow release
+    LT_AVIS =0x2000, // META: absolute traversal visitation flag
+    LT_RVIS =0x4000, // META: recursive traversal visitation flag
+    LT_LIST =0x8000, // META: hold children in unlabeled list, rather than default rbtree
     LT_NAP  =LT_IMM|LT_NULL,                // not a pointer
     LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
     LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
     LT_META =LT_RO|LT_AVIS|LT_RVIS|LT_LIST, // need to be preserved during LTV_renew
-    LT_REF  =LT_TYPE|LT_FFI|LT_CIF,         // used for reflection; visibility controlled by "show_ref"
+    LT_REFL =LT_TYPE|LT_FFI|LT_CIF,         // used for reflection; visibility controlled by "show_ref"
 } LTV_FLAGS;
 
 typedef struct {
@@ -93,6 +93,7 @@ extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
 extern LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
+extern int  LTV_is_empty(LTV *ltv);
 extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
 
 extern LTVR *LTVR_init(LTVR *ltvr,LTV *ltv);
@@ -184,16 +185,16 @@ typedef struct REF {
     int reverse;
 } REF;
 
-#define REF_HEAD(cll) ((REF *) CLL_HEAD(cll))
-#define REF_TAIL(cll) ((REF *) CLL_TAIL(cll))
+#define REF_HEAD(ltv) ((REF *) CLL_HEAD(&(ltv)->sub.ltvs))
+#define REF_TAIL(ltv) ((REF *) CLL_TAIL(&(ltv)->sub.ltvs))
 
-extern int REF_create(char *data,int len,CLL *refs);
-extern int REF_delete(CLL *refs); // clears refs, prunes listree branch
+extern LTV *REF_create(LTV *refs);
+extern int REF_delete(LTV *refs); // clears refs, prunes listree branch
 
 extern LTV *REF_reset(REF *ref,LTV *newroot);
 
-extern int REF_resolve(LTV *root,CLL *refs,int insert);
-extern int REF_iterate(CLL *refs,int pop);
+extern int REF_resolve(LTV *root,LTV *refs,int insert);
+extern int REF_iterate(LTV *refs,int pop);
 
 extern int REF_assign(REF *ref,LTV *ltv);
 extern int REF_remove(REF *ref);
@@ -204,7 +205,7 @@ extern LTV *REF_ltv(REF *ref);
 extern LTV *REF_key(REF *ref);
 
 extern void REF_print(FILE *ofile,REF *ref,char *label);
-extern void REF_printall(FILE *ofile,CLL *refs,char *label);
-extern void REF_dot(FILE *ofile,CLL *refs,char *label);
+extern void REF_printall(FILE *ofile,LTV *refs,char *label);
+extern void REF_dot(FILE *ofile,LTV *refs,char *label);
 
 #endif

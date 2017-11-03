@@ -30,55 +30,135 @@
 // use these to implement coercion hierarchy/polymporphism
 // LTV *coerce(LTV *from)
 
-enum
-{
+
+/*
+  Parity Operations
+
+  while (parser generates bytecode)
+      [
+         case {in_throw,is_catch} of
+             {false,false} evaluate bytecode;
+             {false,true} skip to pop_context;
+             {true,false} skip until catch;
+             {true,true} stop skipping, restart evaluation
+        || bytecode <- bytecodes]
+
+  eval_push
+  edict_resolve // walk up stack of lexical scopes looking for reference; inserts always resolve at most-local scope
+
+  deref
+  assign
+  remove
+  scope_open
+  scope_close
+  function_close
+  concatenate
+  map
+  eval
+  compare
+  throw
+  catch
+
+  ref_eval // solo ref, i.e. not part of an atom; must have lambda attached
+  atom_eval // ops and/or ref
+  lit_eval // push (if not skipping)
+  expr_eval
+  ffi_eval
+  file_eval
+  "tok_eval" (tokenizer would spawn an ffi subtok rather than parse a cvar expression)
+  "thread_eval"
+
+  edict_init
+  edict_destroy
+  edict
+
+
+  special
+  * readfrom (push file_tok(filename))
+  * import (curate dwarf)
+  * preview (dwarf->TOC)
+  * cvar (pop_type()->ref_create_cvar()->push())
+  * ffi (type->ref_ffi_prep)
+  * dump (TOS or whole stack)
+  * dup (TOS)
+  * ro (TOS->set read_only)
+
+*/
+
+enum {
     VMOP_NULL=0, // null terminator
+
+    VMOP_LIT,
+    VMOP_REF,
+    VMOP_BUILTIN,
+    VMOP_EVAL,
+
+    VMOP_MAKEREF,
+    VMOP_DEREF,
+    VMOP_ASSIGN,
+    VMOP_REMOVE,
+    VMOP_THROW,
+    VMOP_CATCH,
+    VMOP_MAP,
+    VMOP_APPEND,
+    VMOP_COMPARE,
 
     VMOP_RDLOCK,
     VMOP_WRLOCK,
     VMOP_UNLOCK,
 
-    VMOP_LTV,
-    VMOP_DUP,
-
-    VMOP_REF_CREATE,
-    VMOP_REF_INSERT, // force create on top context
-    VMOP_REF_ASSIGN,
-    VMOP_REF_REMOVE,
-    VMOP_REF_RESOLVE,
-    VMOP_REF_ITER_KEEP,
-    VMOP_REF_ITER_POP,
-    VMOP_REF_RESET,
-    VMOP_REF_DELETE,
-
-    VMOP_EVAL,
-
-    VMOP_SCOPE_OPEN,
-    VMOP_SCOPE_CLOSE,
-
     VMOP_YIELD,
 
-    VMOP_PRINT_STACK,
-    VMOP_GRAPH_STACK,
-    VMOP_PRINT_REF,
-    VMOP_GRAPH_REF,
+    VMOP_DUMP_ENV,
+
+    VMOP_SPUSH,
+    VMOP_SPOP,
+    VMOP_SPEEK,
+    VMOP_SDUP,
+    VMOP_SDROP,
+
+    VMOP_PUSH,
+    VMOP_POP,
+    VMOP_PEEK,
+    VMOP_DUP,  // dup TOS(res)
+    VMOP_DROP, // drop TOS(res)
+
+    VMOP_RES_0=0xf8,
+    VMOP_RES_1=0xf9,
+    VMOP_RES_2=0xfa,
+    VMOP_RES_3=0xfb,
+    VMOP_RES_4=0xfc,
+    VMOP_RES_5=0xfd,
+    VMOP_RES_6=0xfe,
+    VMOP_RES_7=0xff,
 };
 
-enum
-{
+enum {
+    VMRES_STACK, // values can be plain lit, cvar, or ref
     VMRES_CODE,
-    VMRES_IP,
-    VMRES_STACK,
     VMRES_DICT,
-    VMRES_REF,
-    VMRES_EXC,
+    VMRES_REFS,
+    VMRES_IP,
+    VMRES_UNUSED1,
+    VMRES_UNUSED2,
+    VMRES_WIP,
     VMRES_COUNT
+    // REFS? EXCEPTIONS?
+};
+
+enum {
+    ENV_RUNNING=0,
+    ENV_EXHAUSTED,
+    ENV_EXCEPTION,
+    ENV_BROKEN
 };
 
 typedef struct {
     LTV ltv;
-    LTV *tos[VMRES_COUNT]; // top of each res stack
-    CLL ros[VMRES_COUNT]; // stack of code/stack/dict/refs
+    unsigned state;
+    LTV *tos[VMRES_COUNT]; // "resource" top-of-stack
+    CLL ros[VMRES_COUNT];  // "resource" stack (code/stack/dict/refs)
+    //LTV *reg[VMRES_COUNT]; // "registers"
 } VM_ENV;
 
 typedef struct {

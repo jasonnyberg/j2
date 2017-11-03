@@ -94,7 +94,7 @@ LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
     return ltv;
 }
 
-// get a new LTV and prepare for insertion
+// init and prepare for insertions
 LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 {
     if (ltv && ((flags&LT_NAP) || data)) { // null ptr is error
@@ -111,6 +111,11 @@ void LTV_free(LTV *ltv)
         LTV_renew(ltv,NULL,0,0);
         RELEASE(ltv);
     }
+}
+
+int LTV_is_empty(LTV *ltv)
+{
+    return ltv->flags&LT_LIST? CLL_EMPTY(&ltv->sub.ltvs):RB_EMPTY_ROOT(&ltv->sub.ltis);
 }
 
 void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
@@ -181,8 +186,9 @@ void LTI_free(LTI *lti)
 void LTV_release(LTV *ltv)
 {
     if (ltv && !ltv->refs && (!ltv->flags&LT_RO)) {
-        if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvs,LTVR_release);
-        else                    RBR_release(&ltv->sub.ltis,LTI_release);
+        if (ltv->flags&LT_REFS)      REF_delete(ltv); // cleans out REFS
+        else if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvs,LTVR_release);
+        else                         RBR_release(&ltv->sub.ltis,LTI_release);
         LTV_free(ltv);
     }
 }
@@ -341,7 +347,7 @@ LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
 {
     int status=0;
     LTVR *ltvr=NULL;
-    if (ltvs && ltv && (ltvr=LTVR_init(NEW(LTVR),ltv))) {
+    if (ltv && ltvs && (ltvr=LTVR_init(NEW(LTVR),ltv))) {
         if (CLL_put(ltvs,&ltvr->lnk,end)) {
             if (ltvr_ret) *ltvr_ret=ltvr;
             return ltv; //!!
@@ -419,11 +425,12 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
             case LT_TRAVERSE_LTV:
                 if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
                 else fprintf(ofile,"%*c[",depth*4,' ');
-                if      ((*ltv)->flags&LT_CVAR)            ref_print_cvar(ofile,(*ltv),depth);
-                else if ((*ltv)->flags&LT_IMM)             fprintf(ofile,"IMM 0x%x",(*ltv)->data);
-                else if ((*ltv)->flags&LT_NULL)            fprintf(ofile,"<null>");
-                else if ((*ltv)->flags&LT_BIN)             hexdump(ofile,(*ltv)->data,(*ltv)->len);
-                else                                       fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
+                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); *flags|=LT_TRAVERSE_HALT; }
+                else if ((*ltv)->flags&LT_CVAR) ref_print_cvar(ofile,(*ltv),depth);
+                else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
+                else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
+                else if ((*ltv)->flags&LT_BIN)  hexdump(ofile,(*ltv)->data,(*ltv)->len);
+                else                            fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
                 if (post) fprintf(ofile,"%s",post);
                 else fprintf(ofile,"]\n");
 
@@ -486,6 +493,8 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
     void ltv_descend(LTV *ltv) {
         if (ltv->flags&LT_LIST) {
+            if (ltv->flags&LT_REFS)
+                REF_dot(ofile,ltv,"REFS");
             fprintf(ofile,"\"LTV%x\" -> \"%x\" [color=blue]\n",ltv,&ltv->sub.ltvs);
             //  cll2dot(&ltv->sub.ltvs,NULL);
         }
@@ -505,6 +514,9 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
         }
+        else if (ltv->flags&LT_REFS)
+            fprintf(ofile,"\"LTV%x\" [label=\"REFS(%x)\" shape=box style=filled fillcolor=yellow color=%s]\n",ltv,ltv->data,color),
+                REF_dot(ofile,ltv,"REFS");
         else if (ltv->flags&LT_CVAR)
             fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled fillcolor=yellow color=%s]\n",ltv,ltv->data,color),
                 ref_dot_cvar(ofile,ltv); // invoke reflection
@@ -576,6 +588,9 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
         }
+        else if (ltv->flags&LT_REFS)
+            fprintf(ofile,"\"LTV%x\" [label=\"REFS(%x)\" shape=box style=filled]\n",ltv,ltv->data),
+                REF_dot(ofile,ltv,"REFS");
         else if (ltv->flags&LT_CVAR)
             fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
                 ref_dot_cvar(ofile,ltv); // invoke reflection
@@ -731,12 +746,20 @@ void REF_free(CLL *lnk)
 
 ///////////////////////////////////////////////////////
 
-int REF_create(char *data,int len,CLL *refs)
+LTV *REF_create(LTV *refs)
 {
     int status=0;
-    STRY(!data || !len || !refs,"validating params");
-    if (len<0) len=strlen(data);
-    STRY(REF_delete(refs),"clearing any refs");
+    STRY(!refs,"validating params");
+    if (!(refs->flags&LT_REFS)) { // promote an ltv to a ref
+        STRY(!LTV_is_empty(refs),"promoting non-empty ltv to ref");
+        STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_META|LT_REFL),"promoting incomptible ltv to ref");
+        refs->flags|=(LT_REFS|LT_LIST);
+        CLL_init(&refs->sub.ltvs);
+    }
+    char *data=refs->data;
+    int len=refs->len;
+    CLL *cll=LTV_list(refs);
+    STRY(REF_delete(refs),"clearing any cll");
 
     int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
@@ -750,7 +773,7 @@ int REF_create(char *data,int len,CLL *refs)
     while (len) { // parse ref keys
         STRY(!(tlen=name()),"parsing ref name"); // mandatory
         STRY(!(ref=REF_init(NEW(REF),data,tlen)),"allocating name ref");
-        STRY(!CLL_put(refs,&ref->lnk,HEAD),"enqueing name ref");
+        STRY(!CLL_put(cll,&ref->lnk,HEAD),"enqueing name ref");
         advance(tlen);
 
         while ((tlen=val())) { // parse vals (optional)
@@ -763,18 +786,25 @@ int REF_create(char *data,int len,CLL *refs)
     }
 
     done:
+    return status?NULL:refs;
+}
+
+int REF_delete(LTV *refs)
+{
+    int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    CLL *cll=LTV_list(refs);
+    void release(CLL *lnk) { REF_free(lnk); }
+    CLL_release(cll,release);
+ done:
     return status;
 }
 
-int REF_delete(CLL *refs)
-{
-    void release(CLL *lnk) { REF_free(lnk); }
-    CLL_release(refs,release);
-}
-
-int REF_resolve(LTV *root,CLL *refs,int insert)
+int REF_resolve(LTV *root,LTV *refs,int insert)
 {
     int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    CLL *cll=LTV_list(refs);
     REF *ref=NULL;
     int placeholder=0;
 
@@ -816,10 +846,10 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
         return status?NON_NULL:NULL;
     }
 
-    STRY(!refs,"validating refs");
+    STRY(!cll,"validating refs");
     if (!root)
         STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
-    status=(CLL_map(refs,REV,resolve)!=NULL);
+    status=(CLL_map(cll,REV,resolve)!=NULL);
     if (placeholder) { // remove terminal placeholder
         LTVR_release(&ref->ltvr->lnk);
         ref->ltvr=NULL;
@@ -828,9 +858,11 @@ int REF_resolve(LTV *root,CLL *refs,int insert)
     return status;
 }
 
-int REF_iterate(CLL *refs,int pop)
+int REF_iterate(LTV *refs,int pop)
 {
     int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    CLL *cll=LTV_list(refs);
 
     void *iterate(CLL *lnk) { // return null if there is no next
         REF *ref=(REF *) lnk;
@@ -866,8 +898,8 @@ int REF_iterate(CLL *refs,int pop)
         return NULL;
     }
 
-    STRY(!refs,"validating arguments");
-    if (CLL_map(refs,FWD,iterate))
+    STRY(!cll,"validating arguments");
+    if (CLL_map(cll,FWD,iterate))
         STRY(REF_resolve(NULL,refs,false),"resolving iterated ref");
 
     done:
@@ -921,15 +953,21 @@ void REF_print(FILE *ofile,REF *ref,char *label)
     fprintf(ofile,"\n");
 }
 
-void REF_printall(FILE *ofile,CLL *refs,char *label)
+void REF_printall(FILE *ofile,LTV *refs,char *label)
 {
+    if (!refs || !(refs->flags&LT_REFS))
+        return;
+    CLL *cll=LTV_list(refs);
     void *dump(CLL *lnk) { REF_print(ofile,(REF *) lnk,""); return NULL; }
     fprintf(ofile,label);
-    CLL_map(refs,REV,dump);
+    CLL_map(cll,REV,dump);
 }
 
-void REF_dot(FILE *ofile,CLL *refs,char *label)
+void REF_dot(FILE *ofile,LTV *refs,char *label)
 {
+    if (!refs || !(refs->flags&LT_REFS))
+        return;
+    CLL *cll=LTV_list(refs);
     void *op(CLL *lnk) {
         REF *ref=(REF *) lnk;
         fprintf(ofile,"\"%x\" [label=\"\" shape=box label=\"",ref);
@@ -943,7 +981,7 @@ void REF_dot(FILE *ofile,CLL *refs,char *label)
         ltvs2dot(ofile,&ref->keys,0,NULL);
     }
 
-    fprintf(ofile,"\"%x\" [label=\"%s\"]\n",refs,label);
-    fprintf(ofile,"\"%x\" -> \"%x\" [color=green]\n",refs,refs->lnk[0]);
-    CLL_map(refs,FWD,op);
+    fprintf(ofile,"\"%x\" [label=\"%s\"]\n",cll,label);
+    fprintf(ofile,"\"%x\" -> \"%x\" [color=green]\n",cll,cll->lnk[0]);
+    CLL_map(cll,FWD,op);
 }

@@ -10,3 +10,9 @@ typedef struct teststruct { char a; int b; testint c; int d:1; unsigned e:2; int
 extern int testfunc(int arga, teststruct *argb, testenum argc, teststruct argd);
 
 #define MYMACRO(X) (X)*(X)
+
+typedef struct anonymous_struct_union
+{
+    struct { int a,b; };
+    union { int c,d; };
+} anonymous_struct_union;

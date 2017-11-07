@@ -91,7 +91,13 @@ enum {
     VMOP_LIT,
     VMOP_REF,
     VMOP_BUILTIN,
-    VMOP_EVAL,
+
+    VMOP_EDICT,
+    VMOP_XML,
+    VMOP_JSON,
+    VMOP_YAML,
+    VMOP_LISP,
+    VMOP_MASSOC,
 
     VMOP_MAKEREF,
     VMOP_DEREF,
@@ -123,14 +129,14 @@ enum {
     VMOP_DUP,  // dup TOS(res)
     VMOP_DROP, // drop TOS(res)
 
-    VMOP_RES_0=0xf8,
-    VMOP_RES_1=0xf9,
-    VMOP_RES_2=0xfa,
-    VMOP_RES_3=0xfb,
-    VMOP_RES_4=0xfc,
-    VMOP_RES_5=0xfd,
-    VMOP_RES_6=0xfe,
-    VMOP_RES_7=0xff,
+    VMOP_RES_STACK=0xf8,
+    VMOP_RES_CODE =0xf9,
+    VMOP_RES_DICT =0xfa,
+    VMOP_RES_REFS =0xfb,
+    VMOP_RES_IP   =0xfc,
+    VMOP_RES_A    =0xfd,
+    VMOP_RES_B    =0xfe,
+    VMOP_RES_WIP  =0xff,
 };
 
 enum {

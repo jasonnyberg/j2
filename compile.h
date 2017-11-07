@@ -39,6 +39,7 @@ extern char *formats[];
 extern COMPILER compilers[];
 
 extern LTV *compile(COMPILER compiler,void *data,int len);
+extern LTV *compile_ltv(COMPILER compiler,LTV *ltv);
 
 extern int jit_asm(EMITTER emit,void *data,int len);
 extern int jit_edict(EMITTER emit,void *data,int len);

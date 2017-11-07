@@ -49,6 +49,8 @@ int jit_asm(EMITTER emit,void *data,int len)
 #define EDICT_OPS "|&!%#@/+="
 #define EDICT_MONO_OPS "()<>{}"
 
+#define EMIT(bc) emit(&((VM_CMD) {VMOP_ ## bc}))
+
 int jit_edict(EMITTER emit,void *data,int len)
 {
     int status=0;
@@ -77,7 +79,7 @@ int jit_edict(EMITTER emit,void *data,int len)
                 case '(': emit(&VMOP_XFER(VMRES_STACK,VMRES_DICT)); break;
                 case ')':
                     emit(&VMOP_XFER(VMRES_DICT,VMRES_STACK));
-                    emit(&((VM_CMD) {VMOP_EVAL})); break;
+                    emit(&((VM_CMD) {VMOP_EDICT})); break;
                 case '{': emit(&VMOP_XFER(VMRES_STACK,VMRES_DICT)); break;
                 case '}': emit(&VMOP_XFER(VMRES_DICT,VMRES_STACK)); break;
             }
@@ -90,18 +92,23 @@ int jit_edict(EMITTER emit,void *data,int len)
             if (ref_len)
                 emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
             if (ops_len) {
-                for (int i=0;i<ops_len;i++)
+                for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
                         case '#': emit(&((VM_CMD) {VMOP_BUILTIN})); break;
                         case '@': emit(&((VM_CMD) {VMOP_ASSIGN}));  break;
                         case '/': emit(&((VM_CMD) {VMOP_REMOVE}));  break;
-                        case '!': emit(&((VM_CMD) {VMOP_EVAL}));    break;
+                        case '!': EMIT(EDICT); EMIT(YIELD);         break;
                         case '&': emit(&((VM_CMD) {VMOP_THROW}));   break;
                         case '|': emit(&((VM_CMD) {VMOP_CATCH}));   break;
                         case '%': emit(&((VM_CMD) {VMOP_MAP}));     break;
                         case '+': emit(&((VM_CMD) {VMOP_APPEND}));  break;
                         case '=': emit(&((VM_CMD) {VMOP_COMPARE})); break;
                     }
+                }
+                if (ref_len) {
+                    EMIT(RES_REFS);
+                    EMIT(DROP);
+                }
             } else
                 emit(&((VM_CMD) {VMOP_DEREF}));
 
@@ -159,6 +166,13 @@ LTV *compile(COMPILER compiler,void *data,int len)
     fputc(0,stream);
     fclose(stream);
     return LTV_init(NEW(LTV),buf,flen,LT_OWN|LT_BIN);
+}
+
+LTV *compile_ltv(COMPILER compiler,LTV *ltv)
+{
+    LTV *bc=compile(compiler,ltv->data,ltv->len);
+    LTV_release(ltv);
+    return bc;
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

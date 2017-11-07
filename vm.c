@@ -50,6 +50,8 @@ static void init(void)
     sem_init(&vm_process_escapement,0,0); // blocks on first wait
 }
 
+char *res_name[] = { "Stack","Code","Dict","Refs","IP","ResA","ResB","WIP" };
+
 //////////////////////////////////////////////////
 // Processor
 //////////////////////////////////////////////////
@@ -124,7 +126,7 @@ int vm_lambda_push(VM_ENV *env,LTV *ltv)
     return status;
 }
 
-int vm_lambda_pop(VM_ENV *env,LTV *ltv)
+int vm_lambda_pop(VM_ENV *env)
 {
     int status=0;
     LTV_release(vm_res_deq(env,VMRES_CODE,POP));
@@ -149,9 +151,9 @@ int vm_dump(VM_ENV *env)
     int status=0;
     for (int i=0;i<VMRES_COUNT;i++)
     {
-        printf("\nRES %d:\n",i);
-        print_ltv(stdout,CODE_BLUE,env->tos[i],CODE_RESET,0);
-        print_ltvs(stdout,CODE_RED,&env->ros[i],CODE_RESET,0);
+        printf("\n%s:\n",res_name[i]);
+        print_ltv(stdout,CODE_BLUE,env->tos[i],CODE_RESET "\n",0);
+        print_ltvs(stdout,CODE_RED,&env->ros[i],CODE_RESET "\n",0);
     }
     return status;
 }
@@ -222,53 +224,59 @@ int vm_eval(VM_ENV *env)
         return LTV_init(NEW(LTV),extended->data,length,flags);
     }
 
-    int op=0,res=0;
+    unsigned char op=0,res=0;;
 
-#define OPCODE(vmop) case vmop: printf(CODE_RED #vmop CODE_RESET);
+#define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x" CODE_RESET,(unsigned char) vmop);
 
     while ((*ip)<len && data[*ip]) {
         op=data[(*ip)++];
         switch(op) {
-            OPCODE(VMOP_RES_0)    res=0; break;
-            OPCODE(VMOP_RES_1)    res=1; break;
-            OPCODE(VMOP_RES_2)    res=2; break;
-            OPCODE(VMOP_RES_3)    res=3; break;
-            OPCODE(VMOP_RES_4)    res=4; break;
-            OPCODE(VMOP_RES_5)    res=5; break;
-            OPCODE(VMOP_RES_6)    res=6; break;
-            OPCODE(VMOP_RES_7)    res=7; break;
+            OPCODE(VMOP_RES_STACK) res=0; break;
+            OPCODE(VMOP_RES_CODE)  res=1; break;
+            OPCODE(VMOP_RES_DICT)  res=2; break;
+            OPCODE(VMOP_RES_REFS)  res=3; break;
+            OPCODE(VMOP_RES_IP)    res=4; break;
+            OPCODE(VMOP_RES_A)     res=5; break;
+            OPCODE(VMOP_RES_B)     res=6; break;
+            OPCODE(VMOP_RES_WIP)   res=7; break;
 
-            OPCODE(VMOP_PUSH)     vm_res_enq(env,res,vm_res_deq(env,VMRES_WIP,POP)); break;
-            OPCODE(VMOP_POP)      vm_res_enq(env,VMRES_WIP,vm_res_deq(env,res,POP)); break;
-            OPCODE(VMOP_PEEK)     vm_res_enq(env,VMRES_WIP,vm_res_deq(env,res,KEEP)); break;
-            OPCODE(VMOP_DUP)      vm_res_enq(env,res,vm_res_deq(env,res,KEEP)); break;
-            OPCODE(VMOP_DROP)     LTV_release(vm_res_deq(env,res,POP)); break;
+            OPCODE(VMOP_SPUSH)     vm_stack_enq(env,vm_res_deq(env,VMRES_WIP,POP)); break;
+            OPCODE(VMOP_SPOP)      vm_res_enq(env,VMRES_WIP,vm_stack_deq(env,POP)); break;
+            OPCODE(VMOP_SPEEK)     vm_res_enq(env,VMRES_WIP,vm_stack_deq(env,KEEP)); break;
+            OPCODE(VMOP_SDUP)      vm_stack_enq(env,vm_stack_deq(env,KEEP)); break;
+            OPCODE(VMOP_SDROP)     LTV_release(vm_stack_deq(env,POP)); break;
 
-            OPCODE(VMOP_SPUSH)    vm_stack_enq(env,vm_res_deq(env,VMRES_WIP,POP)); break;
-            OPCODE(VMOP_SPOP)     vm_res_enq(env,VMRES_WIP,vm_stack_deq(env,POP)); break;
-            OPCODE(VMOP_SPEEK)    vm_res_enq(env,VMRES_WIP,vm_stack_deq(env,KEEP)); break;
-            OPCODE(VMOP_SDUP)     vm_stack_enq(env,vm_stack_deq(env,KEEP)); break;
-            OPCODE(VMOP_SDROP)    LTV_release(vm_stack_deq(env,POP)); break;
+            OPCODE(VMOP_PUSH)      vm_res_enq(env,res,vm_res_deq(env,VMRES_WIP,POP)); break;
+            OPCODE(VMOP_POP)       vm_res_enq(env,VMRES_WIP,vm_res_deq(env,res,POP)); break;
+            OPCODE(VMOP_PEEK)      vm_res_enq(env,VMRES_WIP,vm_res_deq(env,res,KEEP)); break;
+            OPCODE(VMOP_DUP)       vm_res_enq(env,res,vm_res_deq(env,res,KEEP)); break;
+            OPCODE(VMOP_DROP)      LTV_release(vm_res_deq(env,res,POP)); break;
 
-            OPCODE(VMOP_LIT)      vm_stack_enq(env,decode_extended()); break;
-            OPCODE(VMOP_REF)      vm_res_enq(env,VMRES_REFS,REF_create(decode_extended())); break;
-            OPCODE(VMOP_BUILTIN)  builtin(env,vm_stack_deq(env,POP)); break;
-            OPCODE(VMOP_EVAL)     vm_lambda_push(env,vm_stack_deq(env,POP)); status=VMOP_YIELD; goto done;
+            OPCODE(VMOP_LIT)       vm_stack_enq(env,decode_extended()); break;
+            OPCODE(VMOP_REF)       vm_res_enq(env,VMRES_REFS,REF_create(decode_extended())); break;
+            OPCODE(VMOP_BUILTIN)   builtin(env,vm_stack_deq(env,POP)); break;
+            OPCODE(VMOP_YIELD)     goto done; // break out of loop, requeue env;
 
-            OPCODE(VMOP_MAKEREF)  STRY(!vm_res_enq(env,VMRES_REFS,REF_create(vm_stack_deq(env,POP))),"making a ref"); break;
-            OPCODE(VMOP_DEREF)    vm_ref_resolve(env,FALSE); break;
-            OPCODE(VMOP_ASSIGN)   vm_ref_assign(env); break;
-            OPCODE(VMOP_REMOVE)   vm_ref_remove(env); break;
-            OPCODE(VMOP_THROW)    break;
-            OPCODE(VMOP_CATCH)    break;
-            OPCODE(VMOP_MAP)      break;
-            OPCODE(VMOP_APPEND)   break;
-            OPCODE(VMOP_COMPARE)  break;
-            OPCODE(VMOP_RDLOCK)   pthread_rwlock_rdlock(&vm_rwlock); break;
-            OPCODE(VMOP_WRLOCK)   pthread_rwlock_wrlock(&vm_rwlock); break;
-            OPCODE(VMOP_UNLOCK)   pthread_rwlock_unlock(&vm_rwlock); break;
-            OPCODE(VMOP_YIELD)    status=VMOP_YIELD; goto done; // break out of loop, requeue env;
-            OPCODE(VMOP_DUMP_ENV) vm_dump(env); break;
+            OPCODE(VMOP_EDICT)     vm_lambda_push(env,compile_ltv(compilers[FORMAT_edict], vm_stack_deq(env,POP))); break;
+            OPCODE(VMOP_XML)       vm_lambda_push(env,compile_ltv(compilers[FORMAT_xml],   vm_stack_deq(env,POP))); break;
+            OPCODE(VMOP_JSON)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_json],  vm_stack_deq(env,POP))); break;
+            OPCODE(VMOP_YAML)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_yaml],  vm_stack_deq(env,POP))); break;
+            OPCODE(VMOP_LISP)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_lisp],  vm_stack_deq(env,POP))); break;
+            OPCODE(VMOP_MASSOC)    vm_lambda_push(env,compile_ltv(compilers[FORMAT_massoc],vm_stack_deq(env,POP))); break;
+
+            OPCODE(VMOP_MAKEREF)   STRY(!vm_res_enq(env,VMRES_REFS,REF_create(vm_stack_deq(env,POP))),"making a ref"); break;
+            OPCODE(VMOP_DEREF)     vm_ref_resolve(env,FALSE); break;
+            OPCODE(VMOP_ASSIGN)    vm_ref_assign(env); break;
+            OPCODE(VMOP_REMOVE)    vm_ref_remove(env); break;
+            OPCODE(VMOP_THROW)     break;
+            OPCODE(VMOP_CATCH)     break;
+            OPCODE(VMOP_MAP)       break;
+            OPCODE(VMOP_APPEND)    break;
+            OPCODE(VMOP_COMPARE)   break;
+            OPCODE(VMOP_RDLOCK)    pthread_rwlock_rdlock(&vm_rwlock); break;
+            OPCODE(VMOP_WRLOCK)    pthread_rwlock_wrlock(&vm_rwlock); break;
+            OPCODE(VMOP_UNLOCK)    pthread_rwlock_unlock(&vm_rwlock); break;
+            OPCODE(VMOP_DUMP_ENV)  vm_dump(env); break;
 /*
   case VMOP_REF_INSERT: ref=vm_res_deq(env,VMRES_REFS,KEEP);
   //REF_resolve(vm_res_deq(env,VMRES_DICT,KEEP),LTV_list(ref_ltv),true);
@@ -288,11 +296,11 @@ int vm_eval(VM_ENV *env)
   case VMOP_GRAPH_REFS:  REF_dot(stdout,LTV_list(vm_res_deq(env,VMRES_REFS,KEEP)),"Ref: "); break;
 */
 
-            default: STRY((env->state=ENV_BROKEN),"evaluating invalid bytecode"); break;;
+            default: STRY((env->state=ENV_BROKEN),"evaluating invalid bytecode 0x%x",op); break;;
         }
         printf("\n");
     }
-    env->state=ENV_EXHAUSTED;
+    vm_lambda_pop(env);
 
  done:
     return env->state;

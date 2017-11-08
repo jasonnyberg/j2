@@ -198,6 +198,18 @@ int vm_ref_remove(VM_ENV *env)
     return status;
 }
 
+int vm_ref_deq(VM_ENV *env)
+{
+    int status=0;
+    LTV *ltv=NULL;
+    STRY(!(ltv=vm_res_deq(env,VMRES_REFS,POP)),"popping refs to release");
+    REF_delete(ltv);
+    LTV_release(ltv);
+ done:
+    return status;
+}
+
+
 //////////////////////////////////////////////////
 // Bytecode Interpreter
 //////////////////////////////////////////////////
@@ -254,6 +266,7 @@ int vm_eval(VM_ENV *env)
 
             OPCODE(VMOP_LIT)       vm_stack_enq(env,decode_extended()); break;
             OPCODE(VMOP_REF)       vm_res_enq(env,VMRES_REFS,REF_create(decode_extended())); break;
+            OPCODE(VMOP_REF_DEQ)   vm_ref_deq(env); break;
             OPCODE(VMOP_BUILTIN)   builtin(env,vm_stack_deq(env,POP)); break;
             OPCODE(VMOP_YIELD)     goto done; // break out of loop, requeue env;
 

@@ -86,10 +86,10 @@
 */
 
 enum {
-    VMOP_NULL=0, // null terminator
-
+    VMOP_NOP=0,
     VMOP_LIT,
     VMOP_REF,
+    VMOP_REF_DEQ,
     VMOP_BUILTIN,
 
     VMOP_EDICT,

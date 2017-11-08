@@ -105,10 +105,8 @@ int jit_edict(EMITTER emit,void *data,int len)
                         case '=': emit(&((VM_CMD) {VMOP_COMPARE})); break;
                     }
                 }
-                if (ref_len) {
-                    EMIT(RES_REFS);
-                    EMIT(DROP);
-                }
+                if (ref_len)
+                    EMIT(REF_DEQ);
             } else
                 emit(&((VM_CMD) {VMOP_DEREF}));
 
@@ -163,7 +161,6 @@ LTV *compile(COMPILER compiler,void *data,int len)
     }
 
     compiler(emit,data,len);
-    fputc(0,stream);
     fclose(stream);
     return LTV_init(NEW(LTV),buf,flen,LT_OWN|LT_BIN);
 }

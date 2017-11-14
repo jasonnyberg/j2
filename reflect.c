@@ -47,8 +47,9 @@ static void init(void)
     Dl_info dl_info;
     dladdr((void *)init, &dl_info);
     fprintf(stderr, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
-    ref_mod=LTV_init(NEW(LTV),(char *) dl_info.dli_fname,strlen(dl_info.dli_fname),LT_DUP);
+    ref_mod=LTV_init(NEW(LTV),(char *) dl_info.dli_fname,strlen(dl_info.dli_fname),LT_DUP|LT_RO);
     try_depth=1;
+    ref_preview_module(ref_mod);
     ref_curate_module(ref_mod,true);
 }
 
@@ -815,7 +816,8 @@ int dump_module_simple(char *ofilename,LTV *module)
 
     // simple dump of just typenames linked to their base types
     fprintf(ofile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
-    STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing module");
+    // STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing module");
+    STRY(ltv_traverse(module,traverse_types,NULL)!=NULL,"traversing module");
     fprintf(ofile,"}\n");
  done:
     fclose(ofile);
@@ -968,8 +970,8 @@ int ref_curate_module(LTV *module,int bootstrap)
         void *resolve_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
-                (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
                 derive_symbolic_name((TYPE_INFO_LTV *) (*ltv));
+                (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
             }
             return NULL;
         }
@@ -1040,7 +1042,7 @@ int ref_curate_module(LTV *module,int bootstrap)
             if (!(type_info=(TYPE_INFO_LTV *) LT_get(index,offset_str,HEAD,KEEP))) { // may have been curated previously
                 STRY(!(type_info=NEW(TYPE_INFO_LTV)),"creating a type_info item");
                 type_info->depth=depth;
-                LTV_init(&type_info->ltv,type_info,sizeof(TYPE_INFO_LTV),LT_OWN|LT_BIN|LT_CVAR|LT_TYPE); // special derived LTV!
+                LTV_init(&type_info->ltv,type_info,sizeof(TYPE_INFO_LTV),LT_BIN|LT_CVAR|LT_TYPE); // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
                 STRY(populate_type_info(dbg,die,type_info,&cu_data),"populating die type info");
                 if ((name=get_diename(dbg,die))) // name is allocated from heap...
                     STRY(!attr_own(&type_info->ltv,TYPE_NAME,name),"naming type info");
@@ -1547,24 +1549,6 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
  done:
     return status;
 }
-
-
-int ref_bootstrap(LTV *ltv)
-{
-    Dl_info dl_info;
-    dladdr((void *)ref_bootstrap, &dl_info);
-    fprintf(stderr, "module %s loaded\n", dl_info.dli_fname);
-
-    LTV *ref_ltv=LTV_init(NEW(LTV),"build/libreflect.so",-1,LT_NONE);
-    LT_put(ltv,"reflection",HEAD,ref_ltv);
-
-    ref_preview_module(ref_ltv);
-    ref_curate_module(ref_ltv,1);
-    print_ltv(stdout,NULL,ref_ltv,NULL,0);
-
-    return 0;
-}
-
 
 LTV *ref_type_info(char *typename) { return LT_get(ref_mod,typename,HEAD,KEEP); }
 

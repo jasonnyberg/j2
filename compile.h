@@ -23,13 +23,13 @@
 typedef int (*EMITTER)(VM_CMD *cmd);
 typedef int (*COMPILER)(EMITTER emit,void *data,int len);
 
-enum
-{
+enum {
     FORMAT_asm,
     FORMAT_edict,
     FORMAT_xml,
     FORMAT_json,
     FORMAT_yaml,
+    FORMAT_swagger,
     FORMAT_lisp,
     FORMAT_massoc,
     FORMAT_MAX
@@ -46,5 +46,6 @@ extern int jit_edict(EMITTER emit,void *data,int len);
 extern int jit_xml(EMITTER emit,void *data,int len);
 extern int jit_json(EMITTER emit,void *data,int len);
 extern int jit_yaml(EMITTER emit,void *data,int len);
+extern int jit_swagger(EMITTER emit,void *data,int len);
 extern int jit_lisp(EMITTER emit,void *data,int len);
 extern int jit_massoc(EMITTER emit,void *data,int len); // mathematica association

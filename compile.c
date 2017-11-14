@@ -25,7 +25,7 @@
 #include "compile.h"
 #include "vm.h"
 
-char *formats[] = {"asm","edict","xml","json","yaml","lisp","massoc"};
+char *formats[] = {"asm","edict","xml","json","yaml","swagger","lisp","massoc"};
 
 int jit_term(char *type,char *data,int len)
 {
@@ -33,8 +33,6 @@ int jit_term(char *type,char *data,int len)
     fstrnprint(stdout,data,len);
     printf("\"\n");
 }
-
-#define VMOP_XFER(src,dst) ((VM_CMD) {0xc0|(((src)&7)<<3)|((dst)&7)})
 
 int jit_asm(EMITTER emit,void *data,int len)
 {
@@ -74,14 +72,12 @@ int jit_edict(EMITTER emit,void *data,int len)
         if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) { // special, non-ganging op
             jit_term("edict/block",tdata,tlen);
             switch (*tdata) {
-                case '<': emit(&VMOP_XFER(VMRES_STACK,VMRES_DICT)); break;
-                case '>': emit(&VMOP_XFER(VMRES_DICT,VMRES_STACK)); break;
-                case '(': emit(&VMOP_XFER(VMRES_STACK,VMRES_DICT)); break;
-                case ')':
-                    emit(&VMOP_XFER(VMRES_DICT,VMRES_STACK));
-                    emit(&((VM_CMD) {VMOP_EDICT})); break;
-                case '{': emit(&VMOP_XFER(VMRES_STACK,VMRES_DICT)); break;
-                case '}': emit(&VMOP_XFER(VMRES_DICT,VMRES_STACK)); break;
+                case '<': EMIT(RES_STACK); EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
+                case '>': EMIT(RES_DICT); EMIT(POP); EMIT(RES_STACK); EMIT(SPUSH); break;
+                case '(': EMIT(RES_STACK); EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
+                case ')': EMIT(RES_DICT); EMIT(POP); EMIT(RES_STACK); EMIT(SPUSH); EMIT(EDICT); break;
+                case '{': break;
+                case '}': break;
             }
             advance(tlen);
         } else {
@@ -89,28 +85,44 @@ int jit_edict(EMITTER emit,void *data,int len)
             int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
             advance(ops_len);
             int ref_len=series(tdata,len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS,"[]");
-            if (ref_len)
+            if (ref_len) {
                 emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
-            if (ops_len) {
-                for (int i=0;i<ops_len;i++) {
-                    switch (ops_data[i]) {
-                        case '#': emit(&((VM_CMD) {VMOP_BUILTIN})); break;
-                        case '@': emit(&((VM_CMD) {VMOP_ASSIGN}));  break;
-                        case '/': emit(&((VM_CMD) {VMOP_REMOVE}));  break;
-                        case '!': EMIT(EDICT); EMIT(YIELD);         break;
-                        case '&': emit(&((VM_CMD) {VMOP_THROW}));   break;
-                        case '|': emit(&((VM_CMD) {VMOP_CATCH}));   break;
-                        case '%': emit(&((VM_CMD) {VMOP_MAP}));     break;
-                        case '+': emit(&((VM_CMD) {VMOP_APPEND}));  break;
-                        case '=': emit(&((VM_CMD) {VMOP_COMPARE})); break;
+                if (!ops_len)
+                    EMIT(DEREF);
+                else {
+                    for (int i=0;i<ops_len;i++) {
+                        switch (ops_data[i]) {
+                            case '#': EMIT(BUILTIN); break;
+                            case '@': EMIT(ASSIGN);  break;
+                            case '/': EMIT(REMOVE);  break;
+                            case '+': EMIT(APPEND);  break;
+                            case '=': EMIT(COMPARE); break;
+                            case '&': EMIT(THROW);   break;
+                            case '|': EMIT(CATCH);   break;
+                            case '!': EMIT(EDICT);   break;
+                            case '%': EMIT(MAP);     break;
+                        }
                     }
                 }
-                if (ref_len)
-                    EMIT(REF_DEQ);
-            } else
-                emit(&((VM_CMD) {VMOP_DEREF}));
-
-            tlen=ops_len+advance(ref_len);
+                EMIT(RES_REFS);
+                EMIT(DROP);
+                advance(ref_len);
+            } else {
+                for (int i=0;i<ops_len;i++) {
+                    switch (ops_data[i]) {
+                        case '#': EMIT(BUILTIN); break;
+                        case '@': EMIT(ASSIGN);  break;
+                        case '/': EMIT(RES_STACK); EMIT(SDROP); break;
+                        case '+': EMIT(APPEND);  break;
+                        case '=': EMIT(COMPARE); break;
+                        case '!': EMIT(EDICT);   break;
+                        case '&': EMIT(THROW);   break;
+                        case '|': EMIT(CATCH);   break;
+                        case '%': EMIT(MAP);     break;
+                    }
+                }
+            }
+            tlen=ops_len+ref_len;
         }
         return tlen;
     }
@@ -122,14 +134,15 @@ int jit_edict(EMITTER emit,void *data,int len)
     return status;
 }
 
-int jit_xml(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
-int jit_json(EMITTER emit,void *data,int len)   { printf("unsupported\n"); }
-int jit_yaml(EMITTER emit,void *data,int len)   { printf("unsupported\n"); }
-int jit_lisp(EMITTER emit,void *data,int len)   { printf("unsupported\n"); }
-int jit_massoc(EMITTER emit,void *data,int len) { printf("unsupported\n"); }
+int jit_xml(EMITTER emit,void *data,int len)     { printf("unsupported\n"); }
+int jit_json(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
+int jit_yaml(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
+int jit_swagger(EMITTER emit,void *data,int len) { printf("unsupported\n"); }
+int jit_lisp(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
+int jit_massoc(EMITTER emit,void *data,int len)  { printf("unsupported\n"); }
 
 
-COMPILER compilers[] = {jit_asm,jit_edict,jit_xml,jit_json,jit_yaml,jit_lisp,jit_massoc};
+COMPILER compilers[] = {jit_asm,jit_edict,jit_xml,jit_json,jit_yaml,jit_swagger,jit_lisp,jit_massoc};
 
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////

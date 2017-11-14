@@ -89,25 +89,17 @@ enum {
     VMOP_NOP=0,
     VMOP_LIT,
     VMOP_REF,
-    VMOP_REF_DEQ,
+
     VMOP_BUILTIN,
-
-    VMOP_EDICT,
-    VMOP_XML,
-    VMOP_JSON,
-    VMOP_YAML,
-    VMOP_LISP,
-    VMOP_MASSOC,
-
-    VMOP_MAKEREF,
-    VMOP_DEREF,
     VMOP_ASSIGN,
     VMOP_REMOVE,
+    VMOP_APPEND,
+    VMOP_COMPARE,
+    VMOP_MAKEREF,
+    VMOP_DEREF,
     VMOP_THROW,
     VMOP_CATCH,
     VMOP_MAP,
-    VMOP_APPEND,
-    VMOP_COMPARE,
 
     VMOP_RDLOCK,
     VMOP_WRLOCK,
@@ -129,14 +121,22 @@ enum {
     VMOP_DUP,  // dup TOS(res)
     VMOP_DROP, // drop TOS(res)
 
+    VMOP_EDICT,
+    VMOP_XML,
+    VMOP_JSON,
+    VMOP_YAML,
+    VMOP_SWAGGER,
+    VMOP_LISP,
+    VMOP_MASSOC,
+
     VMOP_RES_STACK=0xf8,
     VMOP_RES_CODE =0xf9,
     VMOP_RES_DICT =0xfa,
     VMOP_RES_REFS =0xfb,
     VMOP_RES_IP   =0xfc,
-    VMOP_RES_A    =0xfd,
-    VMOP_RES_B    =0xfe,
-    VMOP_RES_WIP  =0xff,
+    VMOP_RES_WIP  =0xfd,
+    VMOP_RES_A    =0xfe,
+    VMOP_RES_B    =0xff
 };
 
 enum {
@@ -145,8 +145,6 @@ enum {
     VMRES_DICT,
     VMRES_REFS,
     VMRES_IP,
-    VMRES_UNUSED1,
-    VMRES_UNUSED2,
     VMRES_WIP,
     VMRES_COUNT
     // REFS? EXCEPTIONS?

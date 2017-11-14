@@ -50,7 +50,7 @@ static void init(void)
     sem_init(&vm_process_escapement,0,0); // blocks on first wait
 }
 
-char *res_name[] = { "Stack","Code","Dict","Refs","IP","ResA","ResB","WIP" };
+char *res_name[] = { "stack","code","dict","refs","ip","wip" };
 
 //////////////////////////////////////////////////
 // Processor
@@ -149,33 +149,62 @@ int vm_env_init(VM_ENV *env)
 int vm_dump(VM_ENV *env)
 {
     int status=0;
+    LTV *tmp=LTV_NULL;
+    char filename[256];
     for (int i=0;i<VMRES_COUNT;i++)
     {
         printf("\n%s:\n",res_name[i]);
-        print_ltv(stdout,CODE_BLUE,env->tos[i],CODE_RESET "\n",0);
+        vm_res_enq(env,i,tmp);
         print_ltvs(stdout,CODE_RED,&env->ros[i],CODE_RESET "\n",0);
+        sprintf(filename,"/tmp/vm_%s.dot",res_name[i]);
+        //FILE *ofile=fopen(filename,"w");
+        graph_ltvs_to_file(filename,&env->ros[i],5,res_name[i]);
+        //ltvs2dot(ofile,&env->ros[i],0,NULL);
+        //fclose(ofile);
+        vm_res_deq(env,i,POP);
     }
+    LTV_release(tmp);
     return status;
 }
 
-int builtin(VM_ENV *env,LTV *ltv)
+int reflection(VM_ENV *env)
+{
+    vm_stack_enq(env,ref_mod);
+    return 0;
+}
+
+int builtin(VM_ENV *env)
 {
     printf("builtin:\n");
     LTV *ref=vm_res_deq(env,VMRES_REFS,POP);
-    if (!strncmp("dump",ref->data,ref->len)) vm_dump(env);
-    LTV_release(ltv);
+    if (!strncmp("dump",ref->data,ref->len))
+        vm_dump(env);
+    else if (!strncmp("ref",ref->data,ref->len))
+        reflection(env);
+    else if (!strncmp("mod",ref->data,ref->len))
+        dump_module_simple("/tmp/module.dot",ref_mod);
+    LTV_release(ref);
 }
 
 int vm_ref_resolve(VM_ENV *env,int insert)
 {
     int status=0;
     LTV *refs=vm_res_deq(env,VMRES_REFS,KEEP);
-    STRY(!(refs->flags&LT_REFS),"validating tos is LT_REFS");
+    LTV *ltv=NULL;
     LTV *resolve_ltv(LTV *dict) { return REF_resolve(dict,refs,insert)?NULL:REF_ltv(REF_HEAD(refs)); }
     void *op(CLL *lnk) { return resolve_ltv(((LTVR *) lnk)->ltv); }
-    STRY(!resolve_ltv(vm_res_deq(env,VMRES_DICT,KEEP)) || !CLL_map(&env->ros[VMRES_STACK],FWD,op),"resolving REF");
+    STRY(!(ltv=resolve_ltv(vm_res_deq(env,VMRES_DICT,KEEP))) && !(ltv=CLL_map(&env->ros[VMRES_STACK],FWD,op)),"resolving ref");
+    vm_stack_enq(env,ltv);
  done:
     return status;
+}
+
+int vm_ref_iterate(VM_ENV *env)
+{
+    int status=0;
+    LTV *refs=vm_res_deq(env,VMRES_REFS,KEEP);
+    LTV *ltv=REF_iterate(refs,KEEP)?NULL:REF_ltv(REF_HEAD(refs));
+
 }
 
 int vm_ref_assign(VM_ENV *env)
@@ -194,17 +223,6 @@ int vm_ref_remove(VM_ENV *env)
     LTV *refs=vm_res_deq(env,VMRES_REFS,KEEP);
     STRY(REF_resolve(vm_res_deq(env,VMRES_DICT,KEEP),refs,TRUE),"resolving ref for removal");
     STRY(REF_remove(REF_HEAD(refs)),"removing from ref");
- done:
-    return status;
-}
-
-int vm_ref_deq(VM_ENV *env)
-{
-    int status=0;
-    LTV *ltv=NULL;
-    STRY(!(ltv=vm_res_deq(env,VMRES_REFS,POP)),"popping refs to release");
-    REF_delete(ltv);
-    LTV_release(ltv);
  done:
     return status;
 }
@@ -238,7 +256,7 @@ int vm_eval(VM_ENV *env)
 
     unsigned char op=0,res=0;;
 
-#define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x" CODE_RESET,(unsigned char) vmop);
+#define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x\n" CODE_RESET,(unsigned char) vmop);
 
     while ((*ip)<len && data[*ip]) {
         op=data[(*ip)++];
@@ -248,8 +266,6 @@ int vm_eval(VM_ENV *env)
             OPCODE(VMOP_RES_DICT)  res=2; break;
             OPCODE(VMOP_RES_REFS)  res=3; break;
             OPCODE(VMOP_RES_IP)    res=4; break;
-            OPCODE(VMOP_RES_A)     res=5; break;
-            OPCODE(VMOP_RES_B)     res=6; break;
             OPCODE(VMOP_RES_WIP)   res=7; break;
 
             OPCODE(VMOP_SPUSH)     vm_stack_enq(env,vm_res_deq(env,VMRES_WIP,POP)); break;
@@ -266,16 +282,8 @@ int vm_eval(VM_ENV *env)
 
             OPCODE(VMOP_LIT)       vm_stack_enq(env,decode_extended()); break;
             OPCODE(VMOP_REF)       vm_res_enq(env,VMRES_REFS,REF_create(decode_extended())); break;
-            OPCODE(VMOP_REF_DEQ)   vm_ref_deq(env); break;
-            OPCODE(VMOP_BUILTIN)   builtin(env,vm_stack_deq(env,POP)); break;
+            OPCODE(VMOP_BUILTIN)   builtin(env); break;
             OPCODE(VMOP_YIELD)     goto done; // break out of loop, requeue env;
-
-            OPCODE(VMOP_EDICT)     vm_lambda_push(env,compile_ltv(compilers[FORMAT_edict], vm_stack_deq(env,POP))); break;
-            OPCODE(VMOP_XML)       vm_lambda_push(env,compile_ltv(compilers[FORMAT_xml],   vm_stack_deq(env,POP))); break;
-            OPCODE(VMOP_JSON)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_json],  vm_stack_deq(env,POP))); break;
-            OPCODE(VMOP_YAML)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_yaml],  vm_stack_deq(env,POP))); break;
-            OPCODE(VMOP_LISP)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_lisp],  vm_stack_deq(env,POP))); break;
-            OPCODE(VMOP_MASSOC)    vm_lambda_push(env,compile_ltv(compilers[FORMAT_massoc],vm_stack_deq(env,POP))); break;
 
             OPCODE(VMOP_MAKEREF)   STRY(!vm_res_enq(env,VMRES_REFS,REF_create(vm_stack_deq(env,POP))),"making a ref"); break;
             OPCODE(VMOP_DEREF)     vm_ref_resolve(env,FALSE); break;
@@ -290,20 +298,17 @@ int vm_eval(VM_ENV *env)
             OPCODE(VMOP_WRLOCK)    pthread_rwlock_wrlock(&vm_rwlock); break;
             OPCODE(VMOP_UNLOCK)    pthread_rwlock_unlock(&vm_rwlock); break;
             OPCODE(VMOP_DUMP_ENV)  vm_dump(env); break;
+
+            OPCODE(VMOP_EDICT)     vm_lambda_push(env,compile_ltv(compilers[FORMAT_edict],  vm_stack_deq(env,POP))); goto done;
+            OPCODE(VMOP_XML)       vm_lambda_push(env,compile_ltv(compilers[FORMAT_xml],    vm_stack_deq(env,POP))); goto done;
+            OPCODE(VMOP_JSON)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_json],   vm_stack_deq(env,POP))); goto done;
+            OPCODE(VMOP_YAML)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_yaml],   vm_stack_deq(env,POP))); goto done;
+            OPCODE(VMOP_SWAGGER)   vm_lambda_push(env,compile_ltv(compilers[FORMAT_swagger],vm_stack_deq(env,POP))); goto done;
+            OPCODE(VMOP_LISP)      vm_lambda_push(env,compile_ltv(compilers[FORMAT_lisp],   vm_stack_deq(env,POP))); goto done;
+            OPCODE(VMOP_MASSOC)    vm_lambda_push(env,compile_ltv(compilers[FORMAT_massoc], vm_stack_deq(env,POP))); goto done;
 /*
-  case VMOP_REF_INSERT: ref=vm_res_deq(env,VMRES_REFS,KEEP);
-  //REF_resolve(vm_res_deq(env,VMRES_DICT,KEEP),LTV_list(ref_ltv),true);
-  break;
-  case VMOP_REF_RESOLVE: vm_ref_resolve(env,KEEP); break;
-  case VMOP_REF_DEREF:
   case VMOP_REF_ITER_KEEP: REF_iterate(LTV_list(vm_res_deq(env,VMRES_REFS,KEEP)),KEEP); break;
   case VMOP_REF_ITER_POP: REF_iterate(LTV_list(vm_res_deq(env,VMRES_REFS,KEEP)),POP); break;
-  case VMOP_REF_ASSIGN: REF_assign(REF_HEAD(LTV_list(vm_res_deq(env,VMRES_REFS,KEEP))),vm_stack_deq(env,POP)); break;
-  case VMOP_REF_REMOVE: REF_remove(REF_HEAD(LTV_list(vm_res_deq(env,VMRES_REFS,KEEP)))); break;
-  case VMOP_FROM_REFS | VMOP_OP_POP  | VMOP_TO_REF:   ref=vm_res_deq(env,VMRES_REFS,POP);  break;
-  case VMOP_FROM_REFS | VMOP_TO_REF:   ref=vm_res_deq(env,VMRES_REFS,KEEP); break;
-  case VMOP_DUP: vm_stack_enq(env,LTV_dup(vm_stack_deq(env,KEEP))); break;
-  case VMOP_PRINT_STACK: print_ltvs(stdout,CODE_BLUE,LTV_list(vm_res_deq(env,VMRES_STACK,KEEP)),CODE_RESET "\n",0); break;
   case VMOP_GRAPH_STACK: graph_ltvs_to_file("/tmp/jj.dot",LTV_list(vm_res_deq(env,VMRES_STACK,KEEP)),0,"tos"); break;
   case VMOP_PRINT_REFS:  REF_printall(stdout,LTV_list(vm_res_deq(env,VMRES_REFS,KEEP)),"Ref: "); break;
   case VMOP_GRAPH_REFS:  REF_dot(stdout,LTV_list(vm_res_deq(env,VMRES_REFS,KEEP)),"Ref: "); break;
@@ -311,7 +316,6 @@ int vm_eval(VM_ENV *env)
 
             default: STRY((env->state=ENV_BROKEN),"evaluating invalid bytecode 0x%x",op); break;;
         }
-        printf("\n");
     }
     vm_lambda_pop(env);
 
@@ -326,8 +330,8 @@ int vm_thread(LTV *env,LTV *code)
 int vm_init(int argc,char *argv[])
 {
     int status=0;
-    LTV *dict=LTV_init(NEW(LTV),"DICT",-1,LT_NONE);
-    LTV *envs=LTV_init(NEW(LTV),"ENVS",-1,LT_LIST);
+    LTV *dict=LTV_init(NEW(LTV),"DICT",-1,LT_RO|LT_NONE);
+    LTV *envs=LTV_init(NEW(LTV),"ENVS",-1,LT_RO|LT_LIST);
     LT_put(dict,"ENVS",HEAD,envs);
 
     VM_ENV *env=NEW(VM_ENV);
@@ -360,7 +364,7 @@ int vm_init(int argc,char *argv[])
     do {
         TRYCATCH((data=balanced_readline(file,&len))==NULL,0,close_file,"reading balanced line from file");
         TRYCATCH(!(ltv=compile(compilers[format],data,len)),TRY_ERR,free_data,"compiling balanced line");
-        print_ltv(stdout,NULL,ltv,NULL,-1);
+        print_ltv(stdout,"bytecodes: ",ltv,"\n",0);
         TRYCATCH(vm_lambda_push(env,ltv),TRY_ERR,free_data,"pushing initial env code");
         vm_env_enq(envs,env);
         vm_thunk(envs);

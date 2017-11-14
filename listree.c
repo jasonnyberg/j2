@@ -84,7 +84,7 @@ LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
 LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 {
     flags|=ltv->flags&LT_META; // need to preserve the original metaflags
-    if (ltv->data && ltv->flags&LT_FREE && !(ltv->flags&LT_NAP))
+    if (ltv->data && (ltv->flags&LT_FREE) && !(ltv->flags&LT_NAP))
         RELEASE(ltv->data);
     ltv->len=(len<0 && !(flags&LT_NSTR))?strlen((char *) data):len;
     ltv->data=data;
@@ -185,7 +185,7 @@ void LTI_free(LTI *lti)
 
 void LTV_release(LTV *ltv)
 {
-    if (ltv && !ltv->refs && (!ltv->flags&LT_RO)) {
+    if (ltv && !(ltv->refs) && !(ltv->flags&LT_RO)) {
         if (ltv->flags&LT_REFS)      REF_delete(ltv); // cleans out REFS
         else if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvs,LTVR_release);
         else                         RBR_release(&ltv->sub.ltis,LTI_release);
@@ -270,10 +270,10 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
         LTI *child=NULL;
         LT_TRAVERSE_FLAGS flags=LT_TRAVERSE_LTV;
         if (cleanup) // only descends (and cleans up) LTVs w/absolute visited flag
-            return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS))? LTV_map(ltv,FWD,descend_lti,descend_ltvr):NULL;
+            return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && !(ltv->flags&LT_REFS))? LTV_map(ltv,FWD,descend_lti,descend_ltvr):NULL;
         else if (!(ltv->flags&LT_RVIS)) {
             if (preop && (rval=preop(&child,&parent,&ltv,depth,&flags))) goto done;
-            if (flags&LT_TRAVERSE_HALT) goto done;
+            if ((flags&LT_TRAVERSE_HALT) || (ltv->flags&LT_REFS)) goto done;
             ltv->flags|=LT_RVIS;
             depth++;
             rval=child?descend_lti(&child->rbn):LTV_map(ltv,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,descend_lti,descend_ltvr);
@@ -425,7 +425,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
             case LT_TRAVERSE_LTV:
                 if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
                 else fprintf(ofile,"%*c[",depth*4,' ');
-                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); *flags|=LT_TRAVERSE_HALT; }
+                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
                 else if ((*ltv)->flags&LT_CVAR) ref_print_cvar(ofile,(*ltv),depth);
                 else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
                 else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
@@ -455,7 +455,7 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
     CLL_init(&ltvs);
     LTV_enq(&ltvs,ltv,HEAD);
     print_ltvs(ofile,pre,&ltvs,post,maxdepth);
-    CLL_release(&ltvs,LTVR_release);
+    LTV_deq(&ltvs,HEAD);
 }
 
 

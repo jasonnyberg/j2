@@ -88,14 +88,17 @@
 enum {
     VMOP_NOP=0,
     VMOP_LIT,
-    VMOP_REF,
 
     VMOP_BUILTIN,
+    VMOP_REF_MAKE,
+    VMOP_REF_INS,
+    VMOP_REF_RES,
+    VMOP_REF_HRES,
+    VMOP_REF_ITER,
     VMOP_ASSIGN,
     VMOP_REMOVE,
     VMOP_APPEND,
     VMOP_COMPARE,
-    VMOP_MAKEREF,
     VMOP_DEREF,
     VMOP_THROW,
     VMOP_CATCH,
@@ -106,8 +109,6 @@ enum {
     VMOP_UNLOCK,
 
     VMOP_YIELD,
-
-    VMOP_DUMP_ENV,
 
     VMOP_SPUSH,
     VMOP_SPOP,
@@ -140,9 +141,8 @@ enum {
 };
 
 enum {
-    VMRES_STACK, // values can be plain lit, cvar, or ref
-    VMRES_CODE,
     VMRES_DICT,
+    VMRES_CODE,
     VMRES_REFS,
     VMRES_IP,
     VMRES_WIP,
@@ -158,10 +158,10 @@ enum {
 };
 
 typedef struct {
-    LTV ltv;
+    LTV lnk;
     unsigned state;
-    LTV *tos[VMRES_COUNT]; // "resource" top-of-stack
-    CLL ros[VMRES_COUNT];  // "resource" stack (code/stack/dict/refs)
+    LTV stackref;
+    CLL res[VMRES_COUNT];  // "resource" stack (code/stack/dict/refs)
     //LTV *reg[VMRES_COUNT]; // "registers"
 } VM_ENV;
 

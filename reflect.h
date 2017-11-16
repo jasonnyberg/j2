@@ -46,9 +46,6 @@
 #define TYPE_BASE "type base" // a die's base's ltv
 #define TYPE_LIST "type list" // type's children, in die order
 
-//#define CVAR_TYPE "cvar type" // cvar's associated TYPE_INFO
-#define CVAR_TYPE TYPE_BASE // cvar's associated TYPE_INFO
-
 #define FFI_TYPE  "ffi type"  // FFI data assocated with type
 #define FFI_CIF   "ffi cif"   // FFI data assocated with type
 

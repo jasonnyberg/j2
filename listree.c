@@ -752,7 +752,7 @@ LTV *REF_create(LTV *refs)
     STRY(!refs,"validating params");
     if (!(refs->flags&LT_REFS)) { // promote an ltv to a ref
         STRY(!LTV_is_empty(refs),"promoting non-empty ltv to ref");
-        STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_META|LT_REFL),"promoting incomptible ltv to ref");
+        STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_REFL),"promoting incomptible ltv to ref");
         refs->flags|=(LT_REFS|LT_LIST);
         CLL_init(&refs->sub.ltvs);
     }
@@ -822,7 +822,7 @@ int REF_resolve(LTV *root,LTV *refs,int insert)
         root=REF_reset(ref,root); // clean up ref if root changed
 
         char *buf=NULL;
-        if (root->flags&LT_CVAR && (ref->cvar=ref_create_cvar(LT_get(root,CVAR_TYPE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))))
+        if (root->flags&LT_CVAR && (ref->cvar=ref_create_cvar(LT_get(root,TYPE_BASE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))))
             root=ref->cvar;
         else {
             if (!ref->lti) { // resolve lti

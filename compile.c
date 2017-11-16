@@ -63,8 +63,10 @@ int jit_edict(EMITTER emit,void *data,int len)
     }
 
     int compile_lit() {
-        if ((tlen=series(tdata,len,NULL,NULL,"[]")))
+        if ((tlen=series(tdata,len,NULL,NULL,"[]"))) {
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
+            EMIT(SPUSH);
+        }
         return advance(tlen);
     }
 
@@ -72,10 +74,10 @@ int jit_edict(EMITTER emit,void *data,int len)
         if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) { // special, non-ganging op
             jit_term("edict/block",tdata,tlen);
             switch (*tdata) {
-                case '<': EMIT(RES_STACK); EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
-                case '>': EMIT(RES_DICT); EMIT(POP); EMIT(RES_STACK); EMIT(SPUSH); break;
-                case '(': EMIT(RES_STACK); EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
-                case ')': EMIT(RES_DICT); EMIT(POP); EMIT(RES_STACK); EMIT(SPUSH); EMIT(EDICT); break;
+                case '<': EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
+                case '>': EMIT(RES_DICT); EMIT(POP); EMIT(SPUSH); break;
+                case '(': EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
+                case ')': EMIT(RES_DICT); EMIT(POP); EMIT(SPUSH); EMIT(SPEEK); EMIT(EDICT); break;
                 case '{': break;
                 case '}': break;
             }
@@ -85,22 +87,28 @@ int jit_edict(EMITTER emit,void *data,int len)
             int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
             advance(ops_len);
             int ref_len=series(tdata,len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS,"[]");
+
+            // ideally, anonymous items are treated like any other named item, w/name "$" (but merged up as frames are closed.)
+
             if (ref_len) {
-                emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
-                if (!ops_len)
+                emit(&((VM_CMD) {VMOP_LIT,ref_len,LT_DUP,tdata}));
+                EMIT(REF_MAKE);
+                if (!ops_len) {
+                    EMIT(REF_HRES);
                     EMIT(DEREF);
-                else {
+                    EMIT(SPUSH);
+                } else {
                     for (int i=0;i<ops_len;i++) {
                         switch (ops_data[i]) {
                             case '#': EMIT(BUILTIN); break;
-                            case '@': EMIT(ASSIGN);  break;
-                            case '/': EMIT(REMOVE);  break;
-                            case '+': EMIT(APPEND);  break;
-                            case '=': EMIT(COMPARE); break;
-                            case '&': EMIT(THROW);   break;
-                            case '|': EMIT(CATCH);   break;
-                            case '!': EMIT(EDICT);   break;
-                            case '%': EMIT(MAP);     break;
+                            case '@': EMIT(SPOP); EMIT(REF_INS);  EMIT(ASSIGN);  break;
+                            case '/': EMIT(REF_HRES); EMIT(REMOVE);  break;
+                            case '+': EMIT(REF_HRES); EMIT(APPEND);  break;
+                            case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
+                            case '&': EMIT(REF_HRES); EMIT(THROW);   break;
+                            case '|': EMIT(REF_HRES); EMIT(CATCH);   break;
+                            case '!': EMIT(REF_HRES); EMIT(EDICT);   break;
+                            case '%': EMIT(REF_HRES); EMIT(MAP);     break;
                         }
                     }
                 }
@@ -110,15 +118,9 @@ int jit_edict(EMITTER emit,void *data,int len)
             } else {
                 for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
-                        case '#': EMIT(BUILTIN); break;
-                        case '@': EMIT(ASSIGN);  break;
+                        case '@': EMIT(REF_MAKE);  EMIT(REF_INS); EMIT(ASSIGN);  break;
                         case '/': EMIT(RES_STACK); EMIT(SDROP); break;
-                        case '+': EMIT(APPEND);  break;
-                        case '=': EMIT(COMPARE); break;
                         case '!': EMIT(EDICT);   break;
-                        case '&': EMIT(THROW);   break;
-                        case '|': EMIT(CATCH);   break;
-                        case '%': EMIT(MAP);     break;
                     }
                 }
             }

@@ -318,7 +318,7 @@ LTV *ref_create_cvar(LTV *type,void *data,char *member)
         STRY(!(cvar=LTV_init(NEW(LTV),data,size,LT_BIN|LT_CVAR)),"creating reference cvar");
     else
         STRY(!(cvar=LTV_init(NEW(LTV),(void *) mymalloc(size),size,LT_OWN|LT_BIN|LT_CVAR)),"creating allocated cvar");
-    LT_put(cvar,CVAR_TYPE,HEAD,type);
+    LT_put(cvar,TYPE_BASE,HEAD,type);
  done:
     return status?NULL:cvar;
 }
@@ -354,7 +354,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 {
     int status=0;
     LTV *type;
-    STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"validating cvar via type");
+    STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"validating cvar via type");
     CLL queue;
     CLL_init(&queue);
     LTV_enq(&queue,ref_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
@@ -380,7 +380,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
             return status?NON_NULL:NULL;
         }
 
-        STRY(!(type=LT_get(cvar,CVAR_TYPE,HEAD,KEEP)),"looking up cvar type");
+        STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"looking up cvar type");
         TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
 
         char *name=attr_get(type,TYPE_NAME);
@@ -1165,7 +1165,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
     int status=0;
     LTV *type=NULL;
     STRY(!cvar || !uval,"validating params");
-    STRY(!(type=ref_find_basic(LT_get(cvar,CVAR_TYPE,HEAD,KEEP))),"retrieving cvar basic type");
+    STRY(!(type=ref_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
 
     ull size=type_info->bytesize;
@@ -1229,7 +1229,7 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
     int status=0;
     LTV *type=NULL;
     STRY(!cvar || !uval,"validating params");
-    STRY(!(type=ref_find_basic(LT_get(cvar,CVAR_TYPE,HEAD,KEEP))),"retrieving cvar basic type");
+    STRY(!(type=ref_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
 
     ull size=type_info->bytesize;
@@ -1500,7 +1500,7 @@ LTV *ref_rval_create(LTV *lambda)
 {
     // assumes lambda is a CVAR/TYPE_INFO/subprogram
     // error check later...
-    LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
+    LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
     LTV *return_type=ref_find_basic(cvar_type); // base type of a subprogram is its return type
     return ref_create_cvar(return_type,NULL,NULL);
 }
@@ -1518,7 +1518,7 @@ int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
     done:
         return status?NON_NULL:NULL;
     }
-    LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
+    LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
     LTI *children=LTI_resolve(cvar_type,TYPE_LIST,0);
     STRY(CLL_map(&children->ltvs,FWD,marshal_arg)!=NULL,"marshalling ffi args from environment");
  done:
@@ -1535,7 +1535,7 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
     int status=0;
     int index=0;
     void **args=NULL;
-    LTV *cvar_type=LT_get(lambda,CVAR_TYPE,HEAD,KEEP);
+    LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
     LTV *cif=LT_get(cvar_type,FFI_CIF,HEAD,KEEP);
 
     int arity=CLL_len(coerced_args);

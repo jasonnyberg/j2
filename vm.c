@@ -172,7 +172,7 @@ int vm_context_pop(VM_ENV *env)
     STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),&env->stackref,FALSE),"resolving new stack");
     STRY(!(newstack=REF_lti(REF_HEAD(&env->stackref))),"retreiving new stack");
     CLL_MERGE(&newstack->ltvs,&oldstack->ltvs,HEAD);
-    STRY(!vm_stack_enq(env,context),"returning dict context to stack");
+    STRY(vm_stack_enq(env,context),"returning dict context to stack");
  done:
     return status;
 }
@@ -217,8 +217,9 @@ int vm_eval(VM_ENV *env)
     int status=0;
 
     LTV *code_ltv=NULL,*ip_ltv=NULL;
-    if (!env || !(code_ltv=vm_deq(env,VMRES_CODE,KEEP)) || !(ip_ltv=vm_deq(env,VMRES_IP,KEEP))) {
-        env->state=ENV_BROKEN;
+    STRY(!env,"validating environment");
+    if (!(code_ltv=vm_deq(env,VMRES_CODE,KEEP)) || !(ip_ltv=vm_deq(env,VMRES_IP,KEEP))) {
+        status=!0;
         goto done;
     }
 
@@ -249,9 +250,9 @@ int vm_eval(VM_ENV *env)
             OPCODE(VMOP_RES_IP)    res=3; break;
             OPCODE(VMOP_RES_WIP)   res=4; break;
 
-            OPCODE(VMOP_SPUSH)     vm_stack_enq(env,vm_deq(env,VMRES_WIP,POP)); break;
-            OPCODE(VMOP_SPOP)      vm_stack_deq(env,POP); break;
-            OPCODE(VMOP_SPEEK)     vm_stack_deq(env,KEEP); break;
+            OPCODE(VMOP_SPUSH)     STRY(vm_stack_enq(env,vm_deq(env,VMRES_WIP,POP)),"SPUSH'ing"); break;
+            OPCODE(VMOP_SPOP)      STRY(vm_stack_deq(env,POP),"SPOP'ing"); break;
+            OPCODE(VMOP_SPEEK)     STRY(vm_stack_deq(env,KEEP),"SPEEK'ing"); break;
 
             OPCODE(VMOP_PUSH)      vm_enq(env,res,vm_deq(env,VMRES_WIP,POP)); break;
             OPCODE(VMOP_POP)       vm_enq(env,VMRES_WIP,vm_deq(env,res,POP)); break;
@@ -268,7 +269,7 @@ int vm_eval(VM_ENV *env)
             OPCODE(VMOP_REF_RES)   STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),vm_deq(env,VMRES_REFS,KEEP),FALSE),"resolving ref"); break;
             OPCODE(VMOP_REF_HRES)  STRY(vm_ref_hres(&env->res[VMRES_DICT],vm_deq(env,VMRES_REFS,KEEP)),"hierarchically resolving ref"); break;
             OPCODE(VMOP_REF_ITER)  STRY(REF_iterate(vm_deq(env,VMRES_REFS,KEEP),KEEP),"iterating ref"); break;
-            OPCODE(VMOP_DEREF)     STRY(!vm_stack_enq(env,REF_ltv(REF_HEAD(vm_deq(env,VMRES_REFS,KEEP)))),"dereferencing"); break;
+            OPCODE(VMOP_DEREF)     STRY(!vm_enq(env,VMRES_WIP,REF_ltv(REF_HEAD(vm_deq(env,VMRES_REFS,KEEP)))),"dereferencing"); break;
             OPCODE(VMOP_ASSIGN)    STRY(REF_assign(REF_HEAD(vm_deq(env,VMRES_REFS,KEEP)),vm_deq(env,VMRES_WIP,POP)),"assigning to ref"); break;
             OPCODE(VMOP_REMOVE)    STRY(REF_remove(REF_HEAD(vm_deq(env,VMRES_REFS,KEEP))),"removing from ref"); break;
             OPCODE(VMOP_THROW)     break;
@@ -301,7 +302,7 @@ int vm_eval(VM_ENV *env)
     vm_lambda_pop(env);
 
  done:
-    return env->state;
+    return status;
 }
 
 int vm_thread(LTV *env,LTV *code)

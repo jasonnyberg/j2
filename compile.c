@@ -118,8 +118,8 @@ int jit_edict(EMITTER emit,void *data,int len)
             } else {
                 for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
-                        case '@': EMIT(REF_MAKE);  EMIT(REF_INS); EMIT(ASSIGN);  break;
-                        case '/': EMIT(RES_STACK); EMIT(SDROP); break;
+                        case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); break;
+                        case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
                         case '!': EMIT(SPOP); EMIT(EDICT);   break;
                     }
                 }

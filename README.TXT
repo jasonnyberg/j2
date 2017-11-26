@@ -19,3 +19,31 @@ Forth, Lisp, Joy, Factor, Tcl, Mathematica, and other languages.
 This project is licensed under the GPLv3, including the conveniently
 included linux rbtree sources. dwarf.c is a completely mangled version
 of libdwarf's "simplereader.c"
+
+Current external requirements: (Any GNU/Linux distro worth its salt
+has these:
+
+* gcc, cmake
+* libdwarf, libelf (to read elf/dwarf debug section)
+* libdl (for dlopen, dlsym...)
+* libffi (to make dynamic function calls into C libraries)
+* libpthread (the VM will support multithreading)
+* rlwrap (REPL conveniences; not strictly required)
+
+To run: Assuming gcc, cmake, and libraries are not too ancient, simply
+run "make" to get into the REPL.
+
+The interpreter component of this system has recently been changed
+from an AST-traversing implementation to a decoupled JIT bytecode
+compiler/VM implementation, so I can use the same VM backend to
+support various front-end "hieraricical data" interpreters (XML, JSON,
+etc.).
+
+TODO:
+
+* resurrect "map", "cond", "throw/catch" operators
+* resurrect ffi calls
+* resurrect     input from file
+* sub-module loading
+* xml, json, yaml, swagger, mathematica-map JIT compilers
+* core libraries...

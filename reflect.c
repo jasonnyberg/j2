@@ -874,6 +874,7 @@ int ref_curate_module(LTV *module,int bootstrap)
                     LT_put(module,sym,TAIL,&type_info->ltv);
                     if (link) { // dynamically link globals
                         if (!type_info->dladdr) {
+                            type_info->flags|=TYPEF_DLADDR;
                             type_info->dladdr=dlsym(dlhandle,sym);
                             //LT_put(module,sym,HEAD,ref_create_cvar(&type_info->ltv,type_info->dladdr,NULL));
                         }
@@ -1083,6 +1084,18 @@ int ref_curate_module(LTV *module,int bootstrap)
 }
 
 
+void *cvar_addr(LTV *cvar)
+{
+    void *addr=cvar->data;
+    if (cvar->flags&LT_TYPE) {
+        TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) cvar;
+        if (til->flags&TYPEF_DLADDR)
+            addr=til->dladdr; // we'll let type definitions for extern symbols be used as a cvar
+    }
+    return addr;
+}
+
+
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
 {
     switch(uval->base.dutype) {
@@ -1143,7 +1156,7 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
 #define GETUVAL(member,type,uval)                                               \
     do {                                                                        \
         uval->member.dutype = type;                                             \
-        uval->member.val = *(typeof(uval->member.val) *) cvar->data;            \
+        uval->member.val = *(typeof(uval->member.val) *) cvar_addr(cvar);       \
     } while(0)
 
 #define GETUBITS(member,type,uval,bsize,boffset,issigned)                       \
@@ -1209,7 +1222,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
 }
 
 #define PUTUVAL(member,type,uval)                                               \
-    do { *(typeof(uval->member.val) *) cvar->data = uval->member.val; } while(0)
+    do { *(typeof(uval->member.val) *) cvar_addr(cvar) = uval->member.val; } while(0)
 
 #define PUTUBITS(member,type,uval,bsize,boffset,issigned)                       \
     do {                                                                        \

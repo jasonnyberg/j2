@@ -60,8 +60,8 @@ int vm_env_init(VM_ENV *env)
     int status=0;
     ZERO(*env);
     LTV_init(&env->lnk,"env0",-1,LT_NONE);
-    LTV_init(&env->stackref,"$",-1,LT_RO);
-    STRY(!REF_create(&env->stackref),"creating stackref");
+    env->stackref=LTV_init(NEW(LTV),"$",-1,LT_RO);
+    STRY(!REF_create(env->stackref),"creating stackref");
     for (int res=0;res<VMRES_COUNT;res++)
         CLL_init(&env->res[res]);
  done:
@@ -70,9 +70,8 @@ int vm_env_init(VM_ENV *env)
 
 int vm_env_release(VM_ENV *env)
 {
-    env->stackref.flags&=~LT_RO;
-    LTV_release(&env->stackref);
-    LTV_release(&env->lnk);
+    env->stackref->flags&=~LT_RO;
+    LTV_release(env->stackref);
     for (int res=0;res<VMRES_COUNT;res++) {
         CLL_release(&env->res[res],LTVR_release);
     }
@@ -135,8 +134,8 @@ int vm_ref_hres(CLL *cll,LTV *ref)
 int vm_stack_enq(VM_ENV *env,LTV *ltv)
 {
     int status=0;
-    STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),&env->stackref,TRUE),"resolving stack");
-    STRY(REF_assign(REF_HEAD(&env->stackref),ltv),"xfer wip to stack");
+    STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),env->stackref,TRUE),"resolving stack");
+    STRY(REF_assign(REF_HEAD(env->stackref),ltv),"xfer wip to stack");
  done:
     return status;
 }
@@ -145,10 +144,10 @@ int vm_stack_deq(VM_ENV *env,int pop)
 {
     int status=0;
     LTV *ltv=NULL;
-    STRY(vm_ref_hres(&env->res[VMRES_DICT],&env->stackref),"resolving stack");
-    STRY(!vm_enq(env,VMRES_WIP,REF_ltv(REF_HEAD(&env->stackref))),"xfer tos to wip");
+    STRY(vm_ref_hres(&env->res[VMRES_DICT],env->stackref),"resolving stack");
+    STRY(!vm_enq(env,VMRES_WIP,REF_ltv(REF_HEAD(env->stackref))),"xfer tos to wip");
     if (pop)
-        STRY(REF_remove(REF_HEAD(&env->stackref)),"removing tos");
+        STRY(REF_remove(REF_HEAD(env->stackref)),"removing tos");
  done:
     return status;
 }
@@ -167,10 +166,10 @@ int vm_context_pop(VM_ENV *env)
     LTV *context=NULL;
     LTI *oldstack=NULL,*newstack=NULL;
     STRY(!(context=vm_deq(env,VMRES_DICT,POP)),"popping context");
-    STRY(REF_resolve(context,&env->stackref,FALSE),"resolving old stack");
-    STRY(!(oldstack=REF_lti(REF_HEAD(&env->stackref))),"retreiving old stack");
-    STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),&env->stackref,FALSE),"resolving new stack");
-    STRY(!(newstack=REF_lti(REF_HEAD(&env->stackref))),"retreiving new stack");
+    STRY(REF_resolve(context,env->stackref,FALSE),"resolving old stack");
+    STRY(!(oldstack=REF_lti(REF_HEAD(env->stackref))),"retreiving old stack");
+    STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),env->stackref,FALSE),"resolving new stack");
+    STRY(!(newstack=REF_lti(REF_HEAD(env->stackref))),"retreiving new stack");
     CLL_MERGE(&newstack->ltvs,&oldstack->ltvs,HEAD);
     STRY(vm_stack_enq(env,context),"returning dict context to stack");
  done:
@@ -206,6 +205,18 @@ int builtin(VM_ENV *env)
     else if (!strncmp("mod",ref->data,ref->len))
         dump_module_simple("/tmp/module.dot",ref_mod);
     LTV_release(ref);
+}
+
+int vm_tos(VM_ENV *env)
+{
+    int status=0;
+    STRY(REF_resolve(vm_deq(env,VMRES_DICT,KEEP),env->stackref,TRUE),"resolving stack");
+    REF *ref=REF_HEAD(env->stackref);
+    LTI *lti=REF_lti(ref);
+    print_ltvs(stdout,CODE_RED,&lti->ltvs,CODE_RESET "\n",0);
+    graph_ltvs_to_file("/tmp/vm_tos.dot",&lti->ltvs,0,"TOS");
+ done:
+    return status;
 }
 
 
@@ -262,6 +273,7 @@ int vm_eval(VM_ENV *env)
 
             OPCODE(VMOP_LIT)       vm_enq(env,VMRES_WIP,decode_extended()); break;
             OPCODE(VMOP_BUILTIN)   builtin(env); break;
+            OPCODE(VMOP_TOS)       vm_tos(env); break;
             OPCODE(VMOP_YIELD)     goto done; // break out of loop, requeue env;
 
             OPCODE(VMOP_REF_MAKE)  STRY(!vm_enq(env,VMRES_REFS,REF_create(vm_deq(env,VMRES_WIP,POP))),"making a ref"); break;

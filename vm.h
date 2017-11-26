@@ -103,6 +103,7 @@ enum {
     VMOP_THROW,
     VMOP_CATCH,
     VMOP_MAP,
+    VMOP_TOS,
 
     VMOP_RDLOCK,
     VMOP_WRLOCK,
@@ -160,7 +161,7 @@ enum {
 typedef struct {
     LTV lnk;
     unsigned state;
-    LTV stackref;
+    LTV *stackref;
     CLL res[VMRES_COUNT];  // "resource" stack (code/stack/dict/refs)
     //LTV *reg[VMRES_COUNT]; // "registers"
 } VM_ENV;

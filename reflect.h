@@ -118,7 +118,8 @@ typedef enum {
     TYPEF_ADDR       = 1<<0xa,
     TYPEF_EXTERNAL   = 1<<0xb,
     TYPEF_VECTOR     = 1<<0xc,
-    TYPEF_SYMBOLIC   = 1<<0xd
+    TYPEF_SYMBOLIC   = 1<<0xd,
+    TYPEF_DLADDR     = 1<<0xe,
 } TYPE_FLAGS;
 
 

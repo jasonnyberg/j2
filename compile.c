@@ -183,6 +183,8 @@ LTV *compile(COMPILER compiler,void *data,int len)
 
 LTV *compile_ltv(COMPILER compiler,LTV *ltv)
 {
+    if (ltv->flags&LT_CVAR)
+        return ltv; // FFI
     LTV *bc=compile(compiler,ltv->data,ltv->len);
     LTV_release(ltv);
     return bc;

@@ -1531,8 +1531,7 @@ int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
     done:
         return status?NON_NULL:NULL;
     }
-    LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
-    LTI *children=LTI_resolve(cvar_type,TYPE_LIST,0);
+    LTI *children=LTI_resolve(lambda,TYPE_LIST,0);
     STRY(CLL_map(&children->ltvs,FWD,marshal_arg)!=NULL,"marshalling ffi args from environment");
  done:
     return status;
@@ -1548,16 +1547,16 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
     int status=0;
     int index=0;
     void **args=NULL;
-    LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
-    LTV *cif=LT_get(cvar_type,FFI_CIF,HEAD,KEEP);
-
+    LTV *cif=LT_get(lambda,FFI_CIF,HEAD,KEEP);
+    TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) lambda;
+    STRY(!(til->flags&TYPEF_DLADDR),"testing ffi call for DLADDR");
     int arity=CLL_len(coerced_args);
     args=calloc(sizeof(void *),arity);
 
     void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; return NULL; }
     CLL_map(coerced_args,FWD,index_arg);
 
-    ffi_call((ffi_cif *) cif->data,lambda->data,rval->data,args); // no return value
+    ffi_call(&(((FFI_CIF_LTV *) cif)->fc),til->dladdr,rval->data,args); // no return value
 
  done:
     return status;

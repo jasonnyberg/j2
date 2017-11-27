@@ -114,8 +114,6 @@ enum {
     VMOP_SPUSH,
     VMOP_SPOP,
     VMOP_SPEEK,
-    VMOP_SDUP,
-    VMOP_SDROP,
 
     VMOP_PUSH,
     VMOP_POP,

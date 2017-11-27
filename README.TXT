@@ -20,6 +20,8 @@ This project is licensed under the GPLv3, including the conveniently
 included linux rbtree sources. dwarf.c is a completely mangled version
 of libdwarf's "simplereader.c"
 
+#######################
+
 Current external requirements: (Any GNU/Linux distro worth its salt
 has these:
 
@@ -33,6 +35,26 @@ has these:
 To run: Assuming gcc, cmake, and libraries are not too ancient, simply
 run "make" to get into the REPL.
 
+#######################
+
+A simple reflective edict program:
+
+self.int #new @a [3]@a a self.square! #dump
+
+Breaddown:
+
+self.int          [reference the "int" type within the interpreter's own reflection data, put it on stack]/
+#new              [a builtin: allocate a new instance of whatever type is sitting on top of the stack]/
+@a                [name it "a"]/
+[3]               [push the (string) literal "3" onto the stack]/
+@a                [assign the symbol "a" (created above) with the value at the top of the stack]/
+a                 [put symbol "a"'s value onto the stack]/
+self.square       [put the symbol "self.square" (a native C function!) onto the stack]/
+!                 [evaluate the "code" on top of stack, whether it's edict or an ffi]/
+#dump             [a builtin: show internal structures; On the stack you'll see int 0x9, i.e. 3 squared]/
+
+#######################
+
 The interpreter component of this system has recently been changed
 from an AST-traversing implementation to a decoupled JIT bytecode
 compiler/VM implementation, so I can use the same VM backend to
@@ -41,8 +63,11 @@ etc.).
 
 TODO:
 
-* resurrect "map", "cond", "throw/catch" operators
+* external module (ultimately, compile-unit) loading
 * resurrect read from file
-* sub-module loading
-* xml, json, yaml, swagger, mathematica-map JIT compilers
+* resurrect "map", "throw/catch" operators
+* basic cvar/ffi type coersion
+* symbolic ffi parameters
+* caller/callee hooks (insert shims between operators and operands)
+* xml, json, yaml, swagger, lisp, mathematica-map JIT compilers
 * core libraries...

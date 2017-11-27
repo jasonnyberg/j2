@@ -358,6 +358,7 @@ int vm_init(int argc,char *argv[])
     LTV *dict=LTV_init(NEW(LTV),"DICT",-1,LT_RO|LT_NONE);
     LTV *envs=LTV_init(NEW(LTV),"ENVS",-1,LT_RO|LT_LIST);
     LT_put(dict,"ENVS",HEAD,envs);
+    LT_put(dict,"self",HEAD,ref_mod);
 
     VM_ENV *env=NEW(VM_ENV);
     vm_env_init(env); // initial env is dict-root+bootstrap-code

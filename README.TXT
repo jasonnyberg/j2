@@ -42,8 +42,7 @@ etc.).
 TODO:
 
 * resurrect "map", "cond", "throw/catch" operators
-* resurrect ffi calls
-* resurrect     input from file
+* resurrect read from file
 * sub-module loading
 * xml, json, yaml, swagger, mathematica-map JIT compilers
 * core libraries...

@@ -74,10 +74,10 @@ int jit_edict(EMITTER emit,void *data,int len)
         if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) { // special, non-ganging op
             jit_term("edict/block",tdata,tlen);
             switch (*tdata) {
-                case '<': EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
-                case '>': EMIT(RES_DICT); EMIT(POP); EMIT(SPUSH); break;
-                case '(': EMIT(SPOP); EMIT(RES_DICT); EMIT(PUSH); break;
-                case ')': EMIT(RES_DICT); EMIT(POP); EMIT(SPUSH); EMIT(SPEEK); EMIT(EDICT); break;
+                case '<': EMIT(ENFRAME); break;
+                case '>': EMIT(DEFRAME); break;
+                case '(': EMIT(ENFRAME); break;
+                case ')': EMIT(DEFRAME);EMIT(SPEEK); EMIT(EDICT); break;
                 case '{': break;
                 case '}': break;
             }

@@ -63,8 +63,8 @@ etc.).
 
 TODO:
 
-* external module (ultimately, compile-unit) loading
 * resurrect read from file
+* external module (ultimately, compile-unit) loading
 * resurrect "map", "throw/catch" operators
 * basic cvar/ffi type coersion
 * symbolic ffi parameters

@@ -87,11 +87,11 @@
 
 enum {
     VMRES_DICT,
-    VMRES_REFS,
     VMRES_CODE,
     VMRES_IP,
     VMRES_WIP,
     VMRES_STACK,
+    VMRES_EXC,
     VMRES_COUNT
     // REFS? EXCEPTIONS?
 };
@@ -102,6 +102,7 @@ enum {
 
     VMOP_BUILTIN,
     VMOP_REF_MAKE,
+    VMOP_REF_KILL,
     VMOP_REF_INS,
     VMOP_REF_RES,
     VMOP_REF_HRES,
@@ -111,9 +112,10 @@ enum {
     VMOP_APPEND,
     VMOP_COMPARE,
     VMOP_DEREF,
+    VMOP_MAP,
+
     VMOP_THROW,
     VMOP_CATCH,
-    VMOP_MAP,
 
     VMOP_ENFRAME,
     VMOP_DEFRAME,
@@ -145,23 +147,23 @@ enum {
     VMOP_MASSOC,
 
     VMOP_RES_DICT  = 0xff-VMRES_DICT,
-    VMOP_RES_REFS  = 0xff-VMRES_REFS,
     VMOP_RES_CODE  = 0xff-VMRES_CODE,
     VMOP_RES_IP    = 0xff-VMRES_IP,
     VMOP_RES_WIP   = 0xff-VMRES_WIP,
     VMOP_RES_STACK = 0xff-VMRES_STACK,
+    VMOP_RES_EXC   = 0xff-VMRES_EXC,
 };
 
 enum {
-    ENV_RUNNING=0,
-    ENV_EXHAUSTED,
-    ENV_EXCEPTION,
+    ENV_NORMAL=0,
+    ENV_SKIPPING,
     ENV_BROKEN
 };
 
 typedef struct {
     LTV lnk;
     unsigned state;
+    unsigned skipdepth;
     CLL res[VMRES_COUNT];  // "resource" stack (code/stack/dict/refs)
 } VM_ENV;
 

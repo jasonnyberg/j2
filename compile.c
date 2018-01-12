@@ -72,7 +72,7 @@ int jit_edict(EMITTER emit,void *data,int len)
 
     int compile_atom() {
         if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) { // special, non-ganging op
-            jit_term("edict/block",tdata,tlen);
+            //jit_term("edict/block",tdata,tlen);
             switch (*tdata) {
                 case '<': EMIT(ENFRAME); break;
                 case '>': EMIT(DEFRAME); break;
@@ -91,8 +91,7 @@ int jit_edict(EMITTER emit,void *data,int len)
             // ideally, anonymous items are treated like any other named item, w/name "$" (but merged up as frames are closed.)
 
             if (ref_len) {
-                emit(&((VM_CMD) {VMOP_LIT,ref_len,LT_DUP,tdata}));
-                EMIT(REF_MAKE);
+                emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
                 if (!ops_len) {
                     EMIT(REF_HRES);
                     EMIT(DEREF);
@@ -120,7 +119,9 @@ int jit_edict(EMITTER emit,void *data,int len)
                         case '#': EMIT(TOS); break;
                         case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
                         case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
-                        case '!': EMIT(SPOP); EMIT(EDICT);   break;
+                        case '!': EMIT(SPOP); EMIT(EDICT); break;
+                        case '&': EMIT(THROW); break;
+                        case '|': EMIT(CATCH); break;
                     }
                 }
             }

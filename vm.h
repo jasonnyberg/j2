@@ -99,6 +99,7 @@ enum {
 enum {
     VMOP_NOP=0,
     VMOP_LIT,
+    VMOP_REF,
 
     VMOP_BUILTIN,
     VMOP_REF_MAKE,
@@ -155,9 +156,10 @@ enum {
 };
 
 enum {
-    ENV_NORMAL=0,
-    ENV_SKIPPING,
-    ENV_BROKEN
+    VM_ERROR    = 0x01,
+    VM_BYPASS   = 0x02,
+    VM_THROWING = 0x04,
+    VM_SKIPPING = 0x10,
 };
 
 typedef struct {

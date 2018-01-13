@@ -106,7 +106,8 @@ enum {
     VMOP_REF_KILL,
     VMOP_REF_INS,
     VMOP_REF_RES,
-    VMOP_REF_HRES,
+    VMOP_REF_ERES, // HRES but not skipped while throwing (for catch)
+    VMOP_REF_HRES, // ERES but skipped while throwing
     VMOP_REF_ITER,
     VMOP_ASSIGN,
     VMOP_REMOVE,

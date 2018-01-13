@@ -105,7 +105,7 @@ int jit_edict(EMITTER emit,void *data,int len)
                             case '+': EMIT(REF_HRES); EMIT(APPEND);  break;
                             case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
                             case '&': EMIT(REF_HRES); EMIT(THROW);   break;
-                            case '|': EMIT(REF_HRES); EMIT(CATCH);   break;
+                            case '|': EMIT(REF_ERES); EMIT(CATCH);   break;
                             case '!': EMIT(REF_HRES); EMIT(EDICT);   break;
                             case '%': EMIT(REF_HRES); EMIT(MAP);     break;
                         }

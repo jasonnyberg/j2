@@ -689,6 +689,11 @@ LTV *REF_root(REF *ref) { return ref?LTV_peek(&ref->root,HEAD):NULL; }
 
 REF *REF_init(REF *ref,char *data,int len)
 {
+    int quote=(len>1 && data[0]=='\'' && data[len-1]=='\'');
+    if (quote) {
+        data+=1;
+        len-=2;
+    }
     int rev=data[0]=='-';
     if (len-rev==0)
         return NULL;
@@ -696,7 +701,7 @@ REF *REF_init(REF *ref,char *data,int len)
     if (ref && CLL_init(&ref->lnk))
     {
         CLL_init(&ref->keys);
-        LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+rev,len-rev,LT_DUP|LT_ESC),HEAD);
+        LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+rev,len-rev,LT_DUP|(quote?LT_NOWC:LT_ESC)),HEAD);
         CLL_init(&ref->root);
         ref->lti=NULL;
         ref->ltvr=NULL;
@@ -763,15 +768,16 @@ LTV *REF_create(LTV *refs)
 
     int advance(int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; }
 
-    int name() { return series(data,len,NULL,".[",NULL); }
-    int val()  { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
-    int sep()  { return series(data,len,".",NULL,NULL);  }
+    int quote() { return series(data,len,NULL,NULL,"''"); }
+    int name()  { return series(data,len,NULL,".[",NULL); }
+    int val()   { return series(data,len,NULL,NULL,"[]"); } // val=data+1,len-2!!!
+    int sep()   { return series(data,len,".",NULL,NULL);  }
 
     unsigned tlen,striplen;
     REF *ref=NULL;
 
     while (len) { // parse ref keys
-        STRY(!(tlen=name()),"parsing ref name"); // mandatory
+        STRY(!((tlen=quote()) || (tlen=name())),"parsing ref name"); // mandatory
         STRY(!(ref=REF_init(NEW(REF),data,tlen)),"allocating name ref");
         STRY(!CLL_put(cll,&ref->lnk,HEAD),"enqueing name ref");
         advance(tlen);

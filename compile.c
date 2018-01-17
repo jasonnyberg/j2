@@ -62,76 +62,88 @@ int jit_edict(EMITTER emit,void *data,int len)
         return advance(tlen);
     }
 
-    int compile_lit() {
+    int compile_block() {
         if ((tlen=series(tdata,len,NULL,NULL,"[]"))) {
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
             EMIT(SPUSH);
+        } else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
+            EMIT(NULL);
+            EMIT(ENFRAME);
+            EMIT(SPOP);
+            EMIT(EDICT);
+            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
+            EMIT(EDICT);
+            EMIT(YIELD);
+            EMIT(DEFRAME);
+        } else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
+            EMIT(ENFRAME);
+            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
+            EMIT(EDICT);
+            EMIT(YIELD);
+            EMIT(DEFRAME);
+        } else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) { // just a block (for now)
+            EMIT(NULL);
+            EMIT(ENFRAME);
+            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
+            EMIT(EDICT);
+            EMIT(YIELD);
+            EMIT(DEFRAME);
         }
         return advance(tlen);
     }
 
     int compile_atom() {
-        if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) { // special, non-ganging op
-            //jit_term("edict/block",tdata,tlen);
-            switch (*tdata) {
-                case '<': EMIT(ENFRAME); break;
-                case '>': EMIT(DEFRAME); break;
-                case '(': EMIT(ENFRAME); break;
-                case ')': EMIT(DEFRAME);EMIT(SPEEK); EMIT(EDICT); break;
-                case '{': break;
-                case '}': break;
-            }
-            advance(tlen);
-        } else {
-            char *ops_data=tdata;
-            int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
-            advance(ops_len);
-            int ref_len=series(tdata,len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS,"[]");
+        char *ops_data=tdata;
+        int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
+        advance(ops_len);
+        int ref_len=0,tlen=0;
+        while ((tlen=series(tdata+ref_len,len-ref_len,NULL,NULL,"''")) || // quoted ref component
+               (tlen=series(tdata+ref_len,len-ref_len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS "'","[]"))) // unquoted ref
+                ref_len+=tlen;
 
-            // ideally, anonymous items are treated like any other named item, w/name "$" (but merged up as frames are closed.)
+        // ideally, anonymous items are treated like any other named item, w/name "$" (but merged up as frames are closed.)
 
-            if (ref_len) {
+        if (ref_len) {
                 emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
-                if (!ops_len) {
+            if (!ops_len) {
                     EMIT(REF_HRES);
-                    EMIT(DEREF);
-                    EMIT(SPUSH);
-                } else {
-                    for (int i=0;i<ops_len;i++) {
-                        switch (ops_data[i]) {
-                            case '#': EMIT(BUILTIN); break;
-                            case '@': EMIT(SPOP); EMIT(REF_INS);  EMIT(ASSIGN);  break;
+                EMIT(DEREF);
+                EMIT(SPUSH);
+            } else {
+                for (int i=0;i<ops_len;i++) {
+                    switch (ops_data[i]) {
+                        case '#': EMIT(BUILTIN); break;
+                        case '@': EMIT(SPOP); EMIT(REF_INS);  EMIT(ASSIGN);  break;
                             case '/': EMIT(REF_HRES); EMIT(REMOVE);  break;
                             case '+': EMIT(REF_HRES); EMIT(APPEND);  break;
                             case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
                             case '&': EMIT(REF_HRES); EMIT(THROW);   break;
                             case '|': EMIT(REF_ERES); EMIT(CATCH);   break;
-                            case '!': EMIT(REF_HRES); EMIT(EDICT);   break;
+                            case '!': EMIT(REF_HRES); EMIT(EDICT); EMIT(YIELD); break;
                             case '%': EMIT(REF_HRES); EMIT(MAP);     break;
-                        }
-                    }
-                }
-                EMIT(REF_KILL);
-                advance(ref_len);
-            } else {
-                for (int i=0;i<ops_len;i++) {
-                    switch (ops_data[i]) {
-                        case '#': EMIT(TOS); break;
-                        case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
-                        case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
-                        case '!': EMIT(SPOP); EMIT(EDICT); break;
-                        case '&': EMIT(THROW); break;
-                        case '|': EMIT(CATCH); break;
                     }
                 }
             }
-            tlen=ops_len+ref_len;
+            EMIT(REF_KILL);
+            advance(ref_len);
+        } else {
+            for (int i=0;i<ops_len;i++) {
+                switch (ops_data[i]) {
+                    case '#': EMIT(TOS); break;
+                    case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
+                    case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
+                    case '!': EMIT(SPOP); EMIT(EDICT); EMIT(YIELD); break;
+                    case '&': EMIT(THROW); break;
+                    case '|': EMIT(CATCH); break;
+                }
+            }
         }
+        tlen=ops_len+ref_len;
         return tlen;
     }
 
     STRY(!tdata,"testing compiler source");
-    while (len && (compile_ws() || compile_lit() || compile_atom()));
+    while (len && (compile_ws() || compile_block() || compile_atom()));
 
  done:
     return status;

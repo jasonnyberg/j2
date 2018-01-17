@@ -206,10 +206,10 @@ int vm_eval(VM_ENV *env)
         CLL args; CLL_init(&args); // list of ffi arguments
         LTV *rval=NULL;
         STRY(!(rval=ref_rval_create(lambda)),"creating ffi rval ltv");
-        int marshal(char *name,LTV *type) {
+        int marshaller(char *name,LTV *type) {
             int status=0;
             LTV *arg=NULL, *coerced=NULL;
-            STRY(!(arg=stack_deq(POP)),"popping ffi arg from stack"); // FIXME: attempt to resolve by name first
+            STRY(!(arg=stack_deq(POP)),"popping ffi arg (%s) from stack",name); // FIXME: attempt to resolve by name first
             STRY(!(coerced=ref_coerce(arg,type)),"coercing ffi arg");
             LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
             LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
@@ -217,7 +217,7 @@ int vm_eval(VM_ENV *env)
         done:
             return status;
         }
-        STRY(ref_args_marshal(lambda,marshal),"marshalling ffi args"); // pre-
+        STRY(ref_args_marshal(lambda,marshaller),"marshalling ffi args"); // pre-
         STRY(ref_ffi_call(lambda,rval,&args),"calling ffi");
         STRY(!stack_enq(rval),"enqueing rval onto stack");
         CLL_release(&args,LTVR_release);
@@ -234,22 +234,6 @@ int vm_eval(VM_ENV *env)
     done:
         if (type)
             LTV_release(type);
-        return status;
-    }
-
-    int builtin() {
-        int status=0;
-        LTV *tmp=NULL;
-        printf("builtin:\n");
-        if (!strncmp("dump",ref->data,ref->len))
-            dump();
-        else if (!strncmp("ref",ref->data,ref->len))
-            tmp=stack_enq(ref_mod);
-        else if (!strncmp("mod",ref->data,ref->len))
-            dump_module_simple("/tmp/module.dot",ref_mod);
-        else if (!strncmp("new",ref->data,ref->len))
-            STRY(cvar(env),"allocating cvar");
-    done:
         return status;
     }
 
@@ -302,6 +286,22 @@ int vm_eval(VM_ENV *env)
         return status;
     }
 
+    int builtin() {
+        int status=0;
+        LTV *tmp=NULL;
+        printf("builtin:\n");
+        if (!strncmp("dump",ref->data,ref->len))
+            dump();
+        else if (!strncmp("ref",ref->data,ref->len))
+            tmp=stack_enq(ref_mod);
+        else if (!strncmp("mod",ref->data,ref->len))
+            dump_module_simple("/tmp/module.dot",ref_mod);
+        else if (!strncmp("new",ref->data,ref->len))
+            STRY(cvar(env),"allocating cvar");
+    done:
+        return status;
+    }
+
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
@@ -331,7 +331,7 @@ int vm_eval(VM_ENV *env)
 
 #define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x\n" CODE_RESET,(unsigned char) vmop);
 
-        while ((*ip)<len && data[*ip]) {
+        while ((*ip)<len) {
             op=data[(*ip)++];
             if (env->state) {
                 switch(op) {
@@ -345,8 +345,10 @@ int vm_eval(VM_ENV *env)
                 }
             } else {
                 switch(op) {
+                    OPCODE(VMOP_NOP)       continue;
+
                     OPCODE(VMOP_REF)       TRYCATCH(!(ref=REF_create(decode_extended())),op,bc_exc,"decoding a ref"); continue;
-                    OPCODE(VMOP_REF_ERES) TRYCATCH(ref_hres(&env->res[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
+                    OPCODE(VMOP_REF_ERES)  continue; // unneeded when not in exception mode
                     OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(&env->res[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
                     OPCODE(VMOP_REF_KILL)  LTV_release(ref); ref=NULL; continue;
                     OPCODE(VMOP_ENFRAME)   TRYCATCH(context_push(),op,bc_exc,"pushing context"); continue;
@@ -391,13 +393,13 @@ int vm_eval(VM_ENV *env)
                     OPCODE(VMOP_WRLOCK)    pthread_rwlock_wrlock(&vm_rwlock); continue;
                     OPCODE(VMOP_UNLOCK)    pthread_rwlock_unlock(&vm_rwlock); continue;
 
-                    OPCODE(VMOP_EDICT)     lambda_push(compile_ltv(compilers[FORMAT_edict],  deq(VMRES_WIP,POP))); goto done;
-                    OPCODE(VMOP_XML)       lambda_push(compile_ltv(compilers[FORMAT_xml],    deq(VMRES_WIP,POP))); goto done;
-                    OPCODE(VMOP_JSON)      lambda_push(compile_ltv(compilers[FORMAT_json],   deq(VMRES_WIP,POP))); goto done;
-                    OPCODE(VMOP_YAML)      lambda_push(compile_ltv(compilers[FORMAT_yaml],   deq(VMRES_WIP,POP))); goto done;
-                    OPCODE(VMOP_SWAGGER)   lambda_push(compile_ltv(compilers[FORMAT_swagger],deq(VMRES_WIP,POP))); goto done;
-                    OPCODE(VMOP_LISP)      lambda_push(compile_ltv(compilers[FORMAT_lisp],   deq(VMRES_WIP,POP))); goto done;
-                    OPCODE(VMOP_MASSOC)    lambda_push(compile_ltv(compilers[FORMAT_massoc], deq(VMRES_WIP,POP))); goto done;
+                    OPCODE(VMOP_EDICT)     lambda_push(compile_ltv(compilers[FORMAT_edict],  deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_XML)       lambda_push(compile_ltv(compilers[FORMAT_xml],    deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_JSON)      lambda_push(compile_ltv(compilers[FORMAT_json],   deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_YAML)      lambda_push(compile_ltv(compilers[FORMAT_yaml],   deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_SWAGGER)   lambda_push(compile_ltv(compilers[FORMAT_swagger],deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_LISP)      lambda_push(compile_ltv(compilers[FORMAT_lisp],   deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_MASSOC)    lambda_push(compile_ltv(compilers[FORMAT_massoc], deq(VMRES_WIP,POP))); continue;
                     OPCODE(VMOP_YIELD)     goto done; // continue out of loop, requeue env;
                     /*
                       case VMOP_REF_ITER_KEEP: REF_iterate(LTV_list(ref),KEEP); continue;
@@ -465,7 +467,7 @@ int vm_init(int argc,char *argv[])
     do {
         TRYCATCH((data=balanced_readline(file,&len))==NULL,0,close_file,"reading balanced line from file");
         TRYCATCH(!(ltv=compile(compilers[format],data,len)),TRY_ERR,free_data,"compiling balanced line");
-        print_ltv(stdout,"bytecodes: ",ltv,"\n",0);
+        print_ltv(stdout,"bytecodes:\n",ltv,"\n",0);
         TRYCATCH(vm_env_enq(envs,env,ltv),TRY_ERR,free_data,"pushing env/lambda");
         vm_thunk(envs);
     free_data:

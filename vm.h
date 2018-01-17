@@ -119,6 +119,8 @@ enum {
     VMOP_THROW,
     VMOP_CATCH,
 
+    VMOP_NULL,
+
     VMOP_ENFRAME,
     VMOP_DEFRAME,
 

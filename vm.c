@@ -50,7 +50,7 @@ static void init(void)
     sem_init(&vm_process_escapement,0,0); // blocks on first wait
 }
 
-char *res_name[] = { "dict","code","ip","wip","stack","exc" };
+char *res_name[] = { "dict","code","wip","stack","exc" };
 
 LTV *vm_enq(VM_ENV *env,int res,LTV *tos) { return LTV_put(&env->res[res],tos,HEAD,NULL); }
 LTV *vm_deq(VM_ENV *env,int res,int pop) { return LTV_get(&env->res[res],pop,HEAD,NULL,NULL); }
@@ -78,13 +78,20 @@ int vm_env_release(VM_ENV *env)
     }
 }
 
-int vm_env_enq(LTV *envs,VM_ENV *env,LTV *lambda)
+int vm_env_lambda(VM_ENV *env,LTV *lambda)
 {
     int status=0;
     if (lambda) {
-        STRY(!vm_enq(env,VMRES_CODE,lambda),"initializing code");
-        STRY(!vm_enq(env,VMRES_IP,LTV_ZERO),"pushing IP");
+        STRY(!vm_enq(env,VMRES_CODE,lambda),"pushing code");
+        STRY(!LT_put(lambda,"ip",HEAD,LTV_ZERO),"pushing IP");
     }
+ done:
+    return status;
+}
+
+int vm_env_enq(LTV *envs,VM_ENV *env)
+{
+    int status=0;
     STRY(!LTV_enq(LTV_list(envs),&env->lnk,TAIL),"enqueing process env");
     sem_post(&vm_process_escapement);
  done:
@@ -101,7 +108,7 @@ void *vm_thunk(void *udata)
 {
     LTV *envs=(LTV *) udata;
     VM_ENV *env=NULL;
-    while ((env=vm_env_deq(envs)) && !vm_eval(env) && !vm_env_enq(envs,env,NULL));
+    while ((env=vm_env_deq(envs)) && !vm_eval(env) && !vm_env_enq(envs,env));
  done:
     return env && env->state?NON_NULL:NULL;
 }
@@ -126,8 +133,8 @@ int vm_eval(VM_ENV *env)
     LTV *ref=NULL;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    LTV *enq(int res,LTV *tos) { return vm_enq(env,res,tos); }
-    LTV *deq(int res,int pop) { return vm_deq(env,res,pop); }
+    LTV *enq(int res,LTV *tos) { return LTV_put(&env->res[res],tos,HEAD,NULL); }
+    LTV *deq(int res,int pop) { return LTV_get(&env->res[res],pop,HEAD,NULL,NULL); }
 
     LTV *stack_enq(LTV *ltv) { return LTV_enq(LTV_list(deq(VMRES_STACK,KEEP)),ltv,HEAD); }
     LTV *stack_deq(int pop) {
@@ -151,22 +158,6 @@ int vm_eval(VM_ENV *env)
         CLL_MERGE(LTV_list(newstack),LTV_list(oldstack),HEAD);
         LTV_release(oldstack);
         STRY(!stack_enq(deq(VMRES_DICT,POP)),"returning dict context to stack");
-    done:
-        return status;
-    }
-
-    int lambda_push(LTV *ltv) {
-        int status=0;
-        STRY(!enq(VMRES_CODE,ltv),"pushing code");
-        STRY(!enq(VMRES_IP,LTV_ZERO),"pushing IP");
-    done:
-        return status;
-    }
-
-    int lambda_pop() {
-        int status=0;
-        LTV_release(deq(VMRES_CODE,POP));
-        LTV_release(deq(VMRES_IP,POP));
     done:
         return status;
     }
@@ -289,7 +280,6 @@ int vm_eval(VM_ENV *env)
     int builtin() {
         int status=0;
         LTV *tmp=NULL;
-        printf("builtin:\n");
         if (!strncmp("dump",ref->data,ref->len))
             dump();
         else if (!strncmp("ref",ref->data,ref->len))
@@ -306,14 +296,20 @@ int vm_eval(VM_ENV *env)
 
 
     LTV *code_ltv=NULL,*ip_ltv=NULL;
+    LTVR *code_ltvr=NULL;
+
+    LTV *get_code() { return LTV_get(&env->res[VMRES_CODE],KEEP,HEAD,NULL,&code_ltvr); }
+    void release_code() { if (code_ltvr) LTVR_release(&code_ltvr->lnk); }
+
     STRY(!env,"validating environment");
-    if (!(code_ltv=deq(VMRES_CODE,KEEP)) || !(ip_ltv=deq(VMRES_IP,KEEP))) {
+    if (!(code_ltv=get_code()) || !(ip_ltv=LT_get(code_ltv,"ip",HEAD,KEEP))) {
         status=!0;
         goto done;
     }
 
     if (code_ltv->flags&LT_CVAR) {
         STRY(ffi(code_ltv),"executing ffi");
+        release_code();
     } else {
         char *data=(char *) code_ltv->data;
         int len=code_ltv->len;
@@ -345,8 +341,6 @@ int vm_eval(VM_ENV *env)
                 }
             } else {
                 switch(op) {
-                    OPCODE(VMOP_NOP)       continue;
-
                     OPCODE(VMOP_REF)       TRYCATCH(!(ref=REF_create(decode_extended())),op,bc_exc,"decoding a ref"); continue;
                     OPCODE(VMOP_REF_ERES)  continue; // unneeded when not in exception mode
                     OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(&env->res[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
@@ -359,10 +353,11 @@ int vm_eval(VM_ENV *env)
 
                     OPCODE(VMOP_RES_DICT)  imm=VMRES_DICT;    continue;
                     OPCODE(VMOP_RES_CODE)  imm=VMRES_CODE;    continue;
-                    OPCODE(VMOP_RES_IP)    imm=VMRES_IP;      continue;
                     OPCODE(VMOP_RES_WIP)   imm=VMRES_WIP;     continue;
                     OPCODE(VMOP_RES_STACK) imm=VMRES_STACK;   continue;
                     OPCODE(VMOP_RES_EXC)   imm=VMRES_EXC;     continue;
+
+                    OPCODE(VMOP_NULL_ITEM) TRYCATCH(!stack_enq(LTV_NULL),op,bc_exc,"SPUSH'ing NULL");  continue;
 
                     OPCODE(VMOP_SPUSH)     TRYCATCH(!stack_enq(deq(VMRES_WIP,POP)),op,bc_exc,"SPUSH'ing");  continue;
                     OPCODE(VMOP_SPOP)      TRYCATCH(!enq(VMRES_WIP,stack_deq(POP)),op,bc_exc,"SPOP'ing");   continue;
@@ -385,7 +380,6 @@ int vm_eval(VM_ENV *env)
                     OPCODE(VMOP_DEREF)     TRYCATCH(!enq(VMRES_WIP,REF_ltv(REF_HEAD(ref))),op,bc_exc,"dereferencing");          continue;
                     OPCODE(VMOP_ASSIGN)    TRYCATCH(REF_assign(REF_HEAD(ref),deq(VMRES_WIP,POP)),op,bc_exc,"assigning to ref"); continue;
                     OPCODE(VMOP_REMOVE)    TRYCATCH(REF_remove(REF_HEAD(ref)),op,bc_exc,"removing from ref");                   continue;
-                    OPCODE(VMOP_MAP)       continue;
                     OPCODE(VMOP_APPEND)    continue;
                     OPCODE(VMOP_COMPARE)   continue;
 
@@ -393,14 +387,42 @@ int vm_eval(VM_ENV *env)
                     OPCODE(VMOP_WRLOCK)    pthread_rwlock_wrlock(&vm_rwlock); continue;
                     OPCODE(VMOP_UNLOCK)    pthread_rwlock_unlock(&vm_rwlock); continue;
 
-                    OPCODE(VMOP_EDICT)     lambda_push(compile_ltv(compilers[FORMAT_edict],  deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_XML)       lambda_push(compile_ltv(compilers[FORMAT_xml],    deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_JSON)      lambda_push(compile_ltv(compilers[FORMAT_json],   deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_YAML)      lambda_push(compile_ltv(compilers[FORMAT_yaml],   deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_SWAGGER)   lambda_push(compile_ltv(compilers[FORMAT_swagger],deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_LISP)      lambda_push(compile_ltv(compilers[FORMAT_lisp],   deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_MASSOC)    lambda_push(compile_ltv(compilers[FORMAT_massoc], deq(VMRES_WIP,POP))); continue;
-                    OPCODE(VMOP_YIELD)     goto done; // continue out of loop, requeue env;
+                    OPCODE(VMOP_EDICT)     vm_env_lambda(env,compile_ltv(compilers[FORMAT_edict],  deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_XML)       vm_env_lambda(env,compile_ltv(compilers[FORMAT_xml],    deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_JSON)      vm_env_lambda(env,compile_ltv(compilers[FORMAT_json],   deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_YAML)      vm_env_lambda(env,compile_ltv(compilers[FORMAT_yaml],   deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_SWAGGER)   vm_env_lambda(env,compile_ltv(compilers[FORMAT_swagger],deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_LISP)      vm_env_lambda(env,compile_ltv(compilers[FORMAT_lisp],   deq(VMRES_WIP,POP))); continue;
+                    OPCODE(VMOP_MASSOC)    vm_env_lambda(env,compile_ltv(compilers[FORMAT_massoc], deq(VMRES_WIP,POP))); continue;
+
+                    OPCODE(VMOP_YIELD)     goto yield;
+
+                    OPCODE(VMOP_MAP_MAKE)
+                        if (REF_ltv(REF_HEAD(ref)))
+                        {
+                            LTV *map=NULL,*lambda=NULL;
+                            VM_CMD map_bytecodes[] = {{VMOP_MAP}};
+                            map=compile(compilers[FORMAT_asm],map_bytecodes,1); // create wrapper
+                            lambda=compile_ltv(compilers[FORMAT_edict],deq(VMRES_WIP,POP)); // compile lambda
+                            LT_put(map,"lambda",HEAD,lambda); // install lambda
+                            LT_put(map,"ref",HEAD,ref); // install_ref
+                            vm_env_lambda(env,map); // install wrapper
+                        }
+                    continue;
+
+                    OPCODE(VMOP_MAP)
+                    {
+                        ref=LT_get(code_ltv,"ref",HEAD,KEEP);
+                        LTV *lambda=NULL,*ltv=NULL;
+                        lambda=LT_get(code_ltv,"lambda",HEAD,KEEP);
+                        ltv=REF_ltv(REF_HEAD(ref));
+                        if (!REF_iterate(ref,KEEP) && REF_ltv(REF_HEAD(ref))) // will there be a next round?
+                            vm_env_lambda(env,code_ltv); // if so, requeue wrapper
+                        stack_enq(ltv);
+                        vm_env_lambda(env,lambda);
+                        goto yield; // yield
+                    }
+
                     /*
                       case VMOP_REF_ITER_KEEP: REF_iterate(LTV_list(ref),KEEP); continue;
                       case VMOP_REF_ITER_POP: REF_iterate(LTV_list(ref),POP); continue;
@@ -417,10 +439,13 @@ int vm_eval(VM_ENV *env)
             status=0;
             throw(LTV_NULL);
         }
+
+    yield:
+        if ((*ip)>=len)
+            release_code();
     }
 
     env->state&=~VM_BYPASS;
-    lambda_pop(env);
 
  done:
     return status;
@@ -468,7 +493,8 @@ int vm_init(int argc,char *argv[])
         TRYCATCH((data=balanced_readline(file,&len))==NULL,0,close_file,"reading balanced line from file");
         TRYCATCH(!(ltv=compile(compilers[format],data,len)),TRY_ERR,free_data,"compiling balanced line");
         print_ltv(stdout,"bytecodes:\n",ltv,"\n",0);
-        TRYCATCH(vm_env_enq(envs,env,ltv),TRY_ERR,free_data,"pushing env/lambda");
+        TRYCATCH(vm_env_lambda(env,ltv),TRY_ERR,free_data,"pushing lambda");
+        TRYCATCH(vm_env_enq(envs,env),TRY_ERR,free_data,"pushing env");
         vm_thunk(envs);
     free_data:
         DELETE(data);

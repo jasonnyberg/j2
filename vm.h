@@ -88,7 +88,6 @@
 enum {
     VMRES_DICT,
     VMRES_CODE,
-    VMRES_IP,
     VMRES_WIP,
     VMRES_STACK,
     VMRES_EXC,
@@ -114,12 +113,14 @@ enum {
     VMOP_APPEND,
     VMOP_COMPARE,
     VMOP_DEREF,
+
+    VMOP_MAP_MAKE,
     VMOP_MAP,
 
     VMOP_THROW,
     VMOP_CATCH,
 
-    VMOP_NULL,
+    VMOP_NULL_ITEM,
 
     VMOP_ENFRAME,
     VMOP_DEFRAME,
@@ -152,7 +153,6 @@ enum {
 
     VMOP_RES_DICT  = 0xff-VMRES_DICT,
     VMOP_RES_CODE  = 0xff-VMRES_CODE,
-    VMOP_RES_IP    = 0xff-VMRES_IP,
     VMOP_RES_WIP   = 0xff-VMRES_WIP,
     VMOP_RES_STACK = 0xff-VMRES_STACK,
     VMOP_RES_EXC   = 0xff-VMRES_EXC,

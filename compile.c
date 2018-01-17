@@ -39,12 +39,11 @@ int jit_asm(EMITTER emit,void *data,int len)
     void *end=data+len;
     VM_CMD *cmd=data;
     for (int i=0;(void *)(cmd+i)<end && cmd[i].op;i++) {
-
         emit(cmd+i);
     }
 }
 
-#define EDICT_OPS "|&!%#@/+="
+#define EDICT_OPS "|&!#@/+="
 #define EDICT_MONO_OPS "()<>{}"
 
 #define EMIT(bc) emit(&((VM_CMD) {VMOP_ ## bc}))
@@ -67,7 +66,7 @@ int jit_edict(EMITTER emit,void *data,int len)
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
             EMIT(SPUSH);
         } else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
-            EMIT(NULL);
+            EMIT(NULL_ITEM);
             EMIT(ENFRAME);
             EMIT(SPOP);
             EMIT(EDICT);
@@ -82,7 +81,7 @@ int jit_edict(EMITTER emit,void *data,int len)
             EMIT(YIELD);
             EMIT(DEFRAME);
         } else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) { // just a block (for now)
-            EMIT(NULL);
+            EMIT(NULL_ITEM);
             EMIT(ENFRAME);
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
             EMIT(EDICT);
@@ -104,23 +103,22 @@ int jit_edict(EMITTER emit,void *data,int len)
         // ideally, anonymous items are treated like any other named item, w/name "$" (but merged up as frames are closed.)
 
         if (ref_len) {
-                emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
+            emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
             if (!ops_len) {
-                    EMIT(REF_HRES);
+                EMIT(REF_HRES);
                 EMIT(DEREF);
                 EMIT(SPUSH);
             } else {
                 for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
                         case '#': EMIT(BUILTIN); break;
-                        case '@': EMIT(SPOP); EMIT(REF_INS);  EMIT(ASSIGN);  break;
-                            case '/': EMIT(REF_HRES); EMIT(REMOVE);  break;
-                            case '+': EMIT(REF_HRES); EMIT(APPEND);  break;
-                            case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
-                            case '&': EMIT(REF_HRES); EMIT(THROW);   break;
-                            case '|': EMIT(REF_ERES); EMIT(CATCH);   break;
-                            case '!': EMIT(REF_HRES); EMIT(EDICT); EMIT(YIELD); break;
-                            case '%': EMIT(REF_HRES); EMIT(MAP);     break;
+                        case '@': EMIT(SPOP); EMIT(REF_INS); EMIT(ASSIGN); break;
+                        case '/': EMIT(REF_HRES); EMIT(REMOVE); break;
+                        case '+': EMIT(REF_HRES); EMIT(APPEND); break;
+                        case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
+                        case '&': EMIT(REF_HRES); EMIT(THROW); break;
+                        case '|': EMIT(REF_ERES); EMIT(CATCH); break;
+                        case '!': EMIT(REF_HRES); EMIT(SPOP); EMIT(MAP_MAKE); EMIT(YIELD); break;
                     }
                 }
             }

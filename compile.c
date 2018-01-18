@@ -43,7 +43,7 @@ int jit_asm(EMITTER emit,void *data,int len)
     }
 }
 
-#define EDICT_OPS "|&!#@/+="
+#define EDICT_OPS "|&!%#@/+="
 #define EDICT_MONO_OPS "()<>{}"
 
 #define EMIT(bc) emit(&((VM_CMD) {VMOP_ ## bc}))
@@ -118,7 +118,8 @@ int jit_edict(EMITTER emit,void *data,int len)
                         case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
                         case '&': EMIT(REF_HRES); EMIT(THROW); break;
                         case '|': EMIT(REF_ERES); EMIT(CATCH); break;
-                        case '!': EMIT(REF_HRES); EMIT(SPOP); EMIT(MAP_MAKE); EMIT(YIELD); break;
+                        case '!': EMIT(REF_HRES); EMIT(SPOP); EMIT(MMAP_KEEP); EMIT(YIELD); break;
+                        case '%': EMIT(REF_HRES); EMIT(SPOP); EMIT(MMAP_POP); EMIT(YIELD); break;
                     }
                 }
             }
@@ -171,18 +172,19 @@ LTV *compile(COMPILER compiler,void *data,int len)
     int emit(VM_CMD *cmd) {
         unsigned unsigned_val;
         fwrite(&cmd->op,1,1,stream);
-        switch (cmd->len) {
-            case 0: break;
-            case -1:
-                cmd->len=strlen(cmd->data); // rewrite len and...
-                // ...fall thru!
-            default:
-                unsigned_val=htonl(cmd->len);
-                fwrite(&unsigned_val,sizeof(unsigned_val),1,stream);
-                unsigned_val=htonl(cmd->flags);
-                fwrite(&unsigned_val,sizeof(unsigned_val),1,stream);
-                fwrite(cmd->data,1,cmd->len,stream);
-                break;
+        if (cmd->op<VMOP_EXTENDED) {
+            switch (cmd->len) {
+                case -1:
+                    cmd->len=strlen(cmd->data); // rewrite len and...
+                    // ...fall thru!
+                default:
+                    unsigned_val=htonl(cmd->len);
+                    fwrite(&unsigned_val,sizeof(unsigned_val),1,stream);
+                    unsigned_val=htonl(cmd->flags);
+                    fwrite(&unsigned_val,sizeof(unsigned_val),1,stream);
+                    fwrite(cmd->data,1,cmd->len,stream);
+                    break;
+            }
         }
     }
 

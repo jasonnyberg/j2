@@ -325,6 +325,34 @@ int vm_eval(VM_ENV *env)
             return LTV_init(NEW(LTV),extended->data,length,flags);
         }
 
+        int map_make(int pop) {
+            int status=0;
+            STRY(!REF_ltv(REF_HEAD(ref)),"validating ref head");
+            LTV *map=NULL,*lambda=NULL;
+            VM_CMD map_bytecodes[] = {{pop?VMOP_MAP_POP:VMOP_MAP_KEEP}};
+            STRY(!(lambda=compile_ltv(compilers[FORMAT_edict],deq(VMRES_WIP,POP))),"compiling lambda for map wrapper");
+            STRY(!(map=compile(compilers[FORMAT_asm],map_bytecodes,1)),"creating map wrapper");
+            LT_put(map,"lambda",HEAD,lambda); // install lambda
+            LT_put(map,"ref",HEAD,ref); // install_ref
+            vm_env_lambda(env,map); // install wrapper
+        done:
+            return status;
+        }
+
+        int map(int pop) {
+            int status=0;
+            STRY(!(ref=LT_get(code_ltv,"ref",HEAD,KEEP)),"retrieving ref from map wrapper");;
+            LTV *lambda=NULL,*ltv=NULL;
+            STRY(!(lambda=LT_get(code_ltv,"lambda",HEAD,KEEP)),"retrieving lambda from map wrapper");;
+            STRY(!(ltv=REF_ltv(REF_HEAD(ref))),"dereferencing ref from map wrapper");
+            stack_enq(ltv);
+            if (!REF_iterate(ref,pop) && REF_ltv(REF_HEAD(ref))) // will there be a next round?
+                vm_env_lambda(env,code_ltv); // if so, requeue wrapper
+            vm_env_lambda(env,lambda);
+        done:
+            return status;
+        }
+
 #define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x\n" CODE_RESET,(unsigned char) vmop);
 
         while ((*ip)<len) {
@@ -396,32 +424,10 @@ int vm_eval(VM_ENV *env)
                     OPCODE(VMOP_MASSOC)    vm_env_lambda(env,compile_ltv(compilers[FORMAT_massoc], deq(VMRES_WIP,POP))); continue;
 
                     OPCODE(VMOP_YIELD)     goto yield;
-
-                    OPCODE(VMOP_MAP_MAKE)
-                        if (REF_ltv(REF_HEAD(ref)))
-                        {
-                            LTV *map=NULL,*lambda=NULL;
-                            VM_CMD map_bytecodes[] = {{VMOP_MAP}};
-                            map=compile(compilers[FORMAT_asm],map_bytecodes,1); // create wrapper
-                            lambda=compile_ltv(compilers[FORMAT_edict],deq(VMRES_WIP,POP)); // compile lambda
-                            LT_put(map,"lambda",HEAD,lambda); // install lambda
-                            LT_put(map,"ref",HEAD,ref); // install_ref
-                            vm_env_lambda(env,map); // install wrapper
-                        }
-                    continue;
-
-                    OPCODE(VMOP_MAP)
-                    {
-                        ref=LT_get(code_ltv,"ref",HEAD,KEEP);
-                        LTV *lambda=NULL,*ltv=NULL;
-                        lambda=LT_get(code_ltv,"lambda",HEAD,KEEP);
-                        ltv=REF_ltv(REF_HEAD(ref));
-                        if (!REF_iterate(ref,KEEP) && REF_ltv(REF_HEAD(ref))) // will there be a next round?
-                            vm_env_lambda(env,code_ltv); // if so, requeue wrapper
-                        stack_enq(ltv);
-                        vm_env_lambda(env,lambda);
-                        goto yield; // yield
-                    }
+                    OPCODE(VMOP_MMAP_KEEP) TRYCATCH(map_make(KEEP),op,bc_exc,"evaluating map_make"); continue;
+                    OPCODE(VMOP_MMAP_POP)  TRYCATCH(map_make(POP),op,bc_exc,"evaluating map_make"); continue;
+                    OPCODE(VMOP_MAP_KEEP)  TRYCATCH(map(KEEP),op,bc_exc,"evaluating map-keep"); goto yield;
+                    OPCODE(VMOP_MAP_POP)   TRYCATCH(map(POP),op,bc_exc,"evaluating map-pop"); goto yield;
 
                     /*
                       case VMOP_REF_ITER_KEEP: REF_iterate(LTV_list(ref),KEEP); continue;

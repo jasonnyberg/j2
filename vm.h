@@ -99,6 +99,7 @@ enum {
     VMOP_NOP=0,
     VMOP_LIT,
     VMOP_REF,
+    VMOP_EXTENDED=0x10, // not an op; any ops less than this are "extended"
 
     VMOP_BUILTIN,
     VMOP_REF_MAKE,
@@ -114,8 +115,10 @@ enum {
     VMOP_COMPARE,
     VMOP_DEREF,
 
-    VMOP_MAP_MAKE,
-    VMOP_MAP,
+    VMOP_MMAP_KEEP, // make map keep
+    VMOP_MMAP_POP,  // make map pop
+    VMOP_MAP_KEEP,  // do map keep
+    VMOP_MAP_POP,   // do map pop
 
     VMOP_THROW,
     VMOP_CATCH,

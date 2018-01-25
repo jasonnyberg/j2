@@ -182,8 +182,8 @@ typedef struct {
 } VM_BC_LTV; // packed extended bytecode
 
 typedef struct {
-    char op;
-    int len;
+    unsigned char op;
+    unsigned int len;
     LTV_FLAGS flags;
     char *data;
 } VM_CMD; // exploded bytecode template

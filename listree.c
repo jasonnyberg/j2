@@ -426,7 +426,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
                 else fprintf(ofile,"%*c[",depth*4,' ');
                 if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
-                else if ((*ltv)->flags&LT_CVAR) ref_print_cvar(ofile,(*ltv),depth);
+                else if ((*ltv)->flags&LT_CVAR) cif_print_cvar(ofile,(*ltv),depth);
                 else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
                 else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
                 else if ((*ltv)->flags&LT_BIN)  hexdump(ofile,(*ltv)->data,(*ltv)->len);
@@ -519,7 +519,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 REF_dot(ofile,ltv,"REFS");
         else if (ltv->flags&LT_CVAR)
             fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled fillcolor=yellow color=%s]\n",ltv,ltv->data,color),
-                ref_dot_cvar(ofile,ltv); // invoke reflection
+                cif_dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"%x (imm)\" shape=box style=filled fillcolor=gold color=%s]\n",ltv,ltv->data,color);
         else if (ltv->flags&LT_NULL)
@@ -593,7 +593,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 REF_dot(ofile,ltv,"REFS");
         else if (ltv->flags&LT_CVAR)
             fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
-                ref_dot_cvar(ofile,ltv); // invoke reflection
+                cif_dot_cvar(ofile,ltv); // invoke reflection
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
         else if (ltv->flags==LT_NULL)
@@ -635,7 +635,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
 
 void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
-    fprintf(ofile,"digraph iftree\n{\ngraph [/*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    fprintf(ofile,"digraph iftree\n{\ngraph [rankdir=\"LR\" /*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile,ltvs,maxdepth,label);
     fprintf(ofile,"}\n");
 }
@@ -828,7 +828,7 @@ int REF_resolve(LTV *root,LTV *refs,int insert)
         root=REF_reset(ref,root); // clean up ref if root changed
 
         char *buf=NULL;
-        if (root->flags&LT_CVAR && (ref->cvar=ref_create_cvar(LT_get(root,TYPE_BASE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))))
+        if (root->flags&LT_CVAR && (ref->cvar=cif_create_cvar(LT_get(root,TYPE_BASE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))))
             root=ref->cvar;
         else {
             if (!ref->lti) { // resolve lti
@@ -916,9 +916,17 @@ int REF_assign(REF *ref,LTV *ltv)
 {
     int status=0;
     LTV *ref_ltv=REF_ltv(ref);
-    if (ref_ltv && ref_ltv->flags&LT_CVAR)
-        STRY(!ref_assign_cvar(ref_ltv,ltv),"assigning to cvar");
-    else {
+    if (ref_ltv && (ref_ltv->flags&LT_CVAR)) {
+        LTV *addr_type=cif_isaddr(ref_ltv);
+        if (addr_type) {
+            LTV *newltv=NULL;
+            STRY(!(newltv=cif_coerce(ltv,addr_type)),"coercing ltv");
+            LTVR_release(&ref->ltvr->lnk);
+            STRY(!LTV_put(&ref->lti->ltvs,newltv,ref->reverse,&ref->ltvr),"adding coerced ltv to ref");
+        } else {
+            STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
+        }
+    } else {
         STRY(!ref->lti,"validating ref lti");
         STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
     }

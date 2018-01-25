@@ -39,7 +39,7 @@
 #include "listree.h"
 #include "reflect.h"
 
-LTV *ref_mod=NULL;// initialized/populated during bootstrap
+LTV *cif_module=NULL;// initialized/populated during bootstrap
 
 __attribute__((constructor))
 static void init(void)
@@ -47,10 +47,10 @@ static void init(void)
     Dl_info dl_info;
     dladdr((void *)init, &dl_info);
     fprintf(stderr, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
-    ref_mod=LTV_init(NEW(LTV),(char *) dl_info.dli_fname,strlen(dl_info.dli_fname),LT_DUP|LT_RO);
+    cif_module=LTV_init(NEW(LTV),(char *) dl_info.dli_fname,strlen(dl_info.dli_fname),LT_DUP|LT_RO);
     try_depth=1;
-    ref_preview_module(ref_mod);
-    ref_curate_module(ref_mod,true);
+    cif_preview_module(cif_module);
+    cif_curate_module(cif_module,true);
 }
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf);
@@ -262,7 +262,7 @@ int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
 }
 
 
-LTV *ref_find_basic(LTV *type)
+LTV *cif_find_basic(LTV *type)
 {
     TYPE_INFO_LTV *type_info=NULL;
     while (type && type->flags&LT_TYPE) {
@@ -274,7 +274,7 @@ LTV *ref_find_basic(LTV *type)
     return NULL;
 }
 
-LTV *ref_get_child(LTV *type,char *childname)
+LTV *cif_get_child(LTV *type,char *childname)
 {
     if (type->flags&LT_TYPE) {
         LTV *child=LT_get(type,childname,HEAD,KEEP);
@@ -284,26 +284,26 @@ LTV *ref_get_child(LTV *type,char *childname)
     return NULL;
 }
 
-LTV *ref_get_element(LTV *type,int index)
+LTV *cif_get_element(LTV *type,int index)
 {
     // see Type_findMemberByIndex
 }
 
-LTV *ref_create_cvar(LTV *type,void *data,char *member)
+LTV *cif_create_cvar(LTV *type,void *data,char *member)
 {
     int status=0;
     LTV *basic_type=NULL,*member_type=NULL,*cvar=NULL;
-    TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
+    TRYCATCH(!(basic_type=cif_find_basic(type)),0,done,"resolving basic type");
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) basic_type->data;
 
     switch(type_info->tag) {
         case DW_TAG_structure_type:
         case DW_TAG_union_type:
             if (member) {
-                if ((status=!(member_type=ref_get_child(basic_type,member))))
+                if ((status=!(member_type=cif_get_child(basic_type,member))))
                     goto done; // fail w/o message
                 TYPE_INFO_LTV *member_type_info=(TYPE_INFO_LTV *) member_type->data;
-                cvar=ref_create_cvar(member_type,data+member_type_info->data_member_location,NULL);
+                cvar=cif_create_cvar(member_type,data+member_type_info->data_member_location,NULL);
                 goto done;
             }
             break;
@@ -323,7 +323,7 @@ LTV *ref_create_cvar(LTV *type,void *data,char *member)
     return status?NULL:cvar;
 }
 
-LTV *ref_assign_cvar(LTV *cvar,LTV *ltv)
+LTV *cif_assign_cvar(LTV *cvar,LTV *ltv)
 {
     int status=0;
     LTV *type=NULL;
@@ -350,14 +350,14 @@ void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
     return ltv_traverse(ltv,traverse_types,NULL);
 }
 
-int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
+int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 {
     int status=0;
     LTV *type;
     STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"validating cvar via type");
     CLL queue;
     CLL_init(&queue);
-    LTV_enq(&queue,ref_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
+    LTV_enq(&queue,cif_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
 
     int process_type_info(LTV *cvar) {
         int status=0;
@@ -370,7 +370,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) ltv;
             switch (type_info->tag) {
                 case DW_TAG_member:
-                    LTV_enq(&queue,ref_create_cvar(ltv,cvar->data+type_info->data_member_location,NULL),TAIL);
+                    LTV_enq(&queue,cif_create_cvar(ltv,cvar->data+type_info->data_member_location,NULL),TAIL);
                     break;
                 default:
                     fprintf(ofile,CODE_RED "child tag %d unimplemented" CODE_RESET "\n",type_info->tag);
@@ -403,7 +403,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                     LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
                     void *loc=*(void **) cvar->data;
                     if (base_type && loc)
-                        LTV_enq(&queue,ref_create_cvar(base_type,loc,NULL),HEAD);
+                        LTV_enq(&queue,cif_create_cvar(base_type,loc,NULL),HEAD);
                     break;
                 }
                 case DW_TAG_array_type:
@@ -419,7 +419,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                     if (type_info->flags&TYPEF_BYTESIZE)
                         ; /* fall thru! */
                     else {
-                        LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                        LTV_enq(&queue,cif_create_cvar(cif_find_basic(type),cvar->data,NULL),HEAD);
                         break;
                     }
                 case DW_TAG_base_type: {
@@ -430,7 +430,7 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                     break;
                 }
                 default:
-                    LTV_enq(&queue,ref_create_cvar(ref_find_basic(type),cvar->data,NULL),HEAD);
+                    LTV_enq(&queue,cif_create_cvar(cif_find_basic(type),cvar->data,NULL),HEAD);
                     break;
             }
         }
@@ -450,18 +450,22 @@ int ref_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 }
 
 
-int ref_print_cvar(FILE *ofile,LTV *ltv,int depth)
+int cif_print_cvar(FILE *ofile,LTV *ltv,int depth)
 {
     int status=0;
     if (ltv->flags&LT_TYPE) // special case
         print_type_info(ofile,(TYPE_INFO_LTV *) ltv);
+    else if (ltv->flags&LT_FFI)
+        printf("Flagged as FFI");
+    else if (ltv->flags&LT_CIF)
+        printf("Flagged as CIF");
     else
-        ref_dump_cvar(ofile,ltv,depth); // use reflection!!!!!
+        cif_dump_cvar(ofile,ltv,depth); // use reflection!!!!!
  done:
     return status;
 }
 
-int ref_dot_cvar(FILE *ofile,LTV *ltv)
+int cif_dot_cvar(FILE *ofile,LTV *ltv)
 {
     int status=0;
     if (ltv->flags&LT_TYPE)
@@ -780,7 +784,7 @@ char *get_diename(Dwarf_Debug dbg,Dwarf_Die die)
 }
 
 
-int ref_preview_module(LTV *module) // just put the cu name under module
+int cif_preview_module(LTV *module) // just put the cu name under module
 {
     CU_DATA cu_data;
     int op(Dwarf_Debug dbg,Dwarf_Die die) {
@@ -798,7 +802,7 @@ int ref_preview_module(LTV *module) // just put the cu name under module
     return traverse_cus(filename,op,&cu_data);
 }
 
-int dump_module_simple(char *ofilename,LTV *module)
+int cif_dump_module(char *ofilename,LTV *module)
 {
     int status=0;
     FILE *ofile=fopen(ofilename,"w");
@@ -825,7 +829,7 @@ int dump_module_simple(char *ofilename,LTV *module)
 }
 
 
-int ref_curate_module(LTV *module,int bootstrap)
+int cif_curate_module(LTV *module,int bootstrap)
 {
     int status=0;
     CU_DATA cu_data;
@@ -854,21 +858,19 @@ int ref_curate_module(LTV *module,int bootstrap)
                 type_info->flags|=TYPEF_SYMBOLIC;
                 attr_del(&type_info->ltv,TYPE_NAME);
                 attr_set(&type_info->ltv,TYPE_NAME,sym);
-                TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) LT_get(module,sym,HEAD,KEEP);
+                TYPE_INFO_LTV *sym_type_info=(TYPE_INFO_LTV *) LT_get(module,sym,HEAD,KEEP);
 
                 const char *is;
                 dwarf_get_TAG_name(type_info->tag,&is);
-                //printf(CODE_BLUE "installing %s(%p), %d/%s" CODE_RESET "\n",sym,type_info,type_info->tag,is);
-
                 if (!type_info->tag)
                     printf(CODE_RED "installing invalid type info" CODE_RESET "\n");
                 else if (LT_get(module,sym,HEAD,KEEP)) {
-                    if (type_info->tag!=til->tag) {
-                        const char *was;
-                        dwarf_get_TAG_name(type_info->tag,&is);
-                        dwarf_get_TAG_name(til->tag,&was);
-                        printf(CODE_RED "type info tag conflict: %s(%p vs. %p), installing %d/%s but found %d/%s" CODE_RESET "\n",
-                               sym,type_info,til,type_info->tag,is,til->tag,was);
+                    if (type_info->tag!=sym_type_info->tag) {
+                            const char *already;
+                            dwarf_get_TAG_name(sym_type_info->tag,&already);
+                            printf(CODE_RED "type info tag conflict: %s(%p vs. %p), installing %d/%s but found %d/%s" CODE_RESET "\n",
+                                   sym,type_info,sym_type_info,type_info->tag,is,sym_type_info->tag,already);
+                            //}
                     }
                 } else { // if not a dup, place item into module
                     LT_put(module,sym,TAIL,&type_info->ltv);
@@ -876,7 +878,6 @@ int ref_curate_module(LTV *module,int bootstrap)
                         if (!type_info->dladdr) {
                             type_info->flags|=TYPEF_DLADDR;
                             type_info->dladdr=dlsym(dlhandle,sym);
-                            //LT_put(module,sym,HEAD,ref_create_cvar(&type_info->ltv,type_info->dladdr,NULL));
                         }
                     } else if (base_symb) { // dedup types (not global types) to get here, base must already be installed in "types"
                         TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
@@ -1077,7 +1078,7 @@ int ref_curate_module(LTV *module,int bootstrap)
     STRY(traverse_cus(filename,curate_die,&cu_data),"traversing module compute units");
     resolve_symbols();
     LTV_release(index);
-    ref_ffi_prep(module);
+    cif_ffi_prep(module);
 
  done:
     return status;
@@ -1109,7 +1110,7 @@ char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
         case TYPE_INT8U:   sprintf(buf,"0x%llx",uval->int8u.val);   break;
         case TYPE_FLOAT4:  sprintf(buf,"%g",    uval->float4.val);  break;
         case TYPE_FLOAT8:  sprintf(buf,"%g",    uval->float8.val);  break;
-        case TYPE_FLOAT12: sprintf(buf,"%Lg",   uval->float12.val); break;
+        case TYPE_FLOAT16: sprintf(buf,"%Lg",   uval->float16.val); break;
         default:           buf[0]=0; break;
     }
     return buf;
@@ -1123,13 +1124,13 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
         case TYPE_INT2S:   sscanf(buf,"%i",  &tVar);uval->int2s.val=tVar; break;
         case TYPE_INT4S:   sscanf(buf,"%i",  &tVar);uval->int4s.val=tVar; break;
         case TYPE_INT8S:   sscanf(buf,"%lli",&uval->int8s.val);           break;
-        case TYPE_INT1U:   sscanf(buf,"%i",  &tVar);uval->int1u.val=tVar; break;
-        case TYPE_INT2U:   sscanf(buf,"%i",  &tVar);uval->int2u.val=tVar; break;
-        case TYPE_INT4U:   sscanf(buf,"%i",  &tVar);uval->int4u.val=tVar; break;
-        case TYPE_INT8U:   sscanf(buf,"%lli",&uval->int8u.val);           break;
+        case TYPE_INT1U:   sscanf(buf,"%u",  &tVar);uval->int1u.val=tVar; break;
+        case TYPE_INT2U:   sscanf(buf,"%u",  &tVar);uval->int2u.val=tVar; break;
+        case TYPE_INT4U:   sscanf(buf,"%u",  &tVar);uval->int4u.val=tVar; break;
+        case TYPE_INT8U:   sscanf(buf,"%llu",&uval->int8u.val);           break;
         case TYPE_FLOAT4:  sscanf(buf,"%g",  &uval->float4.val);          break;
         case TYPE_FLOAT8:  sscanf(buf,"%g",  &uval->float8.val);          break;
-        case TYPE_FLOAT12: sscanf(buf,"%Lg", &uval->float12.val);         break;
+        case TYPE_FLOAT16: sscanf(buf,"%Lg", &uval->float16.val);         break;
         default:           buf[0]=0; break;
     }
     return uval;
@@ -1149,7 +1150,7 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
             case TYPE_INT8U:   var=(typeof(var)) uval.int8u.val; break;         \
             case TYPE_FLOAT4:  var=(typeof(var)) uval.float4.val; break;        \
             case TYPE_FLOAT8:  var=(typeof(var)) uval.float8.val; break;        \
-            case TYPE_FLOAT12: var=(typeof(var)) uval.float12.val; break;       \
+            case TYPE_FLOAT16: var=(typeof(var)) uval.float16.val; break;       \
         }                                                                       \
     } while(0)
 
@@ -1178,7 +1179,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
     int status=0;
     LTV *type=NULL;
     STRY(!cvar || !uval,"validating params");
-    STRY(!(type=ref_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
+    STRY(!(type=cif_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
 
     ull size=type_info->bytesize;
@@ -1198,7 +1199,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
         case DW_ATE_float:
             if      (size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
             else if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
-            else if (size==12) GETUVAL(float12,TYPE_FLOAT12,uval);
+            else if (size==16) GETUVAL(float16,TYPE_FLOAT16,uval);
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
@@ -1242,7 +1243,7 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
     int status=0;
     LTV *type=NULL;
     STRY(!cvar || !uval,"validating params");
-    STRY(!(type=ref_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
+    STRY(!(type=cif_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
 
     ull size=type_info->bytesize;
@@ -1261,7 +1262,7 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
         case DW_ATE_float:
             if      (size==4)  PUTUVAL(float4, TYPE_FLOAT4, uval);
             else if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
-            else if (size==12) PUTUVAL(float12,TYPE_FLOAT12,uval);
+            else if (size==16) PUTUVAL(float16,TYPE_FLOAT16,uval);
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
@@ -1286,45 +1287,39 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
 
 
 int Type_isBitField(TYPE_INFO_LTV *type_info) { return (type_info->bitsize || type_info->bitoffset); }
-#define TYPE_INFO_NAME(p,ti)                                          \
-    (((p)=Type_isBitField(ti)?                                        \
-      FORMATA((p),256,"%s:%s:%s",attr_get((ti),TYPE_NAME),            \
-              (ti)->DW_AT_bit_size,                                   \
-              (ti)->DW_AT_bit_offset)                                 \
-      :                                                               \
-      attr_get((ti),TYPE_NAME)),                                      \
-     (p))
-
-
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-//ffi_type_void
-ffi_type *cvar_ffi_type(LTV *type,int *size)
+LTV *basic_ffi_ltv(LTV *type)
 {
     int status=0;
-    *size=0;
-    ffi_type *ft=NULL;
-    LTV *ffi_type_ltv=NULL;
-    TRYCATCH(!(type=ref_find_basic(type)),0,done,"resolving basic type");
-    *size=((TYPE_INFO_LTV *) type->data)->bytesize;
-    if ((ffi_type_ltv=LT_get(type,FFI_TYPE,HEAD,KEEP)))
-        ft=(ffi_type *) ffi_type_ltv->data;
- done:
-    return ft;
-}
+    static ffi_type *ffi_type_array[] = { &ffi_type_void, &ffi_type_pointer, &ffi_type_float, &ffi_type_double, &ffi_type_longdouble, &ffi_type_sint8, &ffi_type_sint16, &ffi_type_sint32, &ffi_type_sint64, &ffi_type_uint8, &ffi_type_uint16, &ffi_type_uint32, &ffi_type_uint64, NULL};
+    enum                                { FT_VOID,        FT_POINTER,        FT_FLOAT,        FT_DOUBLE,        FT_LONGDOUBLE,        FT_SINT8,        FT_SINT16,        FT_SINT32,        FT_SINT64,        FT_UINT8,        FT_UINT16,        FT_UINT32,        FT_UINT64,        FT_MAX };
 
-ffi_type *basic_ffi_type(LTV *type)
-{
-    int status=0;
-    ffi_type *ft=NULL;
-    LTV *basic_type=NULL,*member_type=NULL,*cvar=NULL;
-    TRYCATCH(!(basic_type=ref_find_basic(type)),0,done,"resolving basic type");
+    static CLL ffi_type_ltv_preserver;
+    static LTV *ffi_type_ltv[FT_MAX];
+    static int initialized=false;
+    if (!initialized) {
+        CLL_init(&ffi_type_ltv_preserver);
+        for (int i=0;i<FT_MAX;i++) {
+            ffi_type_ltv[i]=LTV_init(NEW(LTV),ffi_type_array[i],sizeof(ffi_type),LT_BIN|LT_CVAR|LT_FFI);
+            LTV_enq(&ffi_type_ltv_preserver,ffi_type_ltv[i],TAIL);
+        }
+        initialized=true;
+    }
 
+    LTV *rval=NULL;
+
+    if (!type) { // total hack way to get static ffi_type_void LTV
+        rval=ffi_type_ltv[FT_VOID];
+        goto done;
+    }
+
+    LTV *basic_type=NULL;
+    TRYCATCH(!(basic_type=cif_find_basic(type)),0,done,"resolving basic type");
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) basic_type->data;
 
     ull size=type_info->bytesize;
@@ -1332,85 +1327,104 @@ ffi_type *basic_ffi_type(LTV *type)
     ull bitoffset=type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
-        case DW_TAG_pointer_type:     ft=&ffi_type_pointer;         goto done;
-        case DW_TAG_array_type:       ft=&ffi_type_pointer;         goto done;
-        case DW_TAG_union_type:
-        case DW_TAG_structure_type:   goto done;
-        case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
-        case DW_TAG_enumeration_type: encoding=DW_ATE_signed;       break;
-        case DW_TAG_base_type:        encoding=type_info->encoding; break;
+        case DW_TAG_pointer_type:
+        case DW_TAG_array_type:
+            rval=ffi_type_ltv[FT_POINTER];
+            goto done;
+        case DW_TAG_enumeration_type:
+        case DW_TAG_enumerator:
+            encoding=DW_ATE_signed;
+            break;
+        case DW_TAG_member:
+            if (bitsize) // only for bitfields
+                encoding=DW_ATE_unsigned; // TODO: DW_AT_type actually propagates through to sint or uint!!!
+            break;
+        case DW_TAG_base_type:
+            encoding=type_info->encoding;
+            break;
         default: goto done;
     }
 
     switch (encoding) {
         case DW_ATE_float:
-            if      (size==4)  ft=&ffi_type_float;
-            else if (size==8)  ft=&ffi_type_double;
-            else if (size==12) ft=&ffi_type_longdouble;
+            if      (size==4)  rval=ffi_type_ltv[FT_FLOAT];
+            else if (size==8)  rval=ffi_type_ltv[FT_DOUBLE];
+            else if (size==16) rval=ffi_type_ltv[FT_LONGDOUBLE];
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
-            if      (size==1)  ft=&ffi_type_sint8;
-            else if (size==2)  ft=&ffi_type_sint16;
-            else if (size==4)  ft=&ffi_type_sint32;
-            else if (size==8)  ft=&ffi_type_sint64;
+            if      (size==1)  rval=ffi_type_ltv[FT_SINT8];
+            else if (size==2)  rval=ffi_type_ltv[FT_SINT16];
+            else if (size==4)  rval=ffi_type_ltv[FT_SINT32];
+            else if (size==8)  rval=ffi_type_ltv[FT_SINT64];
             break;
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
-            if      (size==1)  ft=&ffi_type_uint8;
-            else if (size==2)  ft=&ffi_type_uint16;
-            else if (size==4)  ft=&ffi_type_uint32;
-            else if (size==8)  ft=&ffi_type_uint64;
+            if      (size==1)  rval=ffi_type_ltv[FT_UINT8];
+            else if (size==2)  rval=ffi_type_ltv[FT_UINT16];
+            else if (size==4)  rval=ffi_type_ltv[FT_UINT32];
+            else if (size==8)  rval=ffi_type_ltv[FT_UINT64];
             break;
         default:
             break;
     }
  done:
-    return ft;
+    return rval;
 }
 
 
+LTV *cvar_ffi_ltv(LTV *type,int *size)
+{
+    int status=0;
+    *size=0;
+    LTV *ffi_type_ltv=NULL;
+    TRYCATCH(!(type=cif_find_basic(type)),0,done,"resolving basic type");
+    *size=((TYPE_INFO_LTV *) type->data)->bytesize;
+    ffi_type_ltv=LT_get(type,FFI_TYPE,HEAD,KEEP);
+ done:
+    return ffi_type_ltv;
+}
+
 // prepare a type_info cvar for ffi use
-int ref_ffi_prep(LTV *type)
+int cif_ffi_prep(LTV *type)
 {
     int status=0;
 
-    LTV *create_ffi_type_ltv(LTV *ltv) {
-        LTV *ffi_ltv=NULL;
-        ffi_type *ft=NULL;
-        if (!(ft=basic_ffi_type(ltv)))
-            ft=&ffi_type_void;
-        STRY(!(ffi_ltv=LTV_init(NEW(LTV),ft,sizeof(ffi_type),LT_BIN|LT_CVAR|LT_FFI)),"creating ffi_type ltv");
-    done:
-        return ffi_ltv;
-    }
-
-    int collate_child_ffi_types(LTV *ltv,int is_union,int *count,ffi_type ***child_types)
+    int collate_child_ffi_types(LTV *ltv,int tag,int *count,ffi_type ***child_types)
     {
         int status=0;
         int largest=0;
+        char *name=attr_get(ltv,TYPE_NAME);
         LTI *children=LTI_resolve(ltv,TYPE_LIST,0);
-        if (is_union)
+        if (tag==DW_TAG_union_type)
             *count=1;
         else
             *count=children?CLL_len(&children->ltvs):0;
-        (*child_types)=calloc(sizeof(ffi_type *),*count+1);
+        (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
         if (*count) {
-            int size=0,largest=0,offset=0;
+            int size=0,largest=0,index=0,lastloc=-1;
             void *get_child_ffi_type(CLL *lnk) {
                 int status=0;
                 LTV *child_type=((LTVR *) lnk)->ltv;
-                ffi_type *child_ffi_type=cvar_ffi_type(child_type,&size);
-                STRY(!child_ffi_type,"validating child ffi type");
-                if (is_union) {
+                char *child_name=attr_get(child_type,TYPE_NAME);
+                TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) child_type->data;
+                LTV *child_ffi_ltv=cvar_ffi_ltv(child_type,&size);
+                STRY(!child_ffi_ltv,"validating child ffi ltv");
+
+                if (tag==DW_TAG_union_type) {
                     if (largest<size) {
                         largest=size;
-                        (*child_types)[0]=child_ffi_type;
+                        (*child_types)[index]=(ffi_type *) child_ffi_ltv->data;
                     }
+                } else if ((type_info->tag==DW_TAG_member) && (type_info->data_member_location==lastloc)) { // overlapping bitfields in a structure
+                    (*count)--;
+                    goto done;
                 }
                 else
-                    (*child_types)[offset++]=child_ffi_type;
+                    (*child_types)[index++]=(ffi_type *) child_ffi_ltv->data;
+
             done:
+                lastloc=type_info->data_member_location;
                 return status?NON_NULL:NULL;
             }
             CLL_map(&children->ltvs,FWD,get_child_ffi_type);
@@ -1422,25 +1436,72 @@ int ref_ffi_prep(LTV *type)
     }
 
     void *pre(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        //listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags==LT_TRAVERSE_LTV)) {
+            char *name=attr_get((*ltv),TYPE_NAME);
             if ((*ltv)->flags&LT_TYPE) {
-                int size=0;
-                if (!cvar_ffi_type((*ltv),&size)) {
-                    TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+                TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+                if (LT_get((*ltv),FFI_TYPE,HEAD,KEEP))
+                    *flags|=LT_TRAVERSE_HALT;
+                else {
+                    int size=0;
                     switch (type_info->tag) {
+                        case DW_TAG_union_type:
+                        case DW_TAG_structure_type:
                         case DW_TAG_subprogram:
-                        case DW_TAG_subroutine_type: {
+                        case DW_TAG_subroutine_type:
+                            break; // complex types, handle in post
+                        default: { // fill in basic types in pre, halting traversal for each
+                            LTV *basic_type=cif_find_basic(*ltv);
+                            if (basic_type && !LT_get(basic_type,FFI_TYPE,HEAD,KEEP)) {
+                                LTV *ftl=basic_ffi_ltv(basic_type); // only returns something for basic types
+                                if (ftl) { // basic types
+                                    STRY(!LT_put(basic_type,FFI_TYPE,HEAD,ftl),"installing basic ffi type");
+                                }
+                            }
                             break;
                         }
-                        case DW_TAG_pointer_type:
-                        case DW_TAG_array_type:
-                        case DW_TAG_base_type:
-                        case DW_TAG_enumeration_type:
-                        case DW_TAG_enumerator: {
-                            LTV *ffi_type_ltv=NULL;
-                            STRY(!(ffi_type_ltv=create_ffi_type_ltv(*ltv)),"creating basic ffi type");
-                            STRY(!LT_put((*ltv),FFI_TYPE,HEAD,ffi_type_ltv),"installing basic ffi type");
+
+                            //   else *flags|=LT_TRAVERSE_HALT;
+                    }
+                }
+            }
+        }
+
+    done:
+        return status?NON_NULL:NULL;
+    }
+
+    void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        if ((*flags==LT_TRAVERSE_LTV)) {
+            char *name=attr_get((*ltv),TYPE_NAME);
+            if ((*ltv)->flags&LT_TYPE) {
+                TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+                if (!LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) {
+                    switch (type_info->tag) {
+                        case DW_TAG_union_type:
+                        case DW_TAG_structure_type: { // complex
+                            LTV *ffi_type_ltv=LTV_init(NEW(LTV),NEW(ffi_type),sizeof(ffi_type),LT_OWN|LT_BIN|LT_CVAR|LT_FFI);
+                            LT_put((*ltv),FFI_TYPE,HEAD,ffi_type_ltv);
+                            ffi_type *ft=(ffi_type *) ffi_type_ltv->data;
+                            int count=0;
+                            ft->type=FFI_TYPE_STRUCT;
+                            STRY(collate_child_ffi_types((*ltv),type_info->tag,&count,&ft->elements),"collating %s child ffi types",name);
+                            break;
+                        }
+                        case DW_TAG_subprogram:
+                        case DW_TAG_subroutine_type: { // complex
+                            int size;
+                            LTV *return_type=cvar_ffi_ltv((*ltv),&size);
+                            if (!return_type)
+                                return_type=basic_ffi_ltv(NULL); // hacky way to get the static ffi_type_void LTV
+                            LT_put((*ltv),FFI_TYPE,HEAD,return_type);
+                            int argc=0;
+                            ffi_type **argv=NULL;
+                            STRY(collate_child_ffi_types((*ltv),type_info->tag,&argc,&argv),"collating subprogram child ffi types");
+
+                            LTV *cif_ltv=LTV_init(NEW(LTV),NEW(ffi_cif),sizeof(ffi_cif),LT_OWN|LT_BIN|LT_CVAR|LT_CIF);
+                            LT_put((*ltv),FFI_CIF,HEAD,cif_ltv);
+                            STRY(ffi_prep_cif((ffi_cif *) cif_ltv->data,FFI_DEFAULT_ABI,argc,(ffi_type *) return_type->data,argv),"prepping cif");
                             break;
                         }
                         default:
@@ -1449,55 +1510,7 @@ int ref_ffi_prep(LTV *type)
                 }
             }
         }
-    done:
-        listree_acyclic(lti,ltvr,ltv,depth,flags);
-        return status?NON_NULL:NULL;
-    }
 
-    void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV)) {
-            if ((*ltv)->flags&LT_TYPE) {
-                TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
-                char *name=attr_get((*ltv),TYPE_NAME);
-                int is_union=0;
-                switch (type_info->tag) {
-                    case DW_TAG_subprogram:
-                    case DW_TAG_subroutine_type: {
-                        if (!LT_get(*ltv,FFI_CIF,HEAD,KEEP)) {
-                            LTV *return_type=NULL;
-                            STRY(!(return_type=create_ffi_type_ltv(*ltv)),"creating subprogram return ffi type");
-                            int argc=0;
-                            ffi_type **argv=NULL;
-                            STRY(collate_child_ffi_types((*ltv),false,&argc,&argv),"collating subprogram child ffi types");
-                            FFI_CIF_LTV *fc=NEW(FFI_CIF_LTV);
-                            LTV_init(&fc->ltv,fc,sizeof(FFI_CIF),LT_OWN|LT_BIN|LT_CVAR|LT_CIF);
-                            STRY(ffi_prep_cif(&fc->fc,FFI_DEFAULT_ABI,argc,(ffi_type *) return_type->data,argv),"prepping cif");
-                            LT_put((*ltv),FFI_TYPE,HEAD,return_type);
-                            LT_put((*ltv),FFI_CIF,HEAD,&fc->ltv);
-                        }
-                        break;
-                    }
-                    case DW_TAG_union_type:
-                        is_union=1;
-                        // fall_thru!
-                    case DW_TAG_structure_type: {
-                        int size=0;
-                        if (!cvar_ffi_type((*ltv),&size)) {
-                            FFI_TYPE_LTV *ft=NEW(FFI_TYPE_LTV);
-                            LTV_init(&ft->ltv,ft,sizeof(ffi_type),LT_OWN|LT_BIN|LT_CVAR|LT_FFI);
-                            int count=0;
-                            ft->ft.type=FFI_TYPE_STRUCT;
-                            STRY(collate_child_ffi_types((*ltv),is_union,&count,&ft->ft.elements),"collating %s child ffi types",is_union?"union":"struct");
-                            LT_put((*ltv),FFI_TYPE,HEAD,&ft->ltv);
-                        }
-                        break;
-                    }
-                    default:
-                        break;
-                }
-            }
-            //   else *flags|=LT_TRAVERSE_HALT;
-        }
     done:
         return status?NON_NULL:NULL;
     }
@@ -1509,16 +1522,16 @@ int ref_ffi_prep(LTV *type)
 }
 
 
-LTV *ref_rval_create(LTV *lambda)
+LTV *cif_rval_create(LTV *lambda)
 {
     // assumes lambda is a CVAR/TYPE_INFO/subprogram
     // error check later...
     LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
-    LTV *return_type=ref_find_basic(cvar_type); // base type of a subprogram is its return type
-    return ref_create_cvar(return_type,NULL,NULL);
+    LTV *return_type=cif_find_basic(cvar_type); // base type of a subprogram is its return type
+    return cif_create_cvar(return_type,NULL,NULL);
 }
 
-int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
+int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
 {
     int status=0;
     void *marshal_arg(CLL *lnk) {
@@ -1532,22 +1545,50 @@ int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
         return status?NON_NULL:NULL;
     }
     LTI *children=LTI_resolve(lambda,TYPE_LIST,0);
-    STRY(CLL_map(&children->ltvs,FWD,marshal_arg)!=NULL,"marshalling ffi args from environment");
+    STRY(CLL_map(&children->ltvs,REV,marshal_arg)!=NULL,"marshalling ffi args from environment");
  done:
     return status;
 }
 
-LTV *ref_coerce(LTV *arg,LTV *type)
+LTV *cif_isaddr(LTV *cvar)
 {
-    return arg; // no coersion in first cut
+    int status=0;
+    LTV *type=NULL;
+    STRY(!cvar,"validating params");
+    STRY(!(type=cif_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP))),"retrieving cvar basic type");
+    TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
+ done:
+    return status?NULL:(type_info->tag!=DW_TAG_pointer_type)?NULL:type;
 }
 
-int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
+LTV *cif_coerce(LTV *ltv,LTV *type)
+{
+    int status=0;
+    LTV *result=ltv;
+    int old_show_ref=show_ref;
+    show_ref=1;
+
+    printf("coercing ltv\n");
+    print_ltv(stdout,NULL,ltv,NULL,0);
+    printf("into type\n");
+    print_ltv(stdout,NULL,type,NULL,0);
+
+    if (!(ltv->flags&LT_CVAR)) {
+        LTV *addr=(ltv->flags&LT_CVAR)?ltv->data:&ltv->data;
+        STRY(!(result=cif_create_cvar(type,addr,NULL)),"creating coersion");
+        STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
+    }
+ done:
+    show_ref=old_show_ref;
+    return status?NULL:result;
+}
+
+int cif_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
 {
     int status=0;
     int index=0;
     void **args=NULL;
-    LTV *cif=LT_get(lambda,FFI_CIF,HEAD,KEEP);
+    LTV *cif_ltv=LT_get(lambda,FFI_CIF,HEAD,KEEP);
     TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) lambda;
     STRY(!(til->flags&TYPEF_DLADDR),"testing ffi call for DLADDR");
     int arity=CLL_len(coerced_args);
@@ -1556,13 +1597,13 @@ int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
     void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; return NULL; }
     CLL_map(coerced_args,FWD,index_arg);
 
-    ffi_call(&(((FFI_CIF_LTV *) cif)->fc),til->dladdr,rval->data,args); // no return value
+    ffi_call((ffi_cif *) cif_ltv->data,til->dladdr,rval->data,args); // no return value
 
  done:
     return status;
 }
 
-LTV *ref_type_info(char *typename) { return LT_get(ref_mod,typename,HEAD,KEEP); }
+LTV *cif_type_info(char *typename) { return LT_get(cif_module,typename,HEAD,KEEP); }
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

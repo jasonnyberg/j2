@@ -42,9 +42,10 @@
  *     [type_info]...
  */
 
-#define TYPE_NAME "type name" // a die's type name
-#define TYPE_BASE "type base" // a die's base's ltv
-#define TYPE_LIST "type list" // type's children, in die order
+#define TYPE_NAME "die name" // a die's type name
+#define TYPE_BASE "die base" // a die's base's ltv
+#define TYPE_LIST "die list" // type's children, in die order
+#define TYPE_CAST "die cast" // a casted cvar's original data (lifespan protection)
 
 #define FFI_TYPE  "ffi type"  // FFI data assocated with type
 #define FFI_CIF   "ffi cif"   // FFI data assocated with type
@@ -52,7 +53,7 @@
 #define DIE_FORMAT "\"%s\""       // format for a die's DOT-language element id
 #define CVAR_FORMAT "\"CVAR_%x\"" // format for a CVAR's DOT-language element id
 
-#define TYPE_IDLEN 12
+#define TYPE_IDLEN 9
 #define DWARF_ID(str,global_offset) snprintf((str),TYPE_IDLEN,"%08x",(global_offset))
 
 typedef enum
@@ -68,11 +69,11 @@ typedef enum
     TYPE_INT8U   = 1<<0x7,
     TYPE_FLOAT4  = 1<<0x8,
     TYPE_FLOAT8  = 1<<0x9,
-    TYPE_FLOAT12 = 1<<0xa,
+    TYPE_FLOAT16 = 1<<0xa,
     TYPE_ADDR    = 1<<0xb,
     TYPE_INTS    = TYPE_INT1S | TYPE_INT2S | TYPE_INT4S | TYPE_INT8S,
     TYPE_INTU    = TYPE_INT1U | TYPE_INT2U | TYPE_INT4U | TYPE_INT8U,
-    TYPE_FLOAT   = TYPE_FLOAT4 | TYPE_FLOAT8 | TYPE_FLOAT12
+    TYPE_FLOAT   = TYPE_FLOAT4 | TYPE_FLOAT8 | TYPE_FLOAT16
 } TYPE_UTYPE;
 
 typedef union // keep members aligned with associated dutype enum
@@ -88,7 +89,7 @@ typedef union // keep members aligned with associated dutype enum
     struct { TYPE_UTYPE dutype; signed   long long   val; } int8s;
     struct { TYPE_UTYPE dutype;          float       val; } float4;
     struct { TYPE_UTYPE dutype;          double      val; } float8;
-    struct { TYPE_UTYPE dutype;          long double val; } float12;
+    struct { TYPE_UTYPE dutype;          long double val; } float16;
     struct { TYPE_UTYPE dutype;          void *      val; } addr;
 } TYPE_UVALUE;
 
@@ -147,35 +148,24 @@ typedef struct
     void *dladdr; // address resolved via dynamic linker
 } TYPE_INFO_LTV;
 
-typedef struct
-{
-    LTV ltv;
-    ffi_type ft;
-} FFI_TYPE_LTV;
+extern LTV *cif_module;
 
-typedef struct
-{
-    LTV ltv;
-    ffi_cif fc;
-} FFI_CIF_LTV;
+extern LTV *cif_create_cvar(LTV *type,void *data,char *member);
+extern LTV *cif_assign_cvar(LTV *cvar,LTV *ltv);
+extern int cif_print_cvar(FILE *ofile,LTV *ltv,int depth);
+extern int cif_dot_cvar(FILE *ofile,LTV *ltv);
 
-extern LTV *ref_mod;
+extern int cif_curate_module(LTV *mod_ltv,int bootstrap);
+extern int cif_preview_module(LTV *mod_ltv);
+extern int cif_ffi_prep(LTV *type);
 
-extern LTV *ref_create_cvar(LTV *type,void *data,char *member);
-extern LTV *ref_assign_cvar(LTV *cvar,LTV *ltv);
-extern int ref_print_cvar(FILE *ofile,LTV *ltv,int depth);
-extern int ref_dot_cvar(FILE *ofile,LTV *ltv);
+extern LTV *cif_rval_create(LTV *lambda);
+extern int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
+extern LTV *cif_coerce(LTV *arg,LTV *type);
+extern int cif_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
 
-extern int ref_curate_module(LTV *mod_ltv,int bootstrap);
-extern int ref_preview_module(LTV *mod_ltv);
-extern int ref_ffi_prep(LTV *type);
-
-extern LTV *ref_rval_create(LTV *lambda);
-extern int ref_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
-extern LTV *ref_coerce(LTV *arg,LTV *type);
-extern int ref_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
-
-extern LTV *ref_type_info(char *typename);
-extern int dump_module_simple(char *ofilename,LTV *module);
+extern LTV *cif_type_info(char *typename);
+extern int cif_dump_module(char *ofilename,LTV *module);
+extern LTV *cif_isaddr(LTV *cvar);
 
 #endif

@@ -131,9 +131,9 @@ int jit_edict(EMITTER emit,void *data,int len)
                     case '#': EMIT(TOS); break;
                     case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
                     case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
-                    case '!': EMIT(SPOP); EMIT(EDICT); EMIT(YIELD); break;
                     case '&': EMIT(THROW); break;
                     case '|': EMIT(CATCH); break;
+                    case '!': EMIT(SPOP); EMIT(EDICT); EMIT(YIELD); break;
                 }
             }
         }

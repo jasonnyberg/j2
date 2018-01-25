@@ -83,7 +83,8 @@ int vm_env_lambda(VM_ENV *env,LTV *lambda)
     int status=0;
     if (lambda) {
         STRY(!vm_enq(env,VMRES_CODE,lambda),"pushing code");
-        STRY(!LT_put(lambda,"ip",HEAD,LTV_ZERO),"pushing IP");
+        if (!(lambda->flags&LT_CVAR))
+            STRY(!LT_put(lambda,"ip",HEAD,LTV_ZERO),"pushing IP");
     }
  done:
     return status;
@@ -112,12 +113,6 @@ void *vm_thunk(void *udata)
  done:
     return env && env->state?NON_NULL:NULL;
 }
-
-
-//////////////////////////////////////////////////
-extern int square(int a);
-int square(int a) { return a*a; }
-//////////////////////////////////////////////////
 
 
 //////////////////////////////////////////////////
@@ -196,20 +191,20 @@ int vm_eval(VM_ENV *env)
         int status=0;
         CLL args; CLL_init(&args); // list of ffi arguments
         LTV *rval=NULL;
-        STRY(!(rval=ref_rval_create(lambda)),"creating ffi rval ltv");
+        STRY(!(rval=cif_rval_create(lambda)),"creating ffi rval ltv");
         int marshaller(char *name,LTV *type) {
             int status=0;
             LTV *arg=NULL, *coerced=NULL;
             STRY(!(arg=stack_deq(POP)),"popping ffi arg (%s) from stack",name); // FIXME: attempt to resolve by name first
-            STRY(!(coerced=ref_coerce(arg,type)),"coercing ffi arg");
+            STRY(!(coerced=cif_coerce(arg,type)),"coercing ffi arg");
             LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
             LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
             LTV_release(arg);
         done:
             return status;
         }
-        STRY(ref_args_marshal(lambda,marshaller),"marshalling ffi args"); // pre-
-        STRY(ref_ffi_call(lambda,rval,&args),"calling ffi");
+        STRY(cif_args_marshal(lambda,marshaller),"marshalling ffi args"); // pre-
+        STRY(cif_ffi_call(lambda,rval,&args),"calling ffi");
         STRY(!stack_enq(rval),"enqueing rval onto stack");
         CLL_release(&args,LTVR_release);
     done:
@@ -220,7 +215,7 @@ int vm_eval(VM_ENV *env)
         int status=0;
         LTV *type,*cvar;
         STRY(!(type=stack_deq(POP)),"popping type");
-        STRY(!(cvar=ref_create_cvar(type,NULL,NULL)),"creating cvar");
+        STRY(!(cvar=cif_create_cvar(type,NULL,NULL)),"creating cvar");
         STRY(!stack_enq(cvar),"pushing cvar");
     done:
         if (type)
@@ -282,10 +277,18 @@ int vm_eval(VM_ENV *env)
         LTV *tmp=NULL;
         if (!strncmp("dump",ref->data,ref->len))
             dump();
-        else if (!strncmp("ref",ref->data,ref->len))
-            tmp=stack_enq(ref_mod);
-        else if (!strncmp("mod",ref->data,ref->len))
-            dump_module_simple("/tmp/module.dot",ref_mod);
+        else if (!strncmp("import",ref->data,ref->len)) {
+            LTV *mod=NULL;
+            STRY(!(mod=stack_deq(KEEP)),"getting module name");
+            STRY(cif_curate_module(mod,false),"importing module");
+        }
+        else if (!strncmp("stack",ref->data,ref->len)) {
+            int old_show_ref=show_ref;
+            show_ref=1;
+            dumpstack();
+            graph_ltvs_to_file("/tmp/stack.dot",&env->res[VMRES_STACK],0,res_name[VMRES_STACK]);
+            show_ref=old_show_ref;
+        }
         else if (!strncmp("new",ref->data,ref->len))
             STRY(cvar(env),"allocating cvar");
     done:
@@ -302,7 +305,7 @@ int vm_eval(VM_ENV *env)
     void release_code() { if (code_ltvr) LTVR_release(&code_ltvr->lnk); }
 
     STRY(!env,"validating environment");
-    if (!(code_ltv=get_code()) || !(ip_ltv=LT_get(code_ltv,"ip",HEAD,KEEP))) {
+    if (!(code_ltv=get_code())) {
         status=!0;
         goto done;
     }
@@ -313,6 +316,7 @@ int vm_eval(VM_ENV *env)
     } else {
         char *data=(char *) code_ltv->data;
         int len=code_ltv->len;
+        STRY(!(ip_ltv=LT_get(code_ltv,"ip",HEAD,KEEP)),"getting IP");
         int *ip=(int *) &ip_ltv->data;
 
         LTV *decode_extended() {
@@ -467,7 +471,7 @@ int vm_init(int argc,char *argv[])
     LTV *dict=LTV_init(NEW(LTV),"DICT",-1,LT_RO|LT_NONE);
     LTV *envs=LTV_init(NEW(LTV),"ENVS",-1,LT_RO|LT_LIST);
     LT_put(dict,"ENVS",HEAD,envs);
-    LT_put(dict,"self",HEAD,ref_mod);
+    LT_put(dict,"self",HEAD,cif_module);
 
     VM_ENV *env=NEW(VM_ENV);
     STRY(vm_env_init(env,dict),"initializing env"); // initial env is dict-root+bootstrap-code

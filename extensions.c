@@ -26,14 +26,9 @@
 #include <string.h>
 #include <stdlib.h>
 
-//#include "extensions.h"
-
 extern int square(int a) { return a*a; }
-
 extern int minus(int a,int b) { return a-b; }
-
 extern int string(char *s) { printf("%s\n",s); }
 
 extern FILE *open_file(char *filename,char *opts) { return fopen(filename,opts); }
-
 extern void close_file(FILE *fp) { fclose(fp); }

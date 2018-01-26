@@ -44,7 +44,7 @@ int jit_asm(EMITTER emit,void *data,int len)
 }
 
 #define EDICT_OPS "|&!%#@/+="
-#define EDICT_MONO_OPS "()<>{}"
+#define EDICT_MONO_OPS ",()<>{}"
 
 #define EMIT(bc) emit(&((VM_CMD) {VMOP_ ## bc}))
 
@@ -66,27 +66,20 @@ int jit_edict(EMITTER emit,void *data,int len)
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
             EMIT(SPUSH);
         } else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
-            EMIT(NULL_ITEM);
-            EMIT(ENFRAME);
-            EMIT(SPOP);
-            EMIT(EDICT);
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
-            EMIT(EDICT);
-            EMIT(YIELD);
+            EMIT(NULL_ITEM); EMIT(ENFRAME);
+            EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE);
+            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
             EMIT(DEFRAME);
+            EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); // drop lambda's environment
         } else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
-            EMIT(ENFRAME);
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
-            EMIT(EDICT);
-            EMIT(YIELD);
+            EMIT(SPOP); EMIT(ENFRAME);
+            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
             EMIT(DEFRAME);
         } else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) { // just a block (for now)
-            EMIT(NULL_ITEM);
-            EMIT(ENFRAME);
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
-            EMIT(EDICT);
-            EMIT(YIELD);
+            EMIT(NULL_ITEM); EMIT(ENFRAME);
+            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
             EMIT(DEFRAME);
+            // DON'T drop lambda's environment
         }
         return advance(tlen);
     }
@@ -98,9 +91,7 @@ int jit_edict(EMITTER emit,void *data,int len)
         int ref_len=0,tlen=0;
         while ((tlen=series(tdata+ref_len,len-ref_len,NULL,NULL,"''")) || // quoted ref component
                (tlen=series(tdata+ref_len,len-ref_len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS "'","[]"))) // unquoted ref
-                ref_len+=tlen;
-
-        // ideally, anonymous items are treated like any other named item, w/name "$" (but merged up as frames are closed.)
+            ref_len+=tlen;
 
         if (ref_len) {
             emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
@@ -114,7 +105,7 @@ int jit_edict(EMITTER emit,void *data,int len)
                         case '#': EMIT(BUILTIN); break;
                         case '@': EMIT(SPOP); EMIT(REF_INS); EMIT(ASSIGN); break;
                         case '/': EMIT(REF_HRES); EMIT(REMOVE); break;
-                        case '+': EMIT(REF_HRES); EMIT(APPEND); break;
+                        case '+': EMIT(REF_HRES); EMIT(DEREF); EMIT(SPOP); EMIT(RES_WIP); EMIT(CONCAT); EMIT(SPUSH); break;
                         case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
                         case '&': EMIT(REF_HRES); EMIT(THROW); break;
                         case '|': EMIT(REF_ERES); EMIT(CATCH); break;
@@ -131,9 +122,11 @@ int jit_edict(EMITTER emit,void *data,int len)
                     case '#': EMIT(TOS); break;
                     case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
                     case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
+                    case '+': EMIT(SPOP); EMIT(SPOP); EMIT(RES_WIP); EMIT(CONCAT); EMIT(SPUSH); break;
                     case '&': EMIT(THROW); break;
                     case '|': EMIT(CATCH); break;
-                    case '!': EMIT(SPOP); EMIT(EDICT); EMIT(YIELD); break;
+                    case '!': EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD); break;
+                    case ',': EMIT(EVAL_SUB); break;
                 }
             }
         }
@@ -179,9 +172,9 @@ LTV *compile(COMPILER compiler,void *data,int len)
                     // ...fall thru!
                 default:
                     unsigned_val=htonl(cmd->len);
-                    fwrite(&unsigned_val,sizeof(unsigned_val),1,stream);
+                    fwrite(&unsigned_val,sizeof(unsigned),1,stream);
                     unsigned_val=htonl(cmd->flags);
-                    fwrite(&unsigned_val,sizeof(unsigned_val),1,stream);
+                    fwrite(&unsigned_val,sizeof(unsigned),1,stream);
                     fwrite(cmd->data,1,cmd->len,stream);
                     break;
             }

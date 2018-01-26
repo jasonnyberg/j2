@@ -120,10 +120,20 @@ enum {
     VMOP_MAP_KEEP,  // do map keep
     VMOP_MAP_POP,   // do map pop
 
+    VMOP_BYTECODE,
+
     VMOP_THROW,
     VMOP_CATCH,
 
+    VMOP_CONCAT,
+    VMOP_LISTCAT,
+
+    VMOP_PUSH_SUB,
+    VMOP_EVAL_SUB,
+    VMOP_POP_SUB,
+
     VMOP_NULL_ITEM,
+    VMOP_NULL_LIST,
 
     VMOP_ENFRAME,
     VMOP_DEFRAME,
@@ -176,16 +186,10 @@ typedef struct {
 } VM_ENV;
 
 typedef struct {
-    unsigned length;
-    unsigned flags;
-    char data[0];
-} VM_BC_LTV; // packed extended bytecode
-
-typedef struct {
     unsigned char op;
-    unsigned int len;
-    LTV_FLAGS flags;
-    char *data;
+    unsigned int len; // extended
+    LTV_FLAGS flags;  // extended
+    char *data;       // extended
 } VM_CMD; // exploded bytecode template
 
 extern int vm_init(int argc,char *argv[]);

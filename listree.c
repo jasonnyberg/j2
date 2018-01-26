@@ -395,6 +395,20 @@ LTV *LTV_dup(LTV *ltv)
     return LTV_init(NEW(LTV),ltv->data,ltv->len,flags);
 }
 
+LTV *LTV_concat(LTV *a,LTV *b)
+{
+    int status=0;
+    STRY(!a || !b,"validating args");
+    char *buf=NULL;
+    LTV *ltv=NULL;
+    STRY(!(buf=mymalloc(a->len+b->len)),"validating buf allocation");
+    STRY(!(ltv=LTV_init(NEW(LTV),buf,a->len+b->len,LT_OWN)),"validating ltv allocation");
+    strncpy(buf,a->data,a->len);
+    strncpy(buf+a->len,b->data,b->len);
+ done:
+    return status?NULL:ltv;
+}
+
 int LTV_wildcard(LTV *ltv)
 {
     if (ltv->flags&LT_NOWC)

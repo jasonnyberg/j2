@@ -660,6 +660,14 @@ void graph_ltvs_to_file(char *filename,CLL *ltvs,int maxdepth,char *label) {
     fclose(ofile);
 }
 
+void graph_ltv_to_file(char *filename,LTV *ltv,int maxdepth,char *label) {
+    CLL ltvs;
+    CLL_init(&ltvs);
+    LTV_enq(&ltvs,ltv,HEAD);
+    graph_ltvs_to_file(filename,&ltvs,maxdepth,label);
+    LTV_deq(&ltvs,HEAD);
+}
+
 //////////////////////////////////////////////////
 //////////////////////////////////////////////////
 

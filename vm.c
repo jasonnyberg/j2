@@ -50,90 +50,38 @@ static void init(void)
     sem_init(&vm_process_escapement,0,0); // blocks on first wait
 }
 
-char *res_name[] = { "dict","code","wip","stack","exc" };
+char *res_name[] = { "dict","code","wip","stack","exc","state","skip" };
 
-LTV *vm_enq(VM_ENV *env,int res,LTV *tos) { return LTV_put(&env->res[res],tos,HEAD,NULL); }
-LTV *vm_deq(VM_ENV *env,int res,int pop) { return LTV_get(&env->res[res],pop,HEAD,NULL,NULL); }
-
-//////////////////////////////////////////////////
-// Processor
-//////////////////////////////////////////////////
-int vm_env_init(VM_ENV *env,LTV *tos)
-{
-    int status=0;
-    ZERO(*env);
-    LTV_init(&env->lnk,"env0",-1,LT_NONE);
-    for (int res=0;res<VMRES_COUNT;res++)
-        CLL_init(&env->res[res]);
-    STRY(!vm_enq(env,VMRES_DICT,tos),"initializing dict");
-    STRY(!vm_enq(env,VMRES_STACK,LTV_NULL_LIST),"initializing stack");
- done:
-    return status;
-}
-
-int vm_env_release(VM_ENV *env)
-{
-    for (int res=0;res<VMRES_COUNT;res++) {
-        CLL_release(&env->res[res],LTVR_release);
-    }
-}
-
-int vm_env_bytecode(VM_ENV *env,LTV *bytecode)
-{
-    int status=0;
-    STRY(!bytecode,"validating bytecode");
-    STRY(!vm_enq(env,VMRES_CODE,bytecode),"pushing code");
-    if (!(bytecode->flags&LT_CVAR))
-        STRY(!LT_put(bytecode,"ip",HEAD,LTV_ZERO),"pushing IP");
- done:
-    return status;
-}
-
-int vm_env_enq(LTV *envs,VM_ENV *env)
-{
-    int status=0;
-    STRY(!LTV_enq(LTV_list(envs),&env->lnk,TAIL),"enqueing process env");
-    sem_post(&vm_process_escapement);
- done:
-    return status;
-}
-
-VM_ENV *vm_env_deq(LTV *envs)
-{
-    sem_wait(&vm_process_escapement);
-    return (VM_ENV *) LTV_deq(LTV_list(envs),HEAD);
-}
-
-void *vm_thunk(void *udata)
-{
-    LTV *envs=(LTV *) udata;
-    VM_ENV *env=NULL;
-    while ((env=vm_env_deq(envs)) && !vm_eval(env) && !vm_env_enq(envs,env));
- done:
-    return env && env->state?NON_NULL:NULL;
-}
-
+LTV *env_enq(LTV **res_ltv,int res,LTV *tos) { return LTV_put(LTV_list(res_ltv[res]),tos,HEAD,NULL); }
+LTV *env_deq(LTV **res_ltv,int res,int pop) { return LTV_get(LTV_list(res_ltv[res]),pop,HEAD,NULL,NULL); }
 
 //////////////////////////////////////////////////
 // Bytecode Interpreter
 //////////////////////////////////////////////////
-int vm_eval(VM_ENV *env)
+int vm_eval(LTV *env_cvar)
 {
     int status=0;
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-    // VM "REGISTERSE"
-    unsigned char op=0,imm=0;
+    LTV **res_ltv=(LTV **) env_cvar->data;
+    CLL *res_cll[VMRES_CLL_COUNT];
+
+    for (int i=0;i<VMRES_CLL_COUNT;i++)
+        STRY(!(res_cll[i]=LTV_list(res_ltv[i])),"caching lists");
+    int *env_state=(int *) res_ltv[VMRES_STATE]->data;
+    int *env_skip =(int *) res_ltv[VMRES_SKIP]->data;
+
+    unsigned char imm=0;
     LTV *ref=NULL;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-    LTV *enq(int res,LTV *ltv) { return LTV_put(&env->res[res],ltv,HEAD,NULL); }
-    LTV *deq(int res,int pop) { return LTV_get(&env->res[res],pop,HEAD,NULL,NULL); }
+    LTV *enq(int res,LTV *ltv) { return LTV_put(res_cll[res],ltv,HEAD,NULL); }
+    LTV *deq(int res,int pop) { return LTV_get(res_cll[res],pop,HEAD,NULL,NULL); }
 
     LTV *stack_enq(LTV *ltv) { return LTV_enq(LTV_list(deq(VMRES_STACK,KEEP)),ltv,HEAD); }
     LTV *stack_deq(int pop) {
         void *op(CLL *lnk) { return LTV_get(LTV_list(((LTVR *) lnk)->ltv),pop,HEAD,NULL,NULL); }
-        return CLL_map(&env->res[VMRES_STACK],FWD,op);
+        return CLL_map(res_cll[VMRES_STACK],FWD,op);
     }
 
     int concat(int res) { // merge tos and nos LTVs
@@ -179,14 +127,8 @@ int vm_eval(VM_ENV *env)
 
     int dump() {
         int status=0;
-        char filename[256];
-        for (int i=0;i<VMRES_COUNT;i++)
-        {
-            printf("\n%s:\n",res_name[i]);
-            print_ltvs(stdout,CODE_RED,&env->res[i],CODE_RESET "\n",0);
-            sprintf(filename,"/tmp/vm_%s.dot",res_name[i]);
-            graph_ltvs_to_file(filename,&env->res[i],5,res_name[i]);
-        }
+        print_ltv(stdout,CODE_RED,res_ltv[VMRES_DICT],CODE_RESET "\n",0);
+        graph_ltv_to_file("/tmp/env.dot",res_ltv[VMRES_DICT],0,NULL);
         return status;
     }
 
@@ -201,8 +143,8 @@ int vm_eval(VM_ENV *env)
 
     int dumpstack() {
         int status=0;
-        print_ltvs(stdout,CODE_RED,&env->res[VMRES_STACK],CODE_RESET "\n",0);
-        graph_ltvs_to_file("/tmp/vm_tos.dot",&env->res[VMRES_STACK],0,"TOS");
+        print_ltvs(stdout,CODE_RED,res_cll[VMRES_STACK],CODE_RESET "\n",0);
+        graph_ltvs_to_file("/tmp/vm_tos.dot",res_cll[VMRES_STACK],0,"TOS");
     done:
         return status;
     }
@@ -251,7 +193,7 @@ int vm_eval(VM_ENV *env)
     int throw(LTV *ltv) {
         int status=0;
         STRY(!enq(VMRES_EXC,ltv),"Throwing");
-        env->state|=VM_THROWING;
+        (*env_state)|=VM_THROWING;
     done:
         return status;
     }
@@ -264,35 +206,35 @@ int vm_eval(VM_ENV *env)
         if (!ref) { // catch all
             while (exception=deq(VMRES_EXC,POP))
                 LTV_release(exception);
-            env->state&=~VM_THROWING;
+            (*env_state)&=~VM_THROWING;
         }
         else if (exception==REF_ltv(REF_HEAD(ref))) { // specific exception
             LTV_release(deq(VMRES_EXC,POP));
             if (!deq(VMRES_EXC,KEEP))
-                env->state&=~VM_THROWING;
+                (*env_state)&=~VM_THROWING;
         }
     done:
         return status;
     }
 
     void skip() {
-        env->skipdepth++;
-        env->state|=VM_SKIPPING;
+        (*env_skip)++;
+        (*env_state)|=VM_SKIPPING;
     }
 
     void unskip() {
-        if (env->skipdepth)
-            env->skipdepth--;
-        if (!env->skipdepth)
-            env->state&=~VM_SKIPPING;
+        if ((*env_skip))
+            (*env_skip)--;
+        if (!(*env_skip))
+            (*env_state)&=~VM_SKIPPING;
     }
 
     int exc_deframe()
     {
         int status=0;
-        if      (env->state|VM_SKIPPING) unskip();
-        else if (env->state|VM_THROWING) STRY(context_pop(),"popping context");
-        else if (env->state|VM_BYPASS)   { STRY(context_pop(),"popping context"); env->state&=~VM_BYPASS; }
+        if      ((*env_state)|VM_SKIPPING) unskip();
+        else if ((*env_state)|VM_THROWING) STRY(context_pop(),"popping context");
+        else if ((*env_state)|VM_BYPASS)   { STRY(context_pop(),"popping context"); (*env_state)&=~VM_BYPASS; }
     done:
         return status;
     }
@@ -311,23 +253,34 @@ int vm_eval(VM_ENV *env)
             int old_show_ref=show_ref;
             show_ref=1;
             dumpstack();
-            graph_ltvs_to_file("/tmp/stack.dot",&env->res[VMRES_STACK],0,res_name[VMRES_STACK]);
+            graph_ltvs_to_file("/tmp/stack.dot",res_cll[VMRES_STACK],0,res_name[VMRES_STACK]);
             show_ref=old_show_ref;
         }
+        else if (!strncmp("hoist",ref->data,ref->len)) { // ltv -> cvar(ltv)
+            LTV *ltv=NULL;
+            STRY(!(ltv=deq(VMRES_WIP,POP)),"popping ltv to hoist");
+            STRY(!(enq(VMRES_WIP,cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL))),"pushing hoisted ltv cvar");
+        }
+        else if (!strncmp("drop",ref->data,ref->len)) { // cvar(ltv) -> ltv
+            LTV *cvar_ltv=NULL;
+            STRY(!(cvar_ltv=deq(VMRES_WIP,POP)),"popping ltv cvar to drop");
+            STRY(!(cvar_ltv->flags&LT_CVAR),"checking at least if it's a cvar"); // TODO: verify it's an "(LTV)*"
+            STRY(!(enq(VMRES_WIP,*(LTV **) cvar_ltv->data)),"pushing dropped ltv");
+            LTV_release(cvar_ltv);
+        }
+
     done:
         return status;
     }
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-
     LTV *code_ltv=NULL,*ip_ltv=NULL;
     LTVR *code_ltvr=NULL;
 
-    LTV *get_code() { return LTV_get(&env->res[VMRES_CODE],KEEP,HEAD,NULL,&code_ltvr); }
+    LTV *get_code() { return LTV_get(res_cll[VMRES_CODE],KEEP,HEAD,NULL,&code_ltvr); }
     void release_code() { if (code_ltvr) LTVR_release(&code_ltvr->lnk); }
 
-    STRY(!env,"validating environment");
     if (!(code_ltv=get_code())) {
         status=!0;
         goto done;
@@ -339,7 +292,9 @@ int vm_eval(VM_ENV *env)
     } else {
         char *data=(char *) code_ltv->data;
         int len=code_ltv->len;
-        STRY(!(ip_ltv=LT_get(code_ltv,"ip",HEAD,KEEP)),"getting IP");
+        ip_ltv=LT_get(code_ltv,"ip",HEAD,KEEP);
+        if (!ip_ltv)
+            STRY(!(ip_ltv=LT_put(code_ltv,"ip",HEAD,LTV_ZERO)),"inserting CODE IP");
         int *ip=(int *) &ip_ltv->data;
 
         LTV *decode_extended() {
@@ -358,7 +313,7 @@ int vm_eval(VM_ENV *env)
             STRY(!(map=compile(compilers[FORMAT_asm],map_bytecodes,1)),"creating map wrapper");
             LT_put(map,"lambda",HEAD,lambda); // install lambda
             LT_put(map,"ref",HEAD,ref); // install_ref
-            vm_env_bytecode(env,map); // install wrapper
+            STRY(!env_enq(res_ltv,VMRES_CODE,map),"pushing map");
         done:
             return status;
         }
@@ -371,43 +326,46 @@ int vm_eval(VM_ENV *env)
             STRY(!(ltv=REF_ltv(REF_HEAD(ref))),"dereferencing ref from map wrapper");
             stack_enq(ltv);
             if (!REF_iterate(ref,pop) && REF_ltv(REF_HEAD(ref))) // will there be a next round?
-                vm_env_bytecode(env,code_ltv); // if so, requeue wrapper
-            vm_env_bytecode(env,lambda);
+                STRY(!env_enq(res_ltv,VMRES_CODE,code_ltv),"pushing code_ltv"); // if so, requeue wrapper
+            STRY(!env_enq(res_ltv,VMRES_CODE,lambda),"pushing lambda");
         done:
             return status;
         }
 
-#define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x\n" CODE_RESET,(unsigned char) vmop);
+        //#define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x\n" CODE_RESET,(unsigned char) vmop);
+#define OPCODE(vmop) case (unsigned char) vmop:
 
         while ((*ip)<len) {
-            op=data[(*ip)++];
-            if (env->state) {
+            unsigned char op=data[(*ip)++];
+            if (*env_state) {
                 switch(op) {
                     OPCODE(VMOP_REF)      TRYCATCH(!(ref=REF_create(decode_extended())),op,bc_exc,"decoding a ref"); continue;
-                    OPCODE(VMOP_REF_ERES) TRYCATCH(ref_hres(&env->res[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
+                    OPCODE(VMOP_REF_ERES) TRYCATCH(ref_hres(res_cll[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
                     OPCODE(VMOP_REF_KILL) LTV_release(ref); ref=NULL; continue;
                     OPCODE(VMOP_ENFRAME)  skip(); continue;
                     OPCODE(VMOP_DEFRAME)  TRYCATCH(exc_deframe(),op,bc_exc,"deframing in exception"); continue;
-                    OPCODE(VMOP_CATCH)    if (env->state|VM_THROWING) catch(); continue;
+                    OPCODE(VMOP_CATCH)    if ((*env_state)|VM_THROWING) catch(); continue;
                     default: continue;
                 }
             } else {
                 switch(op) {
+                    //////////////////////////////////////////////////////
+                    case 0xff-VMRES_DICT:  imm=VMRES_DICT;  continue;
+                    case 0xff-VMRES_CODE:  imm=VMRES_CODE;  continue;
+                    case 0xff-VMRES_WIP:   imm=VMRES_WIP;   continue;
+                    case 0xff-VMRES_STACK: imm=VMRES_STACK; continue;
+                    case 0xff-VMRES_EXC:   imm=VMRES_EXC;   continue;
+                    //////////////////////////////////////////////////////
+
                     OPCODE(VMOP_REF)       TRYCATCH(!(ref=REF_create(decode_extended())),op,bc_exc,"decoding a ref"); continue;
                     OPCODE(VMOP_REF_ERES)  continue; // unneeded when not in exception mode
-                    OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(&env->res[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
+                    OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(res_cll[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
                     OPCODE(VMOP_REF_KILL)  LTV_release(ref); ref=NULL; continue;
                     OPCODE(VMOP_ENFRAME)   TRYCATCH(context_push(),op,bc_exc,"pushing context"); continue;
                     OPCODE(VMOP_DEFRAME)   TRYCATCH(context_pop(),op,bc_exc,"popping context");  continue;
-                    OPCODE(VMOP_CATCH)     env->state|=VM_BYPASS; continue;
+                    OPCODE(VMOP_CATCH)     (*env_state)|=VM_BYPASS; continue;
 
                     OPCODE(VMOP_THROW)     throw(REF_ltv(REF_HEAD(ref))); continue;
-
-                    OPCODE(VMOP_RES_DICT)  imm=VMRES_DICT;    continue;
-                    OPCODE(VMOP_RES_CODE)  imm=VMRES_CODE;    continue;
-                    OPCODE(VMOP_RES_WIP)   imm=VMRES_WIP;     continue;
-                    OPCODE(VMOP_RES_STACK) imm=VMRES_STACK;   continue;
-                    OPCODE(VMOP_RES_EXC)   imm=VMRES_EXC;     continue;
 
                     OPCODE(VMOP_NULL_ITEM) TRYCATCH(!enq(VMRES_WIP,LTV_NULL),op,bc_exc,"pushing NULL to WIP");  continue;
                     OPCODE(VMOP_NULL_LIST) TRYCATCH(!enq(VMRES_WIP,LTV_NULL_LIST),op,bc_exc,"pushing NULL LIST to WIP");  continue;
@@ -443,7 +401,7 @@ int vm_eval(VM_ENV *env)
                     OPCODE(VMOP_WRLOCK)    pthread_rwlock_wrlock(&vm_rwlock); continue;
                     OPCODE(VMOP_UNLOCK)    pthread_rwlock_unlock(&vm_rwlock); continue;
 
-                    OPCODE(VMOP_BYTECODE)  TRYCATCH(vm_env_bytecode(env,deq(VMRES_WIP,POP)),op,bc_exc,"pushing bytecode"); continue;
+                    OPCODE(VMOP_BYTECODE)  TRYCATCH(!env_enq(res_ltv,VMRES_CODE,deq(VMRES_WIP,POP)),op,bc_exc,"pushing bytecode"); continue;
 
                     OPCODE(VMOP_EDICT)     enq(VMRES_WIP,compile_ltv(compilers[FORMAT_edict],  deq(VMRES_WIP,POP))); continue;
                     OPCODE(VMOP_XML)       enq(VMRES_WIP,compile_ltv(compilers[FORMAT_xml],    deq(VMRES_WIP,POP))); continue;
@@ -467,7 +425,7 @@ int vm_eval(VM_ENV *env)
                       case VMOP_GRAPH_REFS:  REF_dot(stdout,LTV_list(ref),"Ref: "); continue;
                     */
 
-                    default: STRY((env->state=VM_ERROR),"evaluating invalid bytecode 0x%x",op); continue;
+                    default: STRY(((*env_state)=VM_ERROR),"evaluating invalid bytecode 0x%x",op); continue;
                 }
             }
 
@@ -481,71 +439,86 @@ int vm_eval(VM_ENV *env)
             release_code();
     }
 
-    env->state&=~VM_BYPASS;
+    (*env_state)&=~VM_BYPASS;
 
  done:
     return status;
 }
 
-int vm_thread(LTV *env,LTV *code)
-{
-}
 
-int vm_init(int argc,char *argv[])
+//////////////////////////////////////////////////
+// Processor
+//////////////////////////////////////////////////
+LTV *vm_env_create(LTV *root,LTV *code)
 {
     int status=0;
-    LTV *dict=LTV_init(NEW(LTV),"DICT",-1,LT_RO|LT_NONE);
-    LTV *envs=LTV_init(NEW(LTV),"ENVS",-1,LT_RO|LT_LIST);
-    LT_put(dict,"ENVS",HEAD,envs);
-    LT_put(dict,"self",HEAD,cif_module);
 
-    VM_ENV *env=NEW(VM_ENV);
-    STRY(vm_env_init(env,dict),"initializing env"); // initial env is dict-root+bootstrap-code
+    LTV *env_cvar=NULL;
+    STRY(!(env_cvar=cif_create_cvar(cif_type_info("((LTV)*)*"),NEW(LTV *[VMRES_COUNT]),NULL)),"creating env cvar");
 
-    ////////////////////////////////////////////////////////////////////////////////////////////////////
+    LTV **res_ltv=env_cvar->data; // sneaky;
+    for (int i=0;i<VMRES_CLL_COUNT;i++)
+        STRY(!(res_ltv[i]=LTV_NULL_LIST),"creating %s",res_name[i]);
+    for (int i=VMRES_CLL_COUNT;i<VMRES_COUNT;i++)
+        STRY(!(res_ltv[i]=cif_create_cvar(cif_type_info("int"),NULL,NULL)),"creating %s",res_name[i]);
 
-    int format=FORMAT_edict;
-    FILE *file=stdin;
-    char *data;
-    int len;
-    LTV *ltv=NULL;
+    STRY(!env_enq(res_ltv,VMRES_STACK,LTV_NULL_LIST),"initializing stack");
+    STRY(!env_enq(res_ltv,VMRES_CODE,code),"pushing code");
 
-    switch (argc)
-    {
-        case 3:
-            file=fopen(argv[2],"r");
-            // FALL THRU!
-        case 2:
-            for (int format=0;format<FORMAT_MAX;format++)
-                if (!strcmp(formats[format],argv[1]))
-                    break;
-            break;
-        case 1:
-            printf("Specify format (asm | edict | xml | json | yaml | mmassoc)\n");
-            break;
-    }
+    // construct dictionary
+    LTV *env_ltv=LTV_init(NEW(LTV),"ENV",-1,LT_RO);
+    LT_put(env_ltv,"ENV",HEAD,env_cvar);
+    for (int i=0;i<VMRES_COUNT;i++)
+        LT_put(env_ltv,res_name[i],HEAD,res_ltv[i]);
 
-    do {
-        TRYCATCH((data=balanced_readline(file,&len))==NULL,0,close_file,"reading balanced line from file");
-        TRYCATCH(!(ltv=compile(compilers[format],data,len)),TRY_ERR,free_data,"compiling balanced line");
-        print_ltv(stdout,"bytecodes:\n",ltv,"\n",0);
-        TRYCATCH(vm_env_bytecode(env,ltv),TRY_ERR,free_data,"pushing bytecode");
-        TRYCATCH(vm_env_enq(envs,env),TRY_ERR,free_data,"pushing env");
-        vm_thunk(envs);
-    free_data:
-        DELETE(data);
-    } while(1);
-
- close_file:
-    if (file!=stdin)
-        fclose(file);
-
- release_env:
-    printf("releasing env\n");
-    vm_env_release(env);
-
-    ////////////////////////////////////////////////////////////////////////////////////////////////////
-
+    STRY(!env_enq(res_ltv,VMRES_DICT,env_ltv),"pushing environment into dict");
+    STRY(!env_enq(res_ltv,VMRES_DICT,root),"pushing reflection into dict");
  done:
+    if (status)
+        LTV_release(env_cvar);
+    return env_cvar;
+}
+
+int vm_env_enq(LTV *envs,LTV *env_ltv)
+{
+    int status=0;
+    STRY(!LTV_enq(LTV_list(envs),env_ltv,TAIL),"enqueing process env");
+    sem_post(&vm_process_escapement);
+ done:
+    return status;
+}
+
+LTV *vm_env_deq(LTV *envs)
+{
+    sem_wait(&vm_process_escapement);
+    return LTV_deq(LTV_list(envs),HEAD);
+}
+
+void *vm_thunk(void *udata)
+{
+    int status=0;
+    LTV *envs=(LTV *) udata;
+    LTV *env_ltv=NULL;
+    do {
+        STRY(!(env_ltv=vm_env_deq(envs)),"popping env");
+        STRY(vm_eval(env_ltv),"evaluating env");
+        STRY(!vm_env_enq(envs,env_ltv),"pushing env");
+    } while (1);
+ done:
+    return status?NON_NULL:NULL;
+}
+
+int vm_run()
+{
+    int status=0;
+    LTV *envs=LTV_NULL_LIST; // list of environments
+
+    char *bootstrap_code="[hello, world!] #dump";
+    LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,-1); // code stack
+
+    STRY(vm_env_enq(envs,vm_env_create(cif_module,code)),"pushing env");
+    vm_thunk(envs);
+ done:
+    LTV_release(envs);
     return status;
 }

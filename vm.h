@@ -22,7 +22,6 @@
 #ifndef VM_H
 #define VM_H
 
-#include "listree.h"
 
 // ideas:
 // cll/listree traversal bytecodes
@@ -83,7 +82,7 @@
   * dup (TOS)
   * ro (TOS->set read_only)
 
-*/
+  */
 
 enum {
     VMRES_DICT,
@@ -91,108 +90,20 @@ enum {
     VMRES_WIP,
     VMRES_STACK,
     VMRES_EXC,
+    VMRES_CLL_COUNT,
+    VMRES_STATE=VMRES_CLL_COUNT,
+    VMRES_SKIP,
     VMRES_COUNT
     // REFS? EXCEPTIONS?
 };
 
 enum {
-    VMOP_NOP=0,
-    VMOP_LIT,
-    VMOP_REF,
-    VMOP_EXTENDED=0x10, // not an op; any ops less than this are "extended"
-
-    VMOP_BUILTIN,
-    VMOP_REF_MAKE,
-    VMOP_REF_KILL,
-    VMOP_REF_INS,
-    VMOP_REF_RES,
-    VMOP_REF_ERES, // HRES but not skipped while throwing (for catch)
-    VMOP_REF_HRES, // ERES but skipped while throwing
-    VMOP_REF_ITER,
-    VMOP_ASSIGN,
-    VMOP_REMOVE,
-    VMOP_APPEND,
-    VMOP_COMPARE,
-    VMOP_DEREF,
-
-    VMOP_MMAP_KEEP, // make map keep
-    VMOP_MMAP_POP,  // make map pop
-    VMOP_MAP_KEEP,  // do map keep
-    VMOP_MAP_POP,   // do map pop
-
-    VMOP_BYTECODE,
-
-    VMOP_THROW,
-    VMOP_CATCH,
-
-    VMOP_CONCAT,
-    VMOP_LISTCAT,
-
-    VMOP_PUSH_SUB,
-    VMOP_EVAL_SUB,
-    VMOP_POP_SUB,
-
-    VMOP_NULL_ITEM,
-    VMOP_NULL_LIST,
-
-    VMOP_ENFRAME,
-    VMOP_DEFRAME,
-
-    VMOP_TOS,
-
-    VMOP_RDLOCK,
-    VMOP_WRLOCK,
-    VMOP_UNLOCK,
-
-    VMOP_YIELD,
-
-    VMOP_SPUSH,
-    VMOP_SPOP,
-    VMOP_SPEEK,
-
-    VMOP_PUSH,
-    VMOP_POP,
-    VMOP_PEEK,
-    VMOP_DUP,  // dup TOS(res)
-    VMOP_DROP, // drop TOS(res)
-
-    VMOP_EDICT,
-    VMOP_XML,
-    VMOP_JSON,
-    VMOP_YAML,
-    VMOP_SWAGGER,
-    VMOP_LISP,
-    VMOP_MASSOC,
-
-    VMOP_RES_DICT  = 0xff-VMRES_DICT,
-    VMOP_RES_CODE  = 0xff-VMRES_CODE,
-    VMOP_RES_WIP   = 0xff-VMRES_WIP,
-    VMOP_RES_STACK = 0xff-VMRES_STACK,
-    VMOP_RES_EXC   = 0xff-VMRES_EXC,
+    VM_ERROR    = 0x1,
+    VM_BYPASS   = 0x2,
+    VM_THROWING = 0x4,
+    VM_SKIPPING = 0x8,
 };
 
-enum {
-    VM_ERROR    = 0x01,
-    VM_BYPASS   = 0x02,
-    VM_THROWING = 0x04,
-    VM_SKIPPING = 0x10,
-};
-
-typedef struct {
-    LTV lnk;
-    unsigned state;
-    unsigned skipdepth;
-    CLL res[VMRES_COUNT];  // "resource" stack (code/stack/dict/refs)
-} VM_ENV;
-
-typedef struct {
-    unsigned char op;
-    unsigned int len; // extended
-    LTV_FLAGS flags;  // extended
-    char *data;       // extended
-} VM_CMD; // exploded bytecode template
-
-extern int vm_init(int argc,char *argv[]);
-extern int vm_eval(VM_ENV *env);
+extern int vm_run();
 
 #endif // VM_H

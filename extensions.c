@@ -30,5 +30,21 @@ extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
 extern int string(char *s) { printf("%s\n",s); }
 
-extern FILE *open_file(char *filename,char *opts) { return fopen(filename,opts); }
-extern void close_file(FILE *fp) { fclose(fp); }
+/*
+extern LTV *read_compile(FILE *file,int format) { // temp hack until I can write this directly in edict
+    int status=0;
+    char *data;
+    int len;
+    STRY((data=balanced_readline(file,&len))==NULL,"reading balanced line from file");
+    LTV *ltv=NULL;
+    TRYCATCH(!(ltv=compile(compilers[format],data,len)),TRY_ERR,free_data,"compiling balanced line");
+    print_ltv(stdout,"bytecodes:\n",ltv,"\n",0);
+ free_data:
+    DELETE(data);
+ done:
+    return ltv;
+}
+*/
+
+extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
+extern void file_close(FILE *fp) { fclose(fp); }

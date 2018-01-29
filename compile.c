@@ -46,7 +46,8 @@ int jit_asm(EMITTER emit,void *data,int len)
 #define EDICT_OPS "|&!%#@/+="
 #define EDICT_MONO_OPS ",()<>{}"
 
-#define EMIT(bc) emit(&((VM_CMD) {VMOP_ ## bc}))
+#define EMIT(bc)     emit(&((VM_CMD) {VMOP_ ## bc}))
+#define EMITRES(res) emit(&((VM_CMD) {0xff-VMRES_ ## res}))
 
 int jit_edict(EMITTER emit,void *data,int len)
 {
@@ -70,7 +71,7 @@ int jit_edict(EMITTER emit,void *data,int len)
             EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE);
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
             EMIT(DEFRAME);
-            EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); // drop lambda's environment
+            EMIT(SPOP); EMITRES(WIP); EMIT(DROP); // drop lambda's environment
         } else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
             EMIT(SPOP); EMIT(ENFRAME);
             emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
@@ -105,7 +106,7 @@ int jit_edict(EMITTER emit,void *data,int len)
                         case '#': EMIT(BUILTIN); break;
                         case '@': EMIT(SPOP); EMIT(REF_INS); EMIT(ASSIGN); break;
                         case '/': EMIT(REF_HRES); EMIT(REMOVE); break;
-                        case '+': EMIT(REF_HRES); EMIT(DEREF); EMIT(SPOP); EMIT(RES_WIP); EMIT(CONCAT); EMIT(SPUSH); break;
+                        case '+': EMIT(REF_HRES); EMIT(DEREF); EMIT(SPOP); EMITRES(WIP); EMIT(CONCAT); EMIT(SPUSH); break;
                         case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
                         case '&': EMIT(REF_HRES); EMIT(THROW); break;
                         case '|': EMIT(REF_ERES); EMIT(CATCH); break;
@@ -121,8 +122,8 @@ int jit_edict(EMITTER emit,void *data,int len)
                 switch (ops_data[i]) {
                     case '#': EMIT(TOS); break;
                     case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
-                    case '/': EMIT(SPOP); EMIT(RES_WIP); EMIT(DROP); break;
-                    case '+': EMIT(SPOP); EMIT(SPOP); EMIT(RES_WIP); EMIT(CONCAT); EMIT(SPUSH); break;
+                    case '/': EMIT(SPOP); EMITRES(WIP); EMIT(DROP); break;
+                    case '+': EMIT(SPOP); EMIT(SPOP); EMITRES(WIP); EMIT(CONCAT); EMIT(SPUSH); break;
                     case '&': EMIT(THROW); break;
                     case '|': EMIT(CATCH); break;
                     case '!': EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD); break;
@@ -181,6 +182,8 @@ LTV *compile(COMPILER compiler,void *data,int len)
         }
     }
 
+    if (len==-1)
+        len=strlen((char *) data);
     compiler(emit,data,len);
     fclose(stream);
     return LTV_init(NEW(LTV),buf,flen,LT_OWN|LT_BIN);

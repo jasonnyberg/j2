@@ -116,8 +116,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
 #pragma GCC diagnostic ignored "-Wformat-zero-length"
 #define TRY(_cond_,_msg_...)                                            \
     do {                                                                \
-        if (try_context.depth<try_depth)                                \
-        {                                                               \
+        if (try_context.depth<try_depth) {                              \
             snprintf(try_context.msgstr,TRY_STRLEN,_msg_);              \
             try_loginfo(__func__,#_cond_);                              \
         }                                                               \
@@ -128,17 +127,13 @@ extern void try_logerror(const char *func,const char *cond,int status);
 
 #define CATCH(_cond_,_fail_status_,_todo_,_msg_...)                     \
     do {                                                                \
-        if (_cond_)                                                     \
-        {                                                               \
+        if (_cond_) {                                                   \
             status=(_fail_status_);                                     \
-            if (status)                                                 \
-            {                                                           \
+            if (status) {                                               \
                 snprintf(try_context.msgstr,TRY_STRLEN,_msg_);          \
                 try_seterr((int) status,try_context.msgstr);            \
                 try_logerror((__func__),#_cond_,(int) status);          \
-            }                                                           \
-            else                                                        \
-            {                                                           \
+            } else {                                                    \
                 try_reset();                                            \
             }                                                           \
             _todo_;                                                     \

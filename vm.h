@@ -98,10 +98,11 @@ enum {
 };
 
 enum {
-    VM_ERROR    = 0x1,
-    VM_BYPASS   = 0x2,
-    VM_THROWING = 0x4,
-    VM_SKIPPING = 0x8,
+    VM_ERROR    = 0x01,
+    VM_BYPASS   = 0x02,
+    VM_THROWING = 0x04,
+    VM_SKIPPING = 0x08,
+    VM_COMPLETE = 0x10,
 };
 
 extern int vm_run();

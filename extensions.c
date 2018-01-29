@@ -26,9 +26,15 @@
 #include <string.h>
 #include <stdlib.h>
 
+#include "util.h"
+#include "listree.h"
+
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
 extern int string(char *s) { printf("%s\n",s); }
+
+extern void capture() { stdin; stdout; stderr; }
+extern FILE *get_stdin() { return stdin; }
 
 /*
 extern LTV *read_compile(FILE *file,int format) { // temp hack until I can write this directly in edict
@@ -45,6 +51,11 @@ extern LTV *read_compile(FILE *file,int format) { // temp hack until I can write
     return ltv;
 }
 */
+
+extern LTV *brl(FILE *fp) {
+    int len; char *data=NULL;
+    return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
+}
 
 extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
 extern void file_close(FILE *fp) { fclose(fp); }

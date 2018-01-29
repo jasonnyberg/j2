@@ -1,4 +1,2 @@
-[build/libedict.so] #preview #bootstrap @edict
-
-[[stdin] #read | read_stdin!]@read_stdin
-read_stdin!
+[get_stdin! brl! #plop ! repl!]@repl
+repl!

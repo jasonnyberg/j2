@@ -284,7 +284,7 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     return i;
 }
 
-char *_balanced_readline(FILE *ifile,int *length) {
+char *balanced_readline(FILE *ifile,int *length) {
     char *expr=NULL;
     char *nextline(int *linelen) {
         static char *line=NULL;
@@ -349,5 +349,3 @@ char *_balanced_readline(FILE *ifile,int *length) {
 done:
     return (*length && !depth)?expr:(free(expr),NULL);
 }
-
-char *balanced_readline(FILE *ifile,int *length) { return _balanced_readline(ifile,length); }

@@ -67,7 +67,7 @@ int vm_eval(LTV *env_cvar)
     CLL *res_cll[VMRES_CLL_COUNT];
 
     for (int i=0;i<VMRES_CLL_COUNT;i++)
-        STRY(!(res_cll[i]=LTV_list(res_ltv[i])),"caching lists");
+        STRY(!(res_cll[i]=LTV_list(res_ltv[i])),"caching %s",res_name[i]);
     int *env_state=(int *) res_ltv[VMRES_STATE]->data;
     int *env_skip =(int *) res_ltv[VMRES_SKIP]->data;
 
@@ -240,7 +240,7 @@ int vm_eval(LTV *env_cvar)
     }
 
     int builtin() {
-        int status=0;
+        int status=false;
         LTV *tmp=NULL;
         if (!strncmp("dump",ref->data,ref->len))
             dump();
@@ -258,18 +258,27 @@ int vm_eval(LTV *env_cvar)
         }
         else if (!strncmp("hoist",ref->data,ref->len)) { // ltv -> cvar(ltv)
             LTV *ltv=NULL;
-            STRY(!(ltv=deq(VMRES_WIP,POP)),"popping ltv to hoist");
-            STRY(!(enq(VMRES_WIP,cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL))),"pushing hoisted ltv cvar");
+            if (!(ltv=deq(VMRES_WIP,POP))) // ,"popping ltv to hoist");
+                status=true;
+            else if (!(enq(VMRES_WIP,cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL)))) // ,"pushing hoisted ltv cvar");
+                status=true;
         }
-        else if (!strncmp("drop",ref->data,ref->len)) { // cvar(ltv) -> ltv
+        else if (!strncmp("plop",ref->data,ref->len)) { // cvar(ltv) -> ltv
             LTV *cvar_ltv=NULL;
-            STRY(!(cvar_ltv=deq(VMRES_WIP,POP)),"popping ltv cvar to drop");
-            STRY(!(cvar_ltv->flags&LT_CVAR),"checking at least if it's a cvar"); // TODO: verify it's an "(LTV)*"
-            STRY(!(enq(VMRES_WIP,*(LTV **) cvar_ltv->data)),"pushing dropped ltv");
-            LTV_release(cvar_ltv);
+            if (!(cvar_ltv=stack_deq(POP)))
+                status=true;
+            else {
+                if (!(cvar_ltv->flags&LT_CVAR)) // "checking at least if it's a cvar" // TODO: verify it's an "(LTV)*"
+                    status=true;
+                else if (!(stack_enq(*(LTV **) cvar_ltv->data)))
+                    status=true;
+                LTV_release(cvar_ltv);
+            }
         }
 
     done:
+        if (status)
+            throw(LTV_NULL);
         return status;
     }
 
@@ -282,12 +291,13 @@ int vm_eval(LTV *env_cvar)
     void release_code() { if (code_ltvr) LTVR_release(&code_ltvr->lnk); }
 
     if (!(code_ltv=get_code())) {
-        status=!0;
+        status=VM_COMPLETE;
         goto done;
     }
 
     if (code_ltv->flags&LT_TYPE) {
-        STRY(eval_type(code_ltv),"executing ffi");
+        if (eval_type(code_ltv))
+            throw(code_ltv);
         release_code();
     } else {
         char *data=(char *) code_ltv->data;
@@ -479,10 +489,10 @@ LTV *vm_env_create(LTV *root,LTV *code)
     return env_cvar;
 }
 
-int vm_env_enq(LTV *envs,LTV *env_ltv)
+int vm_env_enq(LTV *envs,LTV *env_cvar)
 {
     int status=0;
-    STRY(!LTV_enq(LTV_list(envs),env_ltv,TAIL),"enqueing process env");
+    STRY(!LTV_enq(LTV_list(envs),env_cvar,TAIL),"enqueing process env");
     sem_post(&vm_process_escapement);
  done:
     return status;
@@ -496,24 +506,33 @@ LTV *vm_env_deq(LTV *envs)
 
 void *vm_thunk(void *udata)
 {
-    int status=0;
     LTV *envs=(LTV *) udata;
-    LTV *env_ltv=NULL;
+    LTV *env_cvar=NULL;
+
     do {
-        STRY(!(env_ltv=vm_env_deq(envs)),"popping env");
-        STRY(vm_eval(env_ltv),"evaluating env");
-        STRY(!vm_env_enq(envs,env_ltv),"pushing env");
+        if (!CLL_EMPTY(LTV_list(envs)) && (env_cvar=vm_env_deq(envs))) {
+            if (vm_eval(env_cvar)==VM_COMPLETE)
+                LTV_release(env_cvar);
+            else
+                vm_env_enq(envs,env_cvar);
+        }
+        else break;
     } while (1);
  done:
-    return status?NON_NULL:NULL;
+    return envs;
 }
 
 int vm_run()
 {
     int status=0;
-    LTV *envs=LTV_NULL_LIST; // list of environments
+    LTV *envs=LTV_NULL_LIST; // list of environment
 
-    char *bootstrap_code="[hello, world!] #dump";
+    char *bootstrap_code=
+        "[bootstrap.edict]  [r] file_open ! @bootstrap.file "
+        "[bootstrap.file brl! #plop #stack ! bootstrap.loop!]@bootstrap.loop "
+        "bootstrap.loop! "
+        "| #dump "
+        ;
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,-1); // code stack
 
     STRY(vm_env_enq(envs,vm_env_create(cif_module,code)),"pushing env");

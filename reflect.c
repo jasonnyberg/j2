@@ -1544,8 +1544,9 @@ int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
     done:
         return status?NON_NULL:NULL;
     }
-    LTI *children=LTI_resolve(lambda,TYPE_LIST,0);
-    STRY(CLL_map(&children->ltvs,REV,marshal_arg)!=NULL,"marshalling ffi args from environment");
+    LTI *children=NULL;
+    TRYCATCH(!(children=LTI_resolve(lambda,TYPE_LIST,0)),0,done,"retrieving ffi args");;
+    STRY(CLL_map(&children->ltvs,REV,marshal_arg)!=NULL,"marshalling ffi args");
  done:
     return status;
 }
@@ -1569,9 +1570,9 @@ LTV *cif_coerce(LTV *ltv,LTV *type)
     show_ref=1;
 
     printf("coercing ltv\n");
-    print_ltv(stdout,NULL,ltv,NULL,0);
+    print_ltv(stdout,NULL,ltv,NULL,2);
     printf("into type\n");
-    print_ltv(stdout,NULL,type,NULL,0);
+    print_ltv(stdout,NULL,type,NULL,2);
 
     if (!(ltv->flags&LT_CVAR)) {
         LTV *addr=(ltv->flags&LT_CVAR)?ltv->data:&ltv->data;

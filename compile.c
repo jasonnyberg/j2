@@ -43,8 +43,8 @@ int jit_asm(EMITTER emit,void *data,int len)
     }
 }
 
-#define EDICT_OPS "|&!%#@/+="
-#define EDICT_MONO_OPS ",()<>{}"
+#define EDICT_OPS "|&!%#@/+=:;,"
+#define EDICT_MONO_OPS "()<>{}"
 
 #define EMIT(bc)     emit(&((VM_CMD) {VMOP_ ## bc}))
 #define EMITRES(res) emit(&((VM_CMD) {0xff-VMRES_ ## res}))
@@ -127,7 +127,9 @@ int jit_edict(EMITTER emit,void *data,int len)
                     case '&': EMIT(THROW); break;
                     case '|': EMIT(CATCH); break;
                     case '!': EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD); break;
-                    case ',': EMIT(EVAL_SUB); break;
+                    case ':': EMIT(SPOP); EMIT(EDICT); EMIT(PUSH_SUB); break;
+                    case ',': EMIT(EVAL_SUB); EMIT(YIELD); break;
+                    case ';': EMIT(POP_SUB); EMITRES(WIP); EMIT(DROP); break;
                 }
             }
         }

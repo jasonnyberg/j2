@@ -288,7 +288,12 @@ int vm_eval(LTV *env_cvar)
     LTVR *code_ltvr=NULL;
 
     LTV *get_code() { return LTV_get(res_cll[VMRES_CODE],KEEP,HEAD,NULL,&code_ltvr); }
-    void release_code() { if (code_ltvr) LTVR_release(&code_ltvr->lnk); }
+    void release_code() {
+        if (code_ltvr) {
+            LTV_release(LT_get(code_ltv,"ip",HEAD,POP));
+            LTVR_release(&code_ltvr->lnk);
+        }
+    }
 
     if (!(code_ltv=get_code())) {
         status=VM_COMPLETE;
@@ -323,7 +328,7 @@ int vm_eval(LTV *env_cvar)
             STRY(!(map=compile(compilers[FORMAT_asm],map_bytecodes,1)),"creating map wrapper");
             LT_put(map,"lambda",HEAD,lambda); // install lambda
             LT_put(map,"ref",HEAD,ref); // install_ref
-            STRY(!env_enq(res_ltv,VMRES_CODE,map),"pushing map");
+            STRY(!enq(VMRES_CODE,map),"pushing map");
         done:
             return status;
         }
@@ -336,10 +341,24 @@ int vm_eval(LTV *env_cvar)
             STRY(!(ltv=REF_ltv(REF_HEAD(ref))),"dereferencing ref from map wrapper");
             stack_enq(ltv);
             if (!REF_iterate(ref,pop) && REF_ltv(REF_HEAD(ref))) // will there be a next round?
-                STRY(!env_enq(res_ltv,VMRES_CODE,code_ltv),"pushing code_ltv"); // if so, requeue wrapper
-            STRY(!env_enq(res_ltv,VMRES_CODE,lambda),"pushing lambda");
+                STRY(!enq(VMRES_CODE,code_ltv),"pushing code_ltv"); // if so, requeue wrapper
+            STRY(!enq(VMRES_CODE,lambda),"pushing lambda");
         done:
             return status;
+        }
+
+        int eval_sub() {
+            LTV *sub=NULL;
+            if ((sub=LT_get(code_ltv,"sub",HEAD,KEEP)))
+                enq(VMRES_CODE,sub);
+            return sub?true:false;
+        }
+
+        int deref() {
+            LTV *ltv=REF_ltv(REF_HEAD(ref));
+            if (!ltv)
+                ltv=LTV_dup(ref);
+            return !enq(VMRES_WIP,ltv);
         }
 
         //#define OPCODE(vmop) case (unsigned char) vmop: printf(CODE_RED "0x%x\n" CODE_RESET,(unsigned char) vmop);
@@ -369,7 +388,8 @@ int vm_eval(LTV *env_cvar)
 
                     OPCODE(VMOP_REF)       TRYCATCH(!(ref=REF_create(decode_extended())),op,bc_exc,"decoding a ref"); continue;
                     OPCODE(VMOP_REF_ERES)  continue; // unneeded when not in exception mode
-                    OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(res_cll[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
+                    //OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(res_cll[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
+                    OPCODE(VMOP_REF_HRES)  ref_hres(res_cll[VMRES_DICT],ref); continue;
                     OPCODE(VMOP_REF_KILL)  LTV_release(ref); ref=NULL; continue;
                     OPCODE(VMOP_ENFRAME)   TRYCATCH(context_push(),op,bc_exc,"pushing context"); continue;
                     OPCODE(VMOP_DEFRAME)   TRYCATCH(context_pop(),op,bc_exc,"popping context");  continue;
@@ -401,7 +421,7 @@ int vm_eval(LTV *env_cvar)
                     OPCODE(VMOP_REF_INS)   TRYCATCH(REF_resolve(deq(VMRES_DICT,KEEP),ref,TRUE),op,bc_exc,"inserting ref");      continue;
                     OPCODE(VMOP_REF_RES)   TRYCATCH(REF_resolve(deq(VMRES_DICT,KEEP),ref,FALSE),op,bc_exc,"resolving ref");     continue;
                     OPCODE(VMOP_REF_ITER)  TRYCATCH(REF_iterate(ref,KEEP),op,bc_exc,"iterating ref");                           continue;
-                    OPCODE(VMOP_DEREF)     TRYCATCH(!enq(VMRES_WIP,REF_ltv(REF_HEAD(ref))),op,bc_exc,"dereferencing");          continue;
+                    OPCODE(VMOP_DEREF)     TRYCATCH(deref(),op,bc_exc,"dereferencing");                                         continue;
                     OPCODE(VMOP_ASSIGN)    TRYCATCH(REF_assign(REF_HEAD(ref),deq(VMRES_WIP,POP)),op,bc_exc,"assigning to ref"); continue;
                     OPCODE(VMOP_REMOVE)    TRYCATCH(REF_remove(REF_HEAD(ref)),op,bc_exc,"removing from ref");                   continue;
                     OPCODE(VMOP_APPEND)    continue;
@@ -411,7 +431,7 @@ int vm_eval(LTV *env_cvar)
                     OPCODE(VMOP_WRLOCK)    pthread_rwlock_wrlock(&vm_rwlock); continue;
                     OPCODE(VMOP_UNLOCK)    pthread_rwlock_unlock(&vm_rwlock); continue;
 
-                    OPCODE(VMOP_BYTECODE)  TRYCATCH(!env_enq(res_ltv,VMRES_CODE,deq(VMRES_WIP,POP)),op,bc_exc,"pushing bytecode"); continue;
+                    OPCODE(VMOP_BYTECODE)  TRYCATCH(!enq(VMRES_CODE,deq(VMRES_WIP,POP)),op,bc_exc,"pushing bytecode"); continue;
 
                     OPCODE(VMOP_EDICT)     enq(VMRES_WIP,compile_ltv(compilers[FORMAT_edict],  deq(VMRES_WIP,POP))); continue;
                     OPCODE(VMOP_XML)       enq(VMRES_WIP,compile_ltv(compilers[FORMAT_xml],    deq(VMRES_WIP,POP))); continue;
@@ -420,6 +440,10 @@ int vm_eval(LTV *env_cvar)
                     OPCODE(VMOP_SWAGGER)   enq(VMRES_WIP,compile_ltv(compilers[FORMAT_swagger],deq(VMRES_WIP,POP))); continue;
                     OPCODE(VMOP_LISP)      enq(VMRES_WIP,compile_ltv(compilers[FORMAT_lisp],   deq(VMRES_WIP,POP))); continue;
                     OPCODE(VMOP_MASSOC)    enq(VMRES_WIP,compile_ltv(compilers[FORMAT_massoc], deq(VMRES_WIP,POP))); continue;
+
+                    OPCODE(VMOP_PUSH_SUB)  LT_put(code_ltv,"sub",HEAD,deq(VMRES_WIP,POP)); continue;
+                    OPCODE(VMOP_EVAL_SUB)  if (eval_sub()) goto yield; else continue;
+                    OPCODE(VMOP_POP_SUB)   enq(VMRES_WIP,LT_get(code_ltv,"sub",HEAD,POP)); continue;
 
                     OPCODE(VMOP_YIELD)     goto yield;
                     OPCODE(VMOP_MMAP_KEEP) TRYCATCH(map_make(KEEP),op,bc_exc,"evaluating map_make"); continue;
@@ -527,15 +551,18 @@ int vm_run()
     int status=0;
     LTV *envs=LTV_NULL_LIST; // list of environment
 
-    char *bootstrap_code=
-        "[bootstrap.edict]  [r] file_open ! @bootstrap.file "
-        "[bootstrap.file brl! #plop #stack ! bootstrap.loop!]@bootstrap.loop "
-        "bootstrap.loop! "
-        "| #dump "
+    char *bootstrap_code= // DON"T FORGET WHITESPACE AT EOL (for C string concat)
+        "[bootstrap.edict]  [r] file_open! @bootstrap.file "
+        "[bootstrap.file brl! #plop! bootstrap.loop!]@bootstrap.loop "
+        "bootstrap.loop() "
         ;
+
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,-1); // code stack
 
     STRY(vm_env_enq(envs,vm_env_create(cif_module,code)),"pushing env");
+
+    try_depth=0;
+
     vm_thunk(envs);
  done:
     LTV_release(envs);

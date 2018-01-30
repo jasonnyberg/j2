@@ -389,7 +389,7 @@ LTV *LTV_dup(LTV *ltv)
 {
     if (!ltv) return NULL;
 
-    int flags=ltv->flags & ~LT_FREE;
+    int flags=ltv->flags & ~LT_NDUP;
     if (!(flags&LT_NAP))
         flags |= LT_DUP;
     return LTV_init(NEW(LTV),ltv->data,ltv->len,flags);

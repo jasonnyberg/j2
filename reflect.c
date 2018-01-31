@@ -243,6 +243,7 @@ int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
     switch (type_info->tag) {
         case DW_TAG_compile_unit:     fprintf(ofile," style=filled fillcolor=red rank=max"); break;
         case DW_TAG_subprogram:       fprintf(ofile," style=filled fillcolor=orange"); break;
+        case DW_TAG_subroutine_type:  fprintf(ofile," style=filled fillcolor=darkorange"); break;
         case DW_TAG_formal_parameter: fprintf(ofile," style=filled fillcolor=gold"); break;
         case DW_TAG_variable:         fprintf(ofile," style=filled fillcolor=cyan"); break;
         case DW_TAG_typedef:          fprintf(ofile," style=filled fillcolor=green"); break;
@@ -262,12 +263,36 @@ int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
 }
 
 
+LTV *cif_find_base(LTV *type,int tag)
+{
+    TYPE_INFO_LTV *type_info=NULL;
+    while (type && type->flags&LT_TYPE) {
+        type_info=(TYPE_INFO_LTV *) type;
+        if (type_info->tag=tag)
+            return type;
+        type=LT_get(type,TYPE_BASE,HEAD,KEEP);
+    }
+    return NULL;
+}
+
 LTV *cif_find_basic(LTV *type)
 {
     TYPE_INFO_LTV *type_info=NULL;
     while (type && type->flags&LT_TYPE) {
         type_info=(TYPE_INFO_LTV *) type;
         if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
+            return type;
+        type=LT_get(type,TYPE_BASE,HEAD,KEEP);
+    }
+    return NULL;
+}
+
+LTV *cif_find_function(LTV *type)
+{
+    TYPE_INFO_LTV *type_info=NULL;
+    while (type && type->flags&LT_TYPE) {
+        type_info=(TYPE_INFO_LTV *) type;
+        if (type_info->tag==DW_TAG_subprogram || type_info->tag==DW_TAG_subroutine_type)
             return type;
         type=LT_get(type,TYPE_BASE,HEAD,KEEP);
     }
@@ -323,16 +348,18 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
     return status?NULL:cvar;
 }
 
-LTV *cif_assign_cvar(LTV *cvar,LTV *ltv)
+LTV *cif_assign_cvar(LTV *dst,LTV *src)
 {
     int status=0;
     LTV *type=NULL;
-    TYPE_UVALUE uval;
-    Type_getUVAL(cvar,&uval);
-    if (uval.base.dutype)
-        STRY(Type_putUVAL(cvar,Type_pullUVAL(&uval,ltv->data)),"converting text value to cvar");
+    TYPE_UVALUE dst_uval,src_uval;
+    STRY(!Type_getUVAL(dst,&dst_uval),"testing cvar dest compatibility");
+    if (Type_getUVAL(src,&src_uval))
+        Type_putUVAL(dst,&src_uval);
+    else
+        Type_putUVAL(dst,Type_pullUVAL(&src_uval,src->data));
  done:
-    return status?NULL:cvar;
+    return status?NULL:dst;
 }
 
 void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
@@ -1017,9 +1044,10 @@ int cif_curate_module(LTV *module,int bootstrap)
                         break;
                     case DW_TAG_member:
                     case DW_TAG_formal_parameter:
-                        if (parent && name) {
+                        if (parent) {
                             STRY(!LT_put(parent,TYPE_LIST,TAIL,&type_info->ltv),"linking child to parent in sequence");
-                            STRY(!LT_put(parent,name,TAIL,&type_info->ltv),"linking type info to parent");
+                            if (name)
+                                STRY(!LT_put(parent,name,TAIL,&type_info->ltv),"linking type info to parent");
                         }
                         break;
                     case DW_TAG_unspecified_parameters: // varargs
@@ -1219,7 +1247,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
             break;
     }
  done:
-    return uval->base.dutype;
+    return status?0:uval->base.dutype;
 }
 
 #define PUTUVAL(member,type,uval)                                               \
@@ -1440,28 +1468,24 @@ int cif_ffi_prep(LTV *type)
             char *name=attr_get((*ltv),TYPE_NAME);
             if ((*ltv)->flags&LT_TYPE) {
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
-                if (LT_get((*ltv),FFI_TYPE,HEAD,KEEP))
-                    *flags|=LT_TRAVERSE_HALT;
-                else {
-                    int size=0;
-                    switch (type_info->tag) {
-                        case DW_TAG_union_type:
-                        case DW_TAG_structure_type:
-                        case DW_TAG_subprogram:
-                        case DW_TAG_subroutine_type:
-                            break; // complex types, handle in post
-                        default: { // fill in basic types in pre, halting traversal for each
-                            LTV *basic_type=cif_find_basic(*ltv);
-                            if (basic_type && !LT_get(basic_type,FFI_TYPE,HEAD,KEEP)) {
-                                LTV *ftl=basic_ffi_ltv(basic_type); // only returns something for basic types
-                                if (ftl) { // basic types
-                                    STRY(!LT_put(basic_type,FFI_TYPE,HEAD,ftl),"installing basic ffi type");
-                                }
+                int size=0;
+                switch (type_info->tag) {
+                    case DW_TAG_union_type:
+                    case DW_TAG_structure_type:
+                    case DW_TAG_subprogram:
+                    case DW_TAG_subroutine_type:
+                        if (LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) // definitely have traversed this subtree
+                            *flags|=LT_TRAVERSE_HALT;
+                        break; // complex types, handle in post
+                    default: { // fill in basic types in pre, halting traversal for each
+                        LTV *basic_type=cif_find_basic(*ltv);
+                        if (basic_type && !LT_get(basic_type,FFI_TYPE,HEAD,KEEP)) {
+                            LTV *ftl=basic_ffi_ltv(basic_type); // only returns something for basic types
+                            if (ftl) { // basic types
+                                STRY(!LT_put(basic_type,FFI_TYPE,HEAD,ftl),"installing basic ffi type");
                             }
-                            break;
                         }
-
-                            //   else *flags|=LT_TRAVERSE_HALT;
+                        break;
                     }
                 }
             }
@@ -1522,13 +1546,13 @@ int cif_ffi_prep(LTV *type)
 }
 
 
-LTV *cif_rval_create(LTV *lambda)
+LTV *cif_rval_create(LTV *lambda,void *data)
 {
     // assumes lambda is a CVAR/TYPE_INFO/subprogram
     // error check later...
     LTV *cvar_type=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
     LTV *return_type=cif_find_basic(cvar_type); // base type of a subprogram is its return type
-    return cif_create_cvar(return_type,NULL,NULL);
+    return cif_create_cvar(return_type,data,NULL);
 }
 
 int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
@@ -1605,6 +1629,33 @@ int cif_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
 }
 
 LTV *cif_type_info(char *typename) { return LT_get(cif_module,typename,HEAD,KEEP); }
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// CLOSURE API
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+int cif_cb_create(LTV *function_type,
+                  void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),
+                  LTV *env)
+{
+    int status=0;
+    LTV *ffi_cif_ltv=LT_get(function_type,FFI_CIF,HEAD,KEEP);
+    ffi_cif *cif=(ffi_cif *) ffi_cif_ltv->data;
+    void *executable=NULL;
+    void *writeable=ffi_closure_alloc(sizeof(ffi_closure),&executable);
+    STRY(ffi_prep_closure_loc(writeable,cif,thunk,env,executable)!=FFI_OK,"creating closure");
+    LT_put(env,"FFI_CIF_LTV",HEAD,function_type); // embed env with callback's function type ltv
+    LT_put(env,"WRITEABLE", HEAD,LTV_init(NEW(LTV),writeable, 0,LT_NONE));
+    LT_put(env,"EXECUTABLE",HEAD,LTV_init(NEW(LTV),executable,0,LT_NONE));
+
+ done:
+    return status;
+}
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

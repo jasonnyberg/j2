@@ -40,15 +40,7 @@
 #include "vm.h"
 #include "compile.h"
 
-sem_t vm_process_access,vm_process_escapement;
 pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
-
-__attribute__((constructor))
-static void init(void)
-{
-    sem_init(&vm_process_access,1,0); // allows first wait through
-    sem_init(&vm_process_escapement,0,0); // blocks on first wait
-}
 
 char *res_name[] = { "dict","code","wip","stack","exc","state","skip" };
 
@@ -58,19 +50,16 @@ LTV *env_deq(LTV **res_ltv,int res,int pop) { return LTV_get(LTV_list(res_ltv[re
 //////////////////////////////////////////////////
 // Bytecode Interpreter
 //////////////////////////////////////////////////
-int vm_eval(LTV *env_cvar)
+int vm_eval(LTV **res_ltv)
 {
     int status=0;
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////
-    LTV **res_ltv=(LTV **) env_cvar->data;
     CLL *res_cll[VMRES_CLL_COUNT];
-
     for (int i=0;i<VMRES_CLL_COUNT;i++)
         STRY(!(res_cll[i]=LTV_list(res_ltv[i])),"caching %s",res_name[i]);
     int *env_state=(int *) res_ltv[VMRES_STATE]->data;
     int *env_skip =(int *) res_ltv[VMRES_SKIP]->data;
-
     unsigned char imm=0;
     LTV *ref=NULL;
     ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -153,7 +142,7 @@ int vm_eval(LTV *env_cvar)
         int status=0;
         CLL args; CLL_init(&args); // list of ffi arguments
         LTV *rval=NULL;
-        STRY(!(rval=cif_rval_create(lambda)),"creating ffi rval ltv");
+        STRY(!(rval=cif_rval_create(lambda,NULL)),"creating ffi rval ltv");
         int marshaller(char *name,LTV *type) {
             int status=0;
             LTV *arg=NULL, *coerced=NULL;
@@ -483,10 +472,49 @@ int vm_eval(LTV *env_cvar)
 //////////////////////////////////////////////////
 // Processor
 //////////////////////////////////////////////////
-LTV *vm_env_create(LTV *root,LTV *code)
+
+// Translate a prepared C callback into an edict function/environment and evaluate it
+void vm_cb_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
 {
     int status=0;
 
+    LTV *env_cvar=(LTV *) USER_DATA;
+    LTV **res_ltv=(LTV **) env_cvar->data;
+    LTV *ffi_type_info=LT_get(env_cvar,"FFI_CIF_LTV",HEAD,KEEP);
+
+    LTV *locals=LTV_init(NEW(LTV),"LOCALS",-1,LT_NONE);
+    STRY(!env_enq(res_ltv,VMRES_DICT,locals),"pushing locals into dict");
+
+    LT_put(locals,"RETURN",HEAD,cif_rval_create(ffi_type_info,RET)); // embed return val cvar in environment; ok if it fails
+
+    int index=0;
+    char *argid;
+
+    int marshaller(char *name,LTV *type) {
+        int status=0;
+        LTV *arg=cif_create_cvar(type,ARGS[index],NULL);
+        LT_put(locals,FORMATA(argid,32,"ARG_%d",index),HEAD,arg); // embed by index
+        if (name)
+            LT_put(locals,name,HEAD,arg); // embed by name
+        index++;
+    done:
+        return status;
+    }
+
+    STRY(cif_args_marshal(ffi_type_info,marshaller),"marshalling ffi args");
+
+    int iterations=0;
+    while (vm_eval(res_ltv)!=VM_COMPLETE)
+        printf(CODE_RED "Iteration %d completed" CODE_RESET "\n",iterations++);
+
+ done:
+    return;
+}
+
+
+extern LTV *vm_create_env(LTV *ffi_cif_ltv,LTV *root,LTV *code)
+{
+    int status=0;
     LTV *env_cvar=NULL;
     STRY(!(env_cvar=cif_create_cvar(cif_type_info("((LTV)*)*"),NEW(LTV *[VMRES_COUNT]),NULL)),"creating env cvar");
 
@@ -507,64 +535,38 @@ LTV *vm_env_create(LTV *root,LTV *code)
 
     STRY(!env_enq(res_ltv,VMRES_DICT,env_ltv),"pushing environment into dict");
     STRY(!env_enq(res_ltv,VMRES_DICT,root),"pushing reflection into dict");
+
+    STRY(cif_cb_create(ffi_cif_ltv,vm_cb_thunk,env_cvar),"creating vm environment/callback");
+
  done:
-    if (status)
+    if (status) {
         LTV_release(env_cvar);
+        env_cvar=NULL;
+    }
     return env_cvar;
 }
 
-int vm_env_enq(LTV *envs,LTV *env_cvar)
+
+typedef int (*vm_mainloop)(int a,int b);
+
+int vm_boot()
 {
     int status=0;
-    STRY(!LTV_enq(LTV_list(envs),env_cvar,TAIL),"enqueing process env");
-    sem_post(&vm_process_escapement);
- done:
-    return status;
-}
-
-LTV *vm_env_deq(LTV *envs)
-{
-    sem_wait(&vm_process_escapement);
-    return LTV_deq(LTV_list(envs),HEAD);
-}
-
-void *vm_thunk(void *udata)
-{
-    LTV *envs=(LTV *) udata;
-    LTV *env_cvar=NULL;
-
-    do {
-        if (!CLL_EMPTY(LTV_list(envs)) && (env_cvar=vm_env_deq(envs))) {
-            if (vm_eval(env_cvar)==VM_COMPLETE)
-                LTV_release(env_cvar);
-            else
-                vm_env_enq(envs,env_cvar);
-        }
-        else break;
-    } while (1);
- done:
-    return envs;
-}
-
-int vm_run()
-{
-    int status=0;
-    LTV *envs=LTV_NULL_LIST; // list of environment
-
     char *bootstrap_code= // DON"T FORGET WHITESPACE AT EOL (for C string concat)
-        "[bootstrap.edict]  [r] file_open! @bootstrap.file "
+        "[bootstrap.edict] [r] file_open! @bootstrap.file "
         "[bootstrap.file brl! #plop! bootstrap.loop!]@bootstrap.loop "
         "bootstrap.loop() "
         ;
-
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,-1); // code stack
 
-    STRY(vm_env_enq(envs,vm_env_create(cif_module,code)),"pushing env");
+    LTV *env_cvar=NULL;
+    LTV *ffi_cif_ltv=cif_find_function(cif_type_info("vm_mainloop"));
+    STRY(!(env_cvar=vm_create_env(ffi_cif_ltv,cif_module,code)),"creating vm env cvar");
+    LTV *exec_ltv=LT_get(env_cvar,"EXECUTABLE",HEAD,KEEP);
+    vm_mainloop mainloop=(vm_mainloop) exec_ltv->data;
+    int result=mainloop(10,7);
+    printf("Result: %d\n",result);
 
-    try_depth=0;
-
-    vm_thunk(envs);
  done:
-    LTV_release(envs);
     return status;
 }

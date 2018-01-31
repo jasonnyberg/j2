@@ -58,7 +58,7 @@ typedef enum {
     LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
     LT_META =LT_RO|LT_AVIS|LT_RVIS|LT_LIST, // need to be preserved during LTV_renew
     LT_REFL =LT_TYPE|LT_FFI|LT_CIF,         // used for reflection; visibility controlled by "show_ref"
-    LT_NDUP =LT_FREE|LT_REFS|LT_CVAR|LT_REFL, // need to be excised during LTV_dup
+    LT_NDUP =LT_FREE|LT_REFS|LT_CVAR|LT_REFL|LT_LIST, // need to be excised during LTV_dup
 } LTV_FLAGS;
 
 typedef struct {

@@ -20,4 +20,4 @@
 
 #include "vm.h"
 
-int main(int argc, char *argv[]) { return vm_run(); }
+int main(int argc, char *argv[]) { return vm_boot(); }

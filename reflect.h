@@ -159,13 +159,22 @@ extern int cif_curate_module(LTV *mod_ltv,int bootstrap);
 extern int cif_preview_module(LTV *mod_ltv);
 extern int cif_ffi_prep(LTV *type);
 
-extern LTV *cif_rval_create(LTV *lambda);
+extern LTV *cif_rval_create(LTV *lambda,void *data);
 extern int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
 extern LTV *cif_coerce(LTV *arg,LTV *type);
 extern int cif_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
 
 extern LTV *cif_type_info(char *typename);
+extern LTV *cif_find_base(LTV *type,int tag);
+extern LTV *cif_find_basic(LTV *type);
+extern LTV *cif_find_function(LTV *type);
+extern LTV *cif_isaddr(LTV *cvar);
+
 extern int cif_dump_module(char *ofilename,LTV *module);
 extern LTV *cif_isaddr(LTV *cvar);
+
+extern int cif_cb_create(LTV *function_type,
+                         void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),
+                         LTV *env);
 
 #endif

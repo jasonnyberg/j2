@@ -105,6 +105,6 @@ enum {
     VM_COMPLETE = 0x10,
 };
 
-extern int vm_run();
+extern int vm_boot();
 
 #endif // VM_H

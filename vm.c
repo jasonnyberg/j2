@@ -125,7 +125,7 @@ int vm_eval(LTV **res_ltv)
         int status=0;
         LTV *resolve_ltv(LTV *dict) { return REF_resolve(dict,ref,FALSE)?NULL:REF_ltv(REF_HEAD(ref)); }
         void *op(CLL *lnk) { return resolve_ltv(((LTVR *) lnk)->ltv); }
-        STRY(!CLL_map(cll,FWD,op),"resolving ref");
+        CLL_map(cll,FWD,op);
     done:
         return status;
     }
@@ -377,7 +377,6 @@ int vm_eval(LTV **res_ltv)
 
                     OPCODE(VMOP_REF)       TRYCATCH(!(ref=REF_create(decode_extended())),op,bc_exc,"decoding a ref"); continue;
                     OPCODE(VMOP_REF_ERES)  continue; // unneeded when not in exception mode
-                    //OPCODE(VMOP_REF_HRES)  TRYCATCH(ref_hres(res_cll[VMRES_DICT],ref),op,bc_exc,"hierarchically resolving ref"); continue;
                     OPCODE(VMOP_REF_HRES)  ref_hres(res_cll[VMRES_DICT],ref); continue;
                     OPCODE(VMOP_REF_KILL)  LTV_release(ref); ref=NULL; continue;
                     OPCODE(VMOP_ENFRAME)   TRYCATCH(context_push(),op,bc_exc,"pushing context"); continue;
@@ -404,7 +403,7 @@ int vm_eval(LTV **res_ltv)
 
                     OPCODE(VMOP_LIT)       enq(VMRES_WIP,decode_extended()); continue;
                     OPCODE(VMOP_BUILTIN)   builtin();   continue;
-                    OPCODE(VMOP_TOS)       dumpstack(); continue;
+                    OPCODE(VMOP_TOS)       print_ltv(stdout,CODE_RED,deq(VMRES_WIP,KEEP),CODE_RESET "\n",0); continue;
 
                     OPCODE(VMOP_REF_MAKE)  TRYCATCH(!(ref=REF_create(deq(VMRES_WIP,POP))),op,bc_exc,"making a ref");            continue;
                     OPCODE(VMOP_REF_INS)   TRYCATCH(REF_resolve(deq(VMRES_DICT,KEEP),ref,TRUE),op,bc_exc,"inserting ref");      continue;
@@ -505,7 +504,8 @@ void vm_cb_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
 
     int iterations=0;
     while (vm_eval(res_ltv)!=VM_COMPLETE)
-        printf(CODE_RED "Iteration %d completed" CODE_RESET "\n",iterations++);
+        //printf(CODE_RED "Iteration %d completed" CODE_RESET "\n",iterations++)
+            ;
 
  done:
     return;
@@ -558,6 +558,8 @@ int vm_boot()
         "bootstrap.loop() "
         ;
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,-1); // code stack
+
+    try_depth=0;
 
     LTV *env_cvar=NULL;
     LTV *ffi_cif_ltv=cif_find_function(cif_type_info("vm_mainloop"));

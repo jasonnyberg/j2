@@ -120,7 +120,7 @@ int jit_edict(EMITTER emit,void *data,int len)
         } else {
             for (int i=0;i<ops_len;i++) {
                 switch (ops_data[i]) {
-                    case '#': EMIT(TOS); break;
+                    case '#': EMIT(SPOP); EMIT(TOS); EMITRES(WIP); EMIT(DROP); break;
                     case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
                     case '/': EMIT(SPOP); EMITRES(WIP); EMIT(DROP); break;
                     case '+': EMIT(SPOP); EMIT(SPOP); EMITRES(WIP); EMIT(CONCAT); EMIT(SPUSH); break;

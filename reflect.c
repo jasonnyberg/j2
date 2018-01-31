@@ -1593,10 +1593,12 @@ LTV *cif_coerce(LTV *ltv,LTV *type)
     int old_show_ref=show_ref;
     show_ref=1;
 
+    /*
     printf("coercing ltv\n");
     print_ltv(stdout,NULL,ltv,NULL,2);
     printf("into type\n");
     print_ltv(stdout,NULL,type,NULL,2);
+    */
 
     if (!(ltv->flags&LT_CVAR)) {
         LTV *addr=(ltv->flags&LT_CVAR)?ltv->data:&ltv->data;

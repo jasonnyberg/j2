@@ -27,11 +27,13 @@ enum {
     VMOP_CTX_POP,
     VMOP_CTX_KEEP,
     VMOP_CATCH,
-    VMOP_TERM_START,
-    VMOP_BUILTIN, // start of non-excep
-    VMOP_PUSHWIP,
+    VMOP_TERM_START, // start of non-excep
+    VMOP_BUILTIN,
     VMOP_REF,
     VMOP_DEREF,
+    VMOP_PUSHWIP,
+    VMOP_ITER_POP,
+    VMOP_ITER_KEEP,
     VMOP_ASSIGN,
     VMOP_REMOVE,
     VMOP_EVAL,

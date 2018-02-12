@@ -46,6 +46,7 @@
 #define TYPE_BASE "die base" // a die's base's ltv
 #define TYPE_LIST "die list" // type's children, in die order
 #define TYPE_CAST "die cast" // a casted cvar's original data (lifespan protection)
+#define TYPE_META "die meta" // a die's pointer-type parent
 
 #define FFI_TYPE  "ffi type"  // FFI data assocated with type
 #define FFI_CIF   "ffi cif"   // FFI data assocated with type
@@ -172,6 +173,10 @@ extern LTV *cif_isaddr(LTV *cvar);
 
 extern int cif_dump_module(char *ofilename,LTV *module);
 extern LTV *cif_isaddr(LTV *cvar);
+
+extern int cif_iszero(LTV *cvar);
+extern int cif_ispos(LTV *cvar);
+extern int cif_isneg(LTV *cvar);
 
 extern int cif_cb_create(LTV *function_type,
                          void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),

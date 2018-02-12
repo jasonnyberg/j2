@@ -330,7 +330,7 @@ int vm_eval(VM_ENV *vm_env)
         } else if (match("hoist")) { // ltv -> cvar(ltv)
             LTV *ltv=NULL;
             THROW(!(ltv=stack_deq(POP))); // ,"popping ltv to hoist");
-            THROW(!(stack_enq(cif_create_cvar(cif_type_info("(LTV)*"),ltv,NULL)))); // ,"pushing hoisted ltv cvar");
+            THROW(!(stack_enq(cif_create_cvar(cif_type_info("LTV"),ltv,NULL)))); // ,"pushing hoisted ltv cvar");
         } else if (match("plop")) { // cvar(ltv) -> ltv
             THROW(!(cvar_ltv=stack_deq(POP)));
             THROW(!(cvar_ltv->flags&LT_CVAR)); // "checking at least if it's a cvar" // TODO: verify it's an "(LTV)*"
@@ -339,15 +339,6 @@ int vm_eval(VM_ENV *vm_env)
         }
     done:
         LTV_release(cvar_ltv);
-        return NEXTCALL;
-    }
-
-    void *vmop_PUSHWIP() { VMOP_DEBUG();
-        if (use_wip())
-            THROW(!stack_enq(vm_env->wip));
-        else {
-        }
-    done:
         return NEXTCALL;
     }
 
@@ -367,9 +358,43 @@ int vm_eval(VM_ENV *vm_env)
         return NEXTCALL;
     }
 
+    void *vmop_PUSHWIP() { VMOP_DEBUG();
+        if (use_wip())
+            THROW(!stack_enq(vm_env->wip));
+        else {
+        }
+    done:
+        return NEXTCALL;
+    }
+
+    void *vmop_ITER_POP() { VMOP_DEBUG();
+        if (use_wip())
+            THROW(!stack_enq(vm_env->wip));
+        else {
+        }
+    done:
+        return NEXTCALL;
+    }
+
+    void *vmop_ITER_KEEP() { VMOP_DEBUG();
+        if (use_wip())
+            THROW(!stack_enq(vm_env->wip));
+        else {
+        }
+    done:
+        return NEXTCALL;
+    }
+
     void *vmop_ASSIGN() { VMOP_DEBUG();
-        if (!use_wip())
-            vm_env->wip=REF_create(stack_deq(POP));
+        if (!use_wip()) { // assign to TOS
+            LTV *ltv;
+            THROW(!(ltv=stack_deq(POP)));
+            if (ltv->flags&LT_CVAR) { // if TOS is a cvar
+                THROW(!stack_enq(cif_assign_cvar(ltv,stack_deq(POP)))); // assign directly to it.
+                goto done;
+            }
+            vm_env->wip=REF_create(ltv); // otherwise treat TOS as a reference
+        }
         REF_resolve(deq(VMRES_DICT,KEEP),vm_env->wip,TRUE);
         THROW(REF_assign(REF_HEAD(vm_env->wip),stack_deq(POP)));
     done:
@@ -497,9 +522,11 @@ int vm_eval(VM_ENV *vm_env)
         vmop_call[init++] = vmop_CATCH;
         vmop_call[init++] = vmop_TERM_START;
         vmop_call[init++] = vmop_BUILTIN;
-        vmop_call[init++] = vmop_PUSHWIP;
         vmop_call[init++] = vmop_REF;
         vmop_call[init++] = vmop_DEREF;
+        vmop_call[init++] = vmop_PUSHWIP;
+        vmop_call[init++] = vmop_ITER_POP;
+        vmop_call[init++] = vmop_ITER_KEEP;
         vmop_call[init++] = vmop_ASSIGN;
         vmop_call[init++] = vmop_REMOVE;
         vmop_call[init++] = vmop_EVAL;
@@ -622,7 +649,6 @@ int vm_boot()
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,strlen(bootstrap_code));
     vm_bootstrap bootstrap=(vm_bootstrap) vm_create_env("vm_bootstrap",cif_module,code);
     try_depth=0;
-    try_loglev=0;
     int result=bootstrap();
     printf("Result: %d\n",result);
     return 0;

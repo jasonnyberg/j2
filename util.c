@@ -89,11 +89,10 @@ void try_logerror(const char *func,const char *cond,int status)
     char errstr[TRY_STRLEN];
     switch (try_loglev)
     {
-        case 4: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr); break;
-        case 3: snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr); break;
-        case 2: snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr); break;
-        case 1: snprintf(errstr,TRY_STRLEN,"%s",""); break;
-        case 0: snprintf(errstr,TRY_STRLEN,"",""); break;
+        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr); break;
+        case 1: snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr); break;
+        case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 
     fprintf(stderr,CODE_RED "%s" CODE_RESET NEWLINE,errstr);

@@ -266,9 +266,9 @@ int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
 LTV *cif_find_base(LTV *type,int tag)
 {
     TYPE_INFO_LTV *type_info=NULL;
-    while (type && type->flags&LT_TYPE) {
+    while (type && (type->flags&LT_TYPE)) {
         type_info=(TYPE_INFO_LTV *) type;
-        if (type_info->tag=tag)
+        if (type_info->tag==tag)
             return type;
         type=LT_get(type,TYPE_BASE,HEAD,KEEP);
     }
@@ -278,7 +278,7 @@ LTV *cif_find_base(LTV *type,int tag)
 LTV *cif_find_basic(LTV *type)
 {
     TYPE_INFO_LTV *type_info=NULL;
-    while (type && type->flags&LT_TYPE) {
+    while (type && (type->flags&LT_TYPE)) {
         type_info=(TYPE_INFO_LTV *) type;
         if (type_info->flags&TYPEF_BYTESIZE) // "basic" means a type that specifies memory size
             return type;
@@ -290,7 +290,7 @@ LTV *cif_find_basic(LTV *type)
 LTV *cif_find_function(LTV *type)
 {
     TYPE_INFO_LTV *type_info=NULL;
-    while (type && type->flags&LT_TYPE) {
+    while (type && (type->flags&LT_TYPE)) {
         type_info=(TYPE_INFO_LTV *) type;
         if (type_info->tag==DW_TAG_subprogram || type_info->tag==DW_TAG_subroutine_type)
             return type;
@@ -357,7 +357,7 @@ LTV *cif_assign_cvar(LTV *dst,LTV *src)
     if (Type_getUVAL(src,&src_uval))
         Type_putUVAL(dst,&src_uval);
     else
-        Type_putUVAL(dst,Type_pullUVAL(&src_uval,src->data));
+        Type_putUVAL(dst,Type_pullUVAL(&dst_uval,src->data));
  done:
     return status?NULL:dst;
 }
@@ -869,9 +869,10 @@ int cif_curate_module(LTV *module,int bootstrap)
         int status=0;
         void *dlhandle=NULL;
 
-        int derive_symbolic_name(TYPE_INFO_LTV *type_info)
-        {
+        int derive_symbolic_name(TYPE_INFO_LTV *type_info) {
             int status=0;
+            if (!type_info->tag) return 0;
+
             TRYCATCH(type_info->flags&TYPEF_SYMBOLIC,0,done,"checking if symbolic name already derived");
             TYPE_INFO_LTV *base_info=NULL;
             if (type_info->flags&TYPEF_BASE) // link to base type
@@ -881,38 +882,55 @@ int cif_curate_module(LTV *module,int bootstrap)
             char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_NAME):NULL;
             char *composite_name=NULL;
 
-            void categorize_symbolic(char *sym,int link) {
-                type_info->flags|=TYPEF_SYMBOLIC;
-                attr_del(&type_info->ltv,TYPE_NAME);
-                attr_set(&type_info->ltv,TYPE_NAME,sym);
-                TYPE_INFO_LTV *sym_type_info=(TYPE_INFO_LTV *) LT_get(module,sym,HEAD,KEEP);
+            const char *is;
+            dwarf_get_TAG_name(type_info->tag,&is);
+            if (base_symb && !strcmp(base_symb,"(LTV)*")) {
+                printf(CODE_RED "%s (%s) (%x) is an (LTV)*" CODE_RESET "\n",type_name?type_name:"<><>",is,type_info->tag);
+                if (!type_name)
+                    printf("no type name\n");
+            }
 
-                const char *is;
-                dwarf_get_TAG_name(type_info->tag,&is);
-                if (!type_info->tag)
-                    printf(CODE_RED "installing invalid type info" CODE_RESET "\n");
-                else if (LT_get(module,sym,HEAD,KEEP)) {
-                    if (type_info->tag!=sym_type_info->tag) {
+            void categorize_symbolic(char *sym,int link) {
+                if (sym) {
+                    type_info->flags|=TYPEF_SYMBOLIC;
+                    attr_del(&type_info->ltv,TYPE_NAME);
+                    attr_set(&type_info->ltv,TYPE_NAME,sym);
+                    TYPE_INFO_LTV *sym_type_info=(TYPE_INFO_LTV *) LT_get(module,sym,HEAD,KEEP);
+
+                    const char *is;
+                    dwarf_get_TAG_name(type_info->tag,&is);
+                    if (!type_info->tag)
+                        printf(CODE_RED "installing invalid type info" CODE_RESET "\n");
+                    else if (!link && LT_get(module,sym,HEAD,KEEP)) {
+                        if (type_info->tag!=sym_type_info->tag) {
                             const char *already;
                             dwarf_get_TAG_name(sym_type_info->tag,&already);
                             printf(CODE_RED "type info tag conflict: %s(%p vs. %p), installing %d/%s but found %d/%s" CODE_RESET "\n",
                                    sym,type_info,sym_type_info,type_info->tag,is,sym_type_info->tag,already);
-                            //}
+                        }
+                    } else { // if not a dup, place item into module
+                        LT_put(module,sym,TAIL,&type_info->ltv);
                     }
-                } else { // if not a dup, place item into module
-                    LT_put(module,sym,TAIL,&type_info->ltv);
                     if (link) { // dynamically link globals
                         if (!type_info->dladdr) {
                             type_info->flags|=TYPEF_DLADDR;
                             type_info->dladdr=dlsym(dlhandle,sym);
                         }
-                    } else if (base_symb) { // dedup types (not global types) to get here, base must already be installed in "types"
-                        TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
-                        if (symb_base && symb_base!=base_info) { // may already be correct
-                            attr_del(&type_info->ltv,TYPE_BASE);
-                            LT_put(&type_info->ltv,TYPE_BASE,TAIL,&symb_base->ltv);
-                            strncpy(type_info->base_str,symb_base->id_str,TYPE_IDLEN);
-                        }
+                    }
+                }
+
+                if (base_symb) { // dedup types; to get here, base must have already been categorized
+
+                    const char *is;
+                    dwarf_get_TAG_name(type_info->tag,&is);
+                    if (!strcmp(base_symb,"(LTV)*"))
+                        printf(CODE_BLUE "%s (%s) (%x) is deduping an (LTV)*" CODE_RESET "\n",sym?sym:"",is,type_info->tag);
+
+                    TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
+                    if (symb_base && symb_base!=base_info) { // may already be correct
+                        attr_del(&type_info->ltv,TYPE_BASE);
+                        LT_put(&type_info->ltv,TYPE_BASE,TAIL,&symb_base->ltv);
+                        strncpy(type_info->base_str,symb_base->id_str,TYPE_IDLEN);
                     }
                 }
             }
@@ -981,13 +999,15 @@ int cif_curate_module(LTV *module,int bootstrap)
                     if (type_name) // GLOBAL!
                         categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),1);
                     break;
-                    //case DW_TAG_compile_unit:
                 case DW_TAG_subrange_type:
-                    //case DW_TAG_member:
-                    //case DW_TAG_formal_parameter:
-                    //case DW_TAG_unspecified_parameters: // varargs
                     if (type_name) // still want to dedup!
                         categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
+                    break;
+                case DW_TAG_member:
+                case DW_TAG_formal_parameter:
+                case DW_TAG_unspecified_parameters: // varargs
+                case DW_TAG_compile_unit:
+                    categorize_symbolic(NULL,0);
                     break;
                 default: // no name
                     break;
@@ -1103,9 +1123,26 @@ int cif_curate_module(LTV *module,int bootstrap)
         return work_op(NULL,die,0);
     }
 
+    int link_metatype(TYPE_INFO_LTV *type_info) {
+        int status=0;
+        LTV *base_info=NULL;
+        if (type_info->tag==DW_TAG_pointer_type && (base_info=LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)))
+            LT_put(base_info,TYPE_META,TAIL,&type_info->ltv);
+    done:
+        return status;
+    }
+
+    void *resolve_meta(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
+            link_metatype((TYPE_INFO_LTV *) (*ltv));
+        }
+        return NULL;
+    }
+
     STRY(traverse_cus(filename,curate_die,&cu_data),"traversing module compute units");
     resolve_symbols();
     LTV_release(index);
+    STRY(ltv_traverse(module,listree_acyclic,resolve_meta)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
     cif_ffi_prep(module);
 
  done:
@@ -1199,8 +1236,6 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
                 uval->member.val |= ~mask;                                      \
         }                                                                       \
     } while(0)
-
-
 
 TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
 {
@@ -1586,25 +1621,103 @@ LTV *cif_isaddr(LTV *cvar)
     return status?NULL:(type_info->tag!=DW_TAG_pointer_type)?NULL:type;
 }
 
-LTV *cif_coerce(LTV *ltv,LTV *type)
+int cif_iszero(LTV *cvar)
+{
+    TYPE_UVALUE uval;
+    switch (Type_getUVAL(cvar,&uval)) {
+        case TYPE_INT1S:   return uval.int1u.val == 0;
+        case TYPE_INT2S:   return uval.int2u.val == 0;
+        case TYPE_INT4S:   return uval.int4u.val == 0;
+        case TYPE_INT8S:   return uval.int8u.val == 0;
+        case TYPE_INT1U:   return uval.int1s.val == 0;
+        case TYPE_INT2U:   return uval.int2s.val == 0;
+        case TYPE_INT4U:   return uval.int4s.val == 0;
+        case TYPE_INT8U:   return uval.int8s.val == 0;
+        case TYPE_FLOAT4:  return uval.float4.val == 0;
+        case TYPE_FLOAT8:  return uval.float8.val == 0;
+        case TYPE_FLOAT16: return uval.float16.val == 0;
+        case TYPE_ADDR:    return uval.addr.val == NULL;
+        default: return -1;
+    }
+}
+
+int cif_ispos(LTV *cvar)
+{
+    TYPE_UVALUE uval;
+    switch (Type_getUVAL(cvar,&uval)) {
+        case TYPE_INT1S:   return uval.int1u.val > 0;
+        case TYPE_INT2S:   return uval.int2u.val > 0;
+        case TYPE_INT4S:   return uval.int4u.val > 0;
+        case TYPE_INT8S:   return uval.int8u.val > 0;
+        case TYPE_INT1U:   return uval.int1s.val > 0;
+        case TYPE_INT2U:   return uval.int2s.val > 0;
+        case TYPE_INT4U:   return uval.int4s.val > 0;
+        case TYPE_INT8U:   return uval.int8s.val > 0;
+        case TYPE_FLOAT4:  return uval.float4.val > 0;
+        case TYPE_FLOAT8:  return uval.float8.val > 0;
+        case TYPE_FLOAT16: return uval.float16.val > 0;
+        case TYPE_ADDR:    return uval.addr.val > NULL;
+        default: return -1;
+    }
+}
+
+int cif_isneg(LTV *cvar)
+{
+    TYPE_UVALUE uval;
+    switch (Type_getUVAL(cvar,&uval)) {
+        case TYPE_INT1S:   return uval.int1u.val < 0;
+        case TYPE_INT2S:   return uval.int2u.val < 0;
+        case TYPE_INT4S:   return uval.int4u.val < 0;
+        case TYPE_INT8S:   return uval.int8u.val < 0;
+        case TYPE_INT1U:   return uval.int1s.val < 0;
+        case TYPE_INT2U:   return uval.int2s.val < 0;
+        case TYPE_INT4U:   return uval.int4s.val < 0;
+        case TYPE_INT8U:   return uval.int8s.val < 0;
+        case TYPE_FLOAT4:  return uval.float4.val < 0;
+        case TYPE_FLOAT8:  return uval.float8.val < 0;
+        case TYPE_FLOAT16: return uval.float16.val < 0;
+        case TYPE_ADDR:    return uval.addr.val < NULL;
+        default: return -1;
+    }
+}
+
+
+LTV *cif_coerce(LTV *cvar,LTV *type)
 {
     int status=0;
-    LTV *result=ltv;
+    LTV *result=cvar;
 
     /*
     int old_show_ref=show_ref;
     show_ref=1;
     printf("coercing ltv\n");
-    print_ltv(stdout,NULL,ltv,NULL,2);
+    print_ltv(stdout,NULL,cvar,NULL,2);
     printf("into type\n");
     print_ltv(stdout,NULL,type,NULL,2);
     show_ref=old_show_ref;
     */
 
-    if (!(ltv->flags&LT_CVAR)) {
-        LTV *addr=(ltv->flags&LT_CVAR)?ltv->data:&ltv->data;
+    if (!(cvar->flags&LT_CVAR)) {
+        LTV *addr=(cvar->flags&LT_CVAR)?cvar->data:&cvar->data;
         STRY(!(result=cif_create_cvar(type,addr,NULL)),"creating coersion");
-        STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
+        STRY(!(LT_put(result,TYPE_CAST,HEAD,cvar)),"linking original to coersion");
+    } else {
+        LTV *type_base=cif_find_basic(type);
+        //LTV *cvar_base=cif_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP));
+        LTV *cvar_base=LT_get(cvar,TYPE_BASE,HEAD,KEEP);
+        if (type_base && cvar_base) {
+            if (type_base==cvar_base)
+                result=cvar;
+            else {
+                LTV *cvar_metabase=LT_get(cvar_base,TYPE_META,HEAD,KEEP);
+                if (cvar_metabase) {
+                    if (type_base==cvar_metabase) {
+                        result=cif_create_cvar(cvar_metabase,&cvar->data,NULL);
+                        STRY(!(LT_put(result,TYPE_CAST,HEAD,cvar)),"linking original to coersion");
+                    }
+                }
+            }
+        }
     }
  done:
     return status?NULL:result;

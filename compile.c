@@ -101,7 +101,9 @@ int jit_edict(EMITTER emit,void *data,int len)
                         case '=': EMIT(COMPARE); break;
                         case '+': EMIT(MERGE); break;
                         case '%': EMIT(SPLIT); break;
-                        case ':': EMIT(PUSHWIP); break;
+                        case '^': EMIT(PUSHWIP); break;
+                        case ':': EMIT(ITER_POP); break;
+                        case ';': EMIT(ITER_KEEP); break;
                     }
                 }
             }

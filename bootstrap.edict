@@ -1,2 +1,2 @@
-[get_stdin! brl! #plop ! repl!]@repl
-repl! | exc #
+[get_stdin! brl! `plop` ! repl!]@repl
+repl() | `stack`

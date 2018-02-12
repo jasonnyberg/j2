@@ -1590,14 +1590,15 @@ LTV *cif_coerce(LTV *ltv,LTV *type)
 {
     int status=0;
     LTV *result=ltv;
-    int old_show_ref=show_ref;
-    show_ref=1;
 
     /*
+    int old_show_ref=show_ref;
+    show_ref=1;
     printf("coercing ltv\n");
     print_ltv(stdout,NULL,ltv,NULL,2);
     printf("into type\n");
     print_ltv(stdout,NULL,type,NULL,2);
+    show_ref=old_show_ref;
     */
 
     if (!(ltv->flags&LT_CVAR)) {
@@ -1606,7 +1607,6 @@ LTV *cif_coerce(LTV *ltv,LTV *type)
         STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
     }
  done:
-    show_ref=old_show_ref;
     return status?NULL:result;
 }
 

@@ -37,22 +37,26 @@ extern int show_ref;
 
 typedef enum {
     LT_NONE =0,
-    LT_DUP  =0x0001, // bufdup'ed on LTV_new, not ref to existing buf
-    LT_OWN  =0x0002, // handed malloc'ed buffer, responsible for freeing
-    LT_ESC  =0x0004, // strip escapes (changes buf contents and len!)
-    LT_BIN  =0x0008, // data is binary/unprintable
-    LT_REFS =0x0010, // LTV holds a list of REFs (implies LT_LIST)
-    LT_CVAR =0x0020, // LTV data is a C variable
-    LT_TYPE =0x0040, // CVAR of type TYPE_INFO (for reflection)
-    LT_FFI  =0x0080, // CVAR of type ffi_type (for reflection)
-    LT_CIF  =0x0100, // CVAR of type ffi_cif (for reflection)
-    LT_NULL =0x0200, // empty
-    LT_IMM  =0x0400, // immediate value, not a pointer
-    LT_NOWC =0x0800, // do not do wildcard matching
-    LT_RO   =0x1000, // META: disallow release
-    LT_AVIS =0x2000, // META: absolute traversal visitation flag
-    LT_RVIS =0x4000, // META: recursive traversal visitation flag
-    LT_LIST =0x8000, // META: hold children in unlabeled list, rather than default rbtree
+    LT_DUP  =0x00000001, // bufdup'ed on LTV_new, not ref to existing buf
+    LT_OWN  =0x00000002, // handed malloc'ed buffer, responsible for freeing
+    LT_ESC  =0x00000004, // strip escapes (changes buf contents and len!)
+    LT_BIN  =0x00000008, // data is binary/unprintable
+    LT_REFS =0x00000010, // LTV holds a list of REFs (implies LT_LIST)
+    LT_CVAR =0x00000020, // LTV data is a C variable
+    LT_TYPE =0x00000040, // CVAR of type TYPE_INFO (for reflection)
+    LT_FFI  =0x00000080, // CVAR of type ffi_type (for reflection)
+    LT_CIF  =0x00000100, // CVAR of type ffi_cif (for reflection)
+    LT_NULL =0x00000200, // empty
+    LT_IMM  =0x00000400, // immediate value, not a pointer
+    LT_NOWC =0x00000800, // do not do wildcard matching
+    LT_BC   =0x00001000, // VM bytecode
+    LT_TAAT =0x00002000, // VM term-at-a-time bytecode
+
+
+    LT_RO   =0x00010000, // META: disallow release
+    LT_AVIS =0x00020000, // META: absolute traversal visitation flag
+    LT_RVIS =0x00040000, // META: recursive traversal visitation flag
+    LT_LIST =0x00080000, // META: hold children in unlabeled list, rather than default rbtree
     LT_NAP  =LT_IMM|LT_NULL,                // not a pointer
     LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
     LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string

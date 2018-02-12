@@ -27,28 +27,18 @@
 
 char *formats[] = {"asm","edict","xml","json","yaml","swagger","lisp","massoc"};
 
-int jit_term(char *type,char *data,int len)
-{
-    printf("%s, \"",type);
-    fstrnprint(stdout,data,len);
-    printf("\"\n");
-}
+#define EMIT(bc) emit(&((VM_CMD) {VMOP_ ## bc}))
+#define EMIT_EXT(data,len,flags) emit(&((VM_CMD) {VMOP_EXT,(len),(flags),(data)}));
 
 int jit_asm(EMITTER emit,void *data,int len)
 {
-    void *end=data+len;
-    VM_CMD *cmd=data;
-    for (int i=0;(void *)(cmd+i)<end && cmd[i].op;i++) {
+    VM_CMD *cmd=(VM_CMD *) data;
+    for (int i=0;i<len;i++)
         emit(cmd+i);
-    }
 }
 
-#define EDICT_OPS "|&!%#@/+=:;,"
-#define EDICT_MONO_OPS "()<>{}"
-
-#define EMIT(bc)     emit(&((VM_CMD) {VMOP_ ## bc}))
-#define EMITRES(res) emit(&((VM_CMD) {0xff-VMRES_ ## res}))
-
+#define EDICT_OPS "@/!&|=+%:"
+#define EDICT_BLOCK_OPS "()<>{}`"
 int jit_edict(EMITTER emit,void *data,int len)
 {
     int status=0;
@@ -57,88 +47,72 @@ int jit_edict(EMITTER emit,void *data,int len)
 
     int advance(int adv) { adv=MIN(adv,len); tdata+=adv; len-=adv; return adv; }
 
-    int compile_ws() {
-        tlen=series(tdata,len,WHITESPACE,NULL,NULL);
-        return advance(tlen);
+    int skip_whitespace() {
+        advance(series(tdata,len,WHITESPACE,NULL,NULL)); // skip whitespace
+        return true;
     }
 
-    int compile_block() {
+    int compile_term() {
+        EMIT(TERM_START);
+
         if ((tlen=series(tdata,len,NULL,NULL,"[]"))) {
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1}));
-            EMIT(SPUSH);
-        } else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
-            EMIT(NULL_ITEM); EMIT(ENFRAME);
-            EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE);
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
-            EMIT(DEFRAME);
-            EMIT(SPOP); EMITRES(WIP); EMIT(DROP); // drop lambda's environment
-        } else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
-            EMIT(SPOP); EMIT(ENFRAME);
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
-            EMIT(DEFRAME);
-        } else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) { // just a block (for now)
-            EMIT(NULL_ITEM); EMIT(ENFRAME);
-            emit(&((VM_CMD) {VMOP_LIT,tlen-2,LT_DUP,tdata+1})); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD);
-            EMIT(DEFRAME);
-            // DON'T drop lambda's environment
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(PUSHWIP);
         }
-        return advance(tlen);
-    }
+        else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(FUN_START); EMIT(CTX_POP);
+        }
+        else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(CTX_START); EMIT(CTX_KEEP);
+        }
+        else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) {
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(BLK_START);
+        }
+        else if ((tlen=series(tdata,len,NULL,NULL,"``"))) {
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(BUILTIN);
+        }
+        if (!advance(tlen)) { // no block, look for an atom
+            char *ops_data=tdata;
+            int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
+            advance(ops_len);
+            int ref_len=0;
+            while ((tlen=series(tdata+ref_len,len-ref_len,NULL,NULL,"''")) || // quoted ref component
+                   (tlen=series(tdata+ref_len,len-ref_len,NULL,WHITESPACE EDICT_OPS EDICT_BLOCK_OPS "'","[]"))) // unquoted ref
+                ref_len+=tlen;
 
-    int compile_atom() {
-        char *ops_data=tdata;
-        int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
-        advance(ops_len);
-        int ref_len=0,tlen=0;
-        while ((tlen=series(tdata+ref_len,len-ref_len,NULL,NULL,"''")) || // quoted ref component
-               (tlen=series(tdata+ref_len,len-ref_len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS "'","[]"))) // unquoted ref
-            ref_len+=tlen;
+            if (ref_len) {
+                EMIT_EXT(tdata,ref_len,LT_DUP);
+                advance(ref_len);
+            }
 
-        if (ref_len) {
-            emit(&((VM_CMD) {VMOP_REF,ref_len,LT_DUP,tdata}));
-            if (!ops_len) {
-                EMIT(REF_HRES);
-                EMIT(DEREF);
-                EMIT(SPUSH);
-            } else {
+            tlen=ops_len+ref_len;
+
+            if (ops_len && ops_data[0]=='|') // catch is a special case
+                EMIT(CATCH);
+            else {
+                EMIT(REF);
+                if (!ops_len)
+                    EMIT(DEREF);
                 for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
-                        case '#': EMIT(BUILTIN); break;
-                        case '@': EMIT(SPOP); EMIT(REF_INS); EMIT(ASSIGN); break;
-                        case '/': EMIT(REF_HRES); EMIT(REMOVE); break;
-                        case '+': EMIT(REF_HRES); EMIT(DEREF); EMIT(SPOP); EMITRES(WIP); EMIT(CONCAT); EMIT(SPUSH); break;
-                        case '=': EMIT(REF_HRES); EMIT(COMPARE); break;
-                        case '&': EMIT(REF_HRES); EMIT(THROW); break;
-                        case '|': EMIT(REF_ERES); EMIT(CATCH); break;
-                        case '!': EMIT(REF_HRES); EMIT(SPOP); EMIT(MMAP_KEEP); EMIT(YIELD); break;
-                        case '%': EMIT(REF_HRES); EMIT(SPOP); EMIT(MMAP_POP); EMIT(YIELD); break;
+                        case '@': EMIT(ASSIGN); break;
+                        case '/': EMIT(REMOVE); break;
+                        case '!': EMIT(EVAL); break;
+                        case '&': EMIT(THROW); break;
+                        case '=': EMIT(COMPARE); break;
+                        case '+': EMIT(MERGE); break;
+                        case '%': EMIT(SPLIT); break;
+                        case ':': EMIT(PUSHWIP); break;
                     }
                 }
             }
-            EMIT(REF_KILL);
-            advance(ref_len);
-        } else {
-            for (int i=0;i<ops_len;i++) {
-                switch (ops_data[i]) {
-                    case '#': EMIT(SPOP); EMIT(TOS); EMITRES(WIP); EMIT(DROP); break;
-                    case '@': EMIT(REF_MAKE); EMIT(REF_INS); EMIT(ASSIGN); EMIT(REF_KILL); break;
-                    case '/': EMIT(SPOP); EMITRES(WIP); EMIT(DROP); break;
-                    case '+': EMIT(SPOP); EMIT(SPOP); EMITRES(WIP); EMIT(CONCAT); EMIT(SPUSH); break;
-                    case '&': EMIT(THROW); break;
-                    case '|': EMIT(CATCH); break;
-                    case '!': EMIT(SPOP); EMIT(EDICT); EMIT(BYTECODE); EMIT(YIELD); break;
-                    case ':': EMIT(SPOP); EMIT(EDICT); EMIT(PUSH_SUB); break;
-                    case ',': EMIT(EVAL_SUB); EMIT(YIELD); break;
-                    case ';': EMIT(POP_SUB); EMITRES(WIP); EMIT(DROP); break;
-                }
-            }
         }
-        tlen=ops_len+ref_len;
+
         return tlen;
     }
 
-    STRY(!tdata,"testing compiler source");
-    while (len && (compile_ws() || compile_block() || compile_atom()));
+    STRY(!tdata,"testing source code");
+    while (skip_whitespace() && len && compile_term());
+    EMIT(CODE_END);
 
  done:
     return status;
@@ -154,11 +128,6 @@ int jit_massoc(EMITTER emit,void *data,int len)  { printf("unsupported\n"); }
 
 COMPILER compilers[] = {jit_asm,jit_edict,jit_xml,jit_json,jit_yaml,jit_swagger,jit_lisp,jit_massoc};
 
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-
 LTV *compile(COMPILER compiler,void *data,int len)
 {
     char *buf=NULL;
@@ -168,7 +137,7 @@ LTV *compile(COMPILER compiler,void *data,int len)
     int emit(VM_CMD *cmd) {
         unsigned unsigned_val;
         fwrite(&cmd->op,1,1,stream);
-        if (cmd->op<VMOP_EXTENDED) {
+        if (cmd->op==VMOP_EXT) {
             switch (cmd->len) {
                 case -1:
                     cmd->len=strlen(cmd->data); // rewrite len and...
@@ -188,18 +157,14 @@ LTV *compile(COMPILER compiler,void *data,int len)
         len=strlen((char *) data);
     compiler(emit,data,len);
     fclose(stream);
-    return LTV_init(NEW(LTV),buf,flen,LT_OWN|LT_BIN);
+    return LTV_init(NEW(LTV),buf,flen,LT_BC|LT_OWN|LT_BIN);
 }
 
 LTV *compile_ltv(COMPILER compiler,LTV *ltv)
 {
+    // print_ltv(stdout,CODE_RED "compile: ",ltv,CODE_RESET "\n",0);
     if (ltv->flags&LT_CVAR)
         return ltv; // FFI
     LTV *bc=compile(compiler,ltv->data,ltv->len);
-    LTV_release(ltv);
     return bc;
 }
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////
-////////////////////////////////////////////////////////////////////////////////////////////////////

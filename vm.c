@@ -49,9 +49,9 @@ enum {
 };
 
 enum {
-    VM_BYPASS   = 0x01,
-    VM_THROWING = 0x02,
-    VM_YIELD    = 0x04,
+    VM_YIELD    = 0x01,
+    VM_BYPASS   = 0x02,
+    VM_THROWING = 0x04,
     VM_COMPLETE = 0x08,
     VM_ERROR    = 0x10,
     VM_HALT     = VM_YIELD | VM_COMPLETE | VM_ERROR
@@ -89,7 +89,13 @@ int vm_eval(VM_ENV *vm_env)
     LTVR *code_ltvr=NULL;
 
 #define OPCODE(OP) (*(char *) (opcode_ltv->data OP))
-#define NEXTCALL vmop_call[OPCODE(++)]
+    //#define NEXTCALL vmop_call[OPCODE(++)]
+#define NEXTCALL nextcall()
+
+    void *nextcall() {
+        int opcode=OPCODE(++);
+        return vmop_call[opcode];
+    }
 
     LTV *enq(int res,LTV *ltv) { return LTV_put(ENV_LIST(res),ltv,HEAD,NULL); }
     LTV *deq(int res,int pop) { return LTV_get(ENV_LIST(res),pop,HEAD,NULL,NULL); }
@@ -244,7 +250,7 @@ int vm_eval(VM_ENV *vm_env)
     //////////////////////////////////////////////////
     //////////////////////////////////////////////////
 
-#define VMOP_DEBUG() DEBUG(printf("%s (code %x loc %x nextop %x state %x)\n",__func__,code_ltv,opcode_ltv->data,OPCODE(),vm_env->state));
+#define VMOP_DEBUG() DEBUG(printf("%s (code %x len %d loc %x offset %d nextop %x state %x)\n",__func__,code_ltv,code_ltv->len,opcode_ltv->data,(opcode_ltv->data-code_ltv->data),OPCODE(),vm_env->state));
 
 
     void *vmop_TERM_START() { VMOP_DEBUG();
@@ -258,12 +264,14 @@ int vm_eval(VM_ENV *vm_env)
         vm_env->ext_length=ntohl(*(unsigned *) opcode_ltv->data); opcode_ltv->data+=sizeof(unsigned);
         vm_env->ext_flags=ntohl(*(unsigned *)  opcode_ltv->data); opcode_ltv->data+=sizeof(unsigned);
         vm_env->ext_data=opcode_ltv->data;                        opcode_ltv->data+=vm_env->ext_length;
-        DEBUG(printf(CODE_BLUE " "); printf("len %d flags %x state %x;",vm_env->ext_length,vm_env->ext_flags,vm_env->state); fstrnprint(stdout,vm_env->ext_data,vm_env->ext_length); printf(CODE_RESET "\n"));
+        DEBUG(printf(CODE_BLUE " "); printf("len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state); fstrnprint(stdout,vm_env->ext_data,vm_env->ext_length); printf(CODE_RESET "\n"));
         return NEXTCALL;
     }
 
-    void *vmop_CODE_END() { VMOP_DEBUG();
-        release_code();
+    void *vmop_YIELD() { VMOP_DEBUG();
+        if ((opcode_ltv->data-code_ltv->data)>=code_ltv->len) {
+            release_code();
+        }
         vm_env->state|=VM_YIELD;
         return NULL;
     }
@@ -273,7 +281,7 @@ int vm_eval(VM_ENV *vm_env)
         STRY(listcat(VMRES_STACK),"collapsing stack levels");
         LTV_release(deq(VMRES_DICT,POP));
     done:
-        return vmop_CODE_END(); // implicit
+        return NEXTCALL;
     }
 
     void *vmop_CTX_KEEP() { VMOP_DEBUG();
@@ -281,7 +289,7 @@ int vm_eval(VM_ENV *vm_env)
         STRY(listcat(VMRES_STACK),"collapsing stack levels");
         STRY(!stack_enq(deq(VMRES_DICT,POP)),"returning dict level to stack");
     done:
-        return vmop_CODE_END(); // implicit
+        return NEXTCALL;
     }
 
     void *vmop_CATCH() { VMOP_DEBUG();
@@ -312,6 +320,8 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_BUILTIN() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         int match(char *key) { return !strncmp(key,vm_env->ext_data,vm_env->ext_length); }
         LTV *cvar_ltv=NULL,*ptr=NULL;
 
@@ -343,12 +353,17 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_REF() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip())
             vm_env->wip=REF_create(vm_env->wip);
+    done:
         return NEXTCALL;
     }
 
     void *vmop_DEREF() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         ref_hres(ENV_LIST(VMRES_DICT),use_wip());
         LTV *ltv=REF_ltv(REF_HEAD(vm_env->wip));
         if (!ltv)
@@ -359,6 +374,8 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_PUSHWIP() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip())
             THROW(!stack_enq(vm_env->wip));
         else {
@@ -368,6 +385,8 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_ITER_POP() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip())
             THROW(!stack_enq(vm_env->wip));
         else {
@@ -377,6 +396,8 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_ITER_KEEP() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip())
             THROW(!stack_enq(vm_env->wip));
         else {
@@ -386,6 +407,8 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_ASSIGN() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (!use_wip()) { // assign to TOS
             LTV *ltv;
             THROW(!(ltv=stack_deq(POP)));
@@ -402,48 +425,62 @@ int vm_eval(VM_ENV *vm_env)
     }
 
     void *vmop_REMOVE() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip()) {
             ref_hres(ENV_LIST(VMRES_DICT),vm_env->wip);
             REF_remove(REF_HEAD(vm_env->wip));
         } else {
             LTV_release(stack_deq(POP));
         }
+    done:
         return NEXTCALL;
     }
 
     void *vmop_EVAL() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip())
             push_code(compile_ltv(compilers[FORMAT_edict],REF_ltv(REF_HEAD(vm_env->wip))));
         else
             push_code(compile_ltv(compilers[FORMAT_edict],stack_deq(POP)));
-        if (OPCODE()==VMOP_CODE_END)
-            release_code();
-        vm_env->state|=VM_YIELD;
-        return NULL;
+    done:
+        return NEXTCALL;
     }
 
     void *vmop_THROW() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip()) {
             ref_hres(ENV_LIST(VMRES_DICT),vm_env->wip);
             throw(REF_ltv(REF_HEAD(vm_env->wip)));
         } else {
             throw(LTV_NULL);
         }
+    done:
         return NEXTCALL;
     }
 
     void *vmop_COMPARE() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip()) {
         } else {
         }
+    done:
         return NEXTCALL;
     }
 
     void *vmop_SPLIT() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
+    done:
         return NEXTCALL;
     }
 
     void *vmop_MERGE() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         LTV *tos,*nos;
         tos=stack_deq(POP);
         if (use_wip()) {
@@ -455,67 +492,78 @@ int vm_eval(VM_ENV *vm_env)
         stack_enq(LTV_concat(tos,nos));
         LTV_release(tos);
         LTV_release(nos);
+    done:
         return NEXTCALL;
     }
 
     void *vmop_RDLOCK() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         pthread_rwlock_rdlock(&vm_rwlock);
+    done:
         return NEXTCALL;
     }
 
     void *vmop_WRLOCK() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         pthread_rwlock_wrlock(&vm_rwlock);
+    done:
         return NEXTCALL;
     }
 
     void *vmop_UNLOCK() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         pthread_rwlock_unlock(&vm_rwlock);
+    done:
         return NEXTCALL;
     }
 
     void *vmop_FUN_START() { VMOP_DEBUG();
-        VM_CMD function_end[] = {{VMOP_CTX_KEEP},{VMOP_CODE_END}};
+        if (vm_env->state)
+            goto done;
+        VM_CMD function_end[] = {{VMOP_CTX_POP},{VMOP_YIELD}};
         if (use_wip()) {
-            push_code(compile(compilers[FORMAT_asm],function_end,sizeof(function_end)));
+            push_code(compile(compilers[FORMAT_asm],function_end,(sizeof function_end/sizeof *function_end)));
             push_code(compile_ltv(compilers[FORMAT_edict],stack_deq(POP)));
             push_code(compile_ltv(compilers[FORMAT_edict],vm_env->wip));
             enq(VMRES_DICT,LTV_NULL);
             STRY(!enq(VMRES_STACK,LTV_NULL_LIST),"pushing stack level");
         } else {
         }
-        if (OPCODE()==VMOP_CODE_END)
-            release_code();
-        vm_env->state|=VM_YIELD;
     done:
         return NEXTCALL;
     }
 
     void *vmop_CTX_START() { VMOP_DEBUG();
-        VM_CMD context_end[] = {{VMOP_CTX_KEEP},{VMOP_CODE_END}};
+        if (vm_env->state)
+            goto done;
+        VM_CMD context_end[] = {{VMOP_CTX_KEEP},{VMOP_YIELD}};
         if (use_wip()) {
-            push_code(compile(compilers[FORMAT_asm],context_end,sizeof(context_end)));
+            push_code(compile(compilers[FORMAT_asm],context_end,(sizeof context_end/sizeof *context_end)));
             push_code(compile_ltv(compilers[FORMAT_edict],vm_env->wip));
             enq(VMRES_DICT,stack_deq(POP));
             STRY(!enq(VMRES_STACK,LTV_NULL_LIST),"pushing stack level");
         } else {
         }
-        if (OPCODE()==VMOP_CODE_END)
-            release_code();
-        vm_env->state|=VM_YIELD;
     done:
         return NEXTCALL;
     }
 
     void *vmop_BLK_START() { VMOP_DEBUG();
+        if (vm_env->state)
+            goto done;
         if (use_wip()) {
         } else {
         }
+    done:
         return NEXTCALL;
     }
 
     static int init=0;
     if (!init) {
-        vmop_call[init++] = vmop_CODE_END;
+        vmop_call[init++] = vmop_YIELD;
         vmop_call[init++] = vmop_EXT;
         vmop_call[init++] = vmop_CTX_POP;
         vmop_call[init++] = vmop_CTX_KEEP;
@@ -542,25 +590,11 @@ int vm_eval(VM_ENV *vm_env)
         vmop_call[init++] = vmop_BLK_START;
     };
 
-    void *bypass() { VMOP_DEBUG();
-        int opcode;
-        for (opcode=OPCODE();opcode>VMOP_CATCH;opcode=OPCODE(++)) {
-            DEBUG(printf("bypass check %x\n",OPCODE()));
-        }
-        DEBUG(printf(CODE_RED "after skip, returning vmop for opcode %x" CODE_RESET "\n",opcode));
-        VMOP_DEBUG();
-        return vmop_call[opcode];
-    }
-
     VMOP_DEBUG();
-
     reset_wip();
-    VMOP_CALL call=vmop_call[OPCODE()];
-    while (!(vm_env->state&VM_HALT)) {
-        if (vm_env->state)
-            call=bypass();
+    VMOP_CALL call=vmop_call[OPCODE(++)];
+    while (!(vm_env->state&VM_HALT))
         call=call();
-    }
 
     DEBUG(printf("exit ------------------------\n"));
 

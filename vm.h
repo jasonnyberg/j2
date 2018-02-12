@@ -22,7 +22,7 @@
 #define VM_H
 
 enum {
-    VMOP_CODE_END,
+    VMOP_YIELD,
     VMOP_EXT,
     VMOP_CTX_POP,
     VMOP_CTX_KEEP,

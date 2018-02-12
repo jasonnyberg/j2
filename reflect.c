@@ -882,14 +882,6 @@ int cif_curate_module(LTV *module,int bootstrap)
             char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_NAME):NULL;
             char *composite_name=NULL;
 
-            const char *is;
-            dwarf_get_TAG_name(type_info->tag,&is);
-            if (base_symb && !strcmp(base_symb,"(LTV)*")) {
-                printf(CODE_RED "%s (%s) (%x) is an (LTV)*" CODE_RESET "\n",type_name?type_name:"<><>",is,type_info->tag);
-                if (!type_name)
-                    printf("no type name\n");
-            }
-
             void categorize_symbolic(char *sym,int link) {
                 if (sym) {
                     type_info->flags|=TYPEF_SYMBOLIC;
@@ -920,12 +912,6 @@ int cif_curate_module(LTV *module,int bootstrap)
                 }
 
                 if (base_symb) { // dedup types; to get here, base must have already been categorized
-
-                    const char *is;
-                    dwarf_get_TAG_name(type_info->tag,&is);
-                    if (!strcmp(base_symb,"(LTV)*"))
-                        printf(CODE_BLUE "%s (%s) (%x) is deduping an (LTV)*" CODE_RESET "\n",sym?sym:"",is,type_info->tag);
-
                     TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
                     if (symb_base && symb_base!=base_info) { // may already be correct
                         attr_del(&type_info->ltv,TYPE_BASE);

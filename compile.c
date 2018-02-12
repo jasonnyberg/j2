@@ -59,10 +59,10 @@ int jit_edict(EMITTER emit,void *data,int len)
             EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(PUSHWIP);
         }
         else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(FUN_START); EMIT(CTX_POP);
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(FUN_START); EMIT(YIELD);
         }
         else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(CTX_START); EMIT(CTX_KEEP);
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(CTX_START); EMIT(YIELD);
         }
         else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) {
             EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(BLK_START);
@@ -96,7 +96,7 @@ int jit_edict(EMITTER emit,void *data,int len)
                     switch (ops_data[i]) {
                         case '@': EMIT(ASSIGN); break;
                         case '/': EMIT(REMOVE); break;
-                        case '!': EMIT(EVAL); break;
+                        case '!': EMIT(EVAL); EMIT(YIELD); break;
                         case '&': EMIT(THROW); break;
                         case '=': EMIT(COMPARE); break;
                         case '+': EMIT(MERGE); break;
@@ -114,7 +114,7 @@ int jit_edict(EMITTER emit,void *data,int len)
 
     STRY(!tdata,"testing source code");
     while (skip_whitespace() && len && compile_term());
-    EMIT(CODE_END);
+    EMIT(YIELD);
 
  done:
     return status;

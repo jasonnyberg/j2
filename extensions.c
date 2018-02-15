@@ -33,6 +33,8 @@ extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
 extern int string(char *s) { printf("%s\n",s); }
 
+extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; }
+
 extern void capture() { stdin; stdout; stderr; }
 extern FILE *get_stdin() { return stdin; }
 

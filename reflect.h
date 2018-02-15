@@ -160,7 +160,8 @@ extern int cif_ffi_prep(LTV *type);
 
 extern LTV *cif_rval_create(LTV *lambda,void *data);
 extern int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
-extern LTV *cif_coerce(LTV *arg,LTV *type);
+extern LTV *cif_coerce_i2c(LTV *arg,LTV *type);
+extern LTV *cif_coerce_c2i(LTV *arg);
 extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);
 
 extern LTV *cif_type_info(char *typename);

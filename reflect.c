@@ -1670,11 +1670,12 @@ int cif_isneg(LTV *cvar)
     }
 }
 
-
-LTV *cif_coerce(LTV *cvar,LTV *type)
+// convert interpreter params into something FFI can use
+// (hoist LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
+LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 {
     int status=0;
-    LTV *result=cvar;
+    LTV *result=ltv;
 
     /*
     int old_show_ref=show_ref;
@@ -1686,28 +1687,59 @@ LTV *cif_coerce(LTV *cvar,LTV *type)
     show_ref=old_show_ref;
     */
 
-    if (!(cvar->flags&LT_CVAR)) {
-        LTV *addr=(cvar->flags&LT_CVAR)?cvar->data:&cvar->data;
-        STRY(!(result=cif_create_cvar(type,addr,NULL)),"creating coersion");
-        STRY(!(LT_put(result,TYPE_CAST,HEAD,cvar)),"linking original to coersion");
-    } else {
-        LTV *type_base=cif_find_basic(type);
-        //LTV *cvar_base=cif_find_basic(LT_get(cvar,TYPE_BASE,HEAD,KEEP));
-        LTV *cvar_base=LT_get(cvar,TYPE_BASE,HEAD,KEEP);
-        if (type_base && cvar_base) {
-            if (type_base==cvar_base)
-                result=cvar;
-            else {
-                LTV *cvar_metabase=LT_get(cvar_base,TYPE_META,HEAD,KEEP);
-                if (cvar_metabase) {
-                    if (type_base==cvar_metabase) {
-                        result=cif_create_cvar(cvar_metabase,&cvar->data,NULL);
-                        STRY(!(LT_put(result,TYPE_CAST,HEAD,cvar)),"linking original to coersion");
-                    }
-                }
+    LTV *type_base=cif_find_basic(type);
+
+    if (!(ltv->flags&LT_CVAR)) { // first, dress a non-cvar ltv up in something appropriate
+        char *type_name=attr_get(type_base,TYPE_NAME);
+        int match(char *key) { return !strcmp(key,type_name); }
+        if (match("(LTV)*")) // hoist LTV when dest is an LTV*
+            result=cif_create_cvar(cif_type_info("LTV"),ltv,NULL);
+        else // assume for now that dest is a char*, create a cvar that refers to a char *
+            STRY(!(result=cif_create_cvar(type_base,&ltv->data,NULL)),"creating blind coersion"); // cvar->data=&ltv->data, i.e. cvar will point to a void*
+        STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
+        ltv=result; // may need further coersions
+    }
+
+    LTV *cvar_base=LT_get(ltv,TYPE_BASE,HEAD,KEEP);
+    if (type_base && cvar_base) {
+        if (type_base==cvar_base)
+            result=ltv;
+        else {
+            LTV *cvar_metabase=LT_get(cvar_base,TYPE_META,HEAD,KEEP);
+            if (cvar_metabase && type_base==cvar_metabase) { // allow X to X* coersions
+                result=cif_create_cvar(cvar_metabase,&ltv->data,NULL);
+                STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
             }
         }
     }
+ done:
+    return status?NULL:result;
+}
+
+// coerce C return value into interpreter-friendly LTV
+// (mostly unwrapping LTV cvars)
+LTV *cif_coerce_c2i(LTV *ltv)
+{
+    int status=0;
+    LTV *result=ltv;
+
+    /*
+    int old_show_ref=show_ref;
+    show_ref=1;
+    printf("coercing ltv\n");
+    print_ltv(stdout,NULL,cvar,NULL,2);
+    printf("into type\n");
+    print_ltv(stdout,NULL,type,NULL,2);
+    show_ref=old_show_ref;
+    */
+
+    LTV *type=LT_get(ltv,TYPE_BASE,HEAD,KEEP);
+    char *type_name=attr_get(type,TYPE_NAME);
+    if (type_name && !strcmp(type_name,"(LTV)*")) {
+        result=*(LTV **) ltv->data;
+        LTV_release(ltv);
+    }
+
  done:
     return status?NULL:result;
 }

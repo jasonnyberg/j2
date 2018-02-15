@@ -942,7 +942,7 @@ int REF_assign(REF *ref,LTV *ltv)
         LTV *addr_type=cif_isaddr(ref_ltv);
         if (addr_type) {
             LTV *newltv=NULL;
-            STRY(!(newltv=cif_coerce(ltv,addr_type)),"coercing ltv");
+            STRY(!(newltv=cif_coerce_i2c(ltv,addr_type)),"coercing ltv");
             LTVR_release(&ref->ltvr->lnk);
             STRY(!LTV_put(&ref->lti->ltvs,newltv,ref->reverse,&ref->ltvr),"adding coerced ltv to ref");
         } else {

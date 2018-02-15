@@ -191,7 +191,7 @@ int vm_ffi(VM_ENV *vm_env,LTV *lambda) { // adapted from edict.c's ffi_eval(...)
         int status=0;
         LTV *arg=NULL, *coerced=NULL;
         STRY(!(arg=vm_stack_deq(vm_env,POP)),"popping ffi arg (%s) from stack",name); // FIXME: attempt to resolve by name first
-        STRY(!(coerced=cif_coerce(arg,type)),"coercing ffi arg");
+        STRY(!(coerced=cif_coerce_i2c(arg,type)),"coercing ffi arg");
         LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
         LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
         LTV_release(arg);
@@ -200,8 +200,8 @@ int vm_ffi(VM_ENV *vm_env,LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     }
     STRY(cif_args_marshal(ftype,marshaller),"marshalling ffi args"); // pre-
     STRY(cif_ffi_call(ftype,lambda->data,rval,&args),"calling ffi");
-    CLL_release(&args,LTVR_release);
-    STRY(!vm_stack_enq(vm_env,rval),"enqueing rval onto stack");
+    STRY(!vm_stack_enq(vm_env,cif_coerce_c2i(rval)),"enqueing coerced rval onto stack");
+    CLL_release(&args,LTVR_release); //  ALWAYS release at end, to give other code a chance to enq an LTV
  done:
     return status;
 }
@@ -665,7 +665,7 @@ int vm_boot()
 {
     char *bootstrap_code=
         "[bootstrap.edict] [r] file_open! @bootstrap\n"
-        "[bootstrap brl! `plop`! bootloop!]@bootloop\n"
+        "[bootstrap brl! ! bootloop!]@bootloop\n"
         "bootloop() | 0@RETURN\n";
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,strlen(bootstrap_code));
     vm_bootstrap bootstrap=(vm_bootstrap) vm_create_cb("vm_bootstrap",cif_module,code);

@@ -171,7 +171,7 @@ int vm_ref_hres(VM_ENV *vm_env,CLL *cll,LTV *ref) {
     return status;
 }
 
-int vm_dump(VM_ENV *vm_env,LTV *ltv,char *label) {
+int vm_dump_ltv(VM_ENV *vm_env,LTV *ltv,char *label) {
     int status=0;
     char *filename;
     printf("%s\n",label);
@@ -185,8 +185,11 @@ int vm_ffi(VM_ENV *vm_env,LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     int status=0;
     CLL args; CLL_init(&args); // list of ffi arguments
     LTV *rval=NULL;
+    int void_func;
     LTV *ftype=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
-    STRY(!(rval=cif_rval_create(ftype,NULL)),"creating ffi rval ltv");
+    rval=cif_rval_create(ftype,NULL);
+    if ((void_func=!rval))
+        rval=LTV_NULL;
     int marshaller(char *name,LTV *type) {
         int status=0;
         LTV *arg=NULL, *coerced=NULL;
@@ -200,7 +203,10 @@ int vm_ffi(VM_ENV *vm_env,LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     }
     STRY(cif_args_marshal(ftype,marshaller),"marshalling ffi args"); // pre-
     STRY(cif_ffi_call(ftype,lambda->data,rval,&args),"calling ffi");
-    STRY(!vm_stack_enq(vm_env,cif_coerce_c2i(rval)),"enqueing coerced rval onto stack");
+    if (void_func)
+        LTV_release(rval);
+    else
+        STRY(!vm_stack_enq(vm_env,cif_coerce_c2i(rval)),"enqueing coerced rval onto stack");
     CLL_release(&args,LTVR_release); //  ALWAYS release at end, to give other code a chance to enq an LTV
  done:
     return status;
@@ -222,6 +228,51 @@ void vm_eval_type(VM_ENV *vm_env,LTV *type) {
     else
         THROW(vm_ffi(vm_env,type),type); // if not a type, it could be a function
  done:
+    return;
+}
+
+
+extern void vm_import(VM_ENV *vm_env) {
+    LTV *mod=NULL;
+    THROW(cif_curate_module(vm_stack_deq(vm_env,KEEP),false),LTV_NULL);
+ done:
+    return;
+}
+
+extern void vm_dump(VM_ENV *vm_env) {
+    vm_dump_ltv(vm_env,&vm_env->ltv[VMRES_DICT],res_name[VMRES_DICT]);
+    vm_dump_ltv(vm_env,&vm_env->ltv[VMRES_STACK],res_name[VMRES_STACK]);
+    return;
+}
+
+extern void vm_locals(VM_ENV *vm_env) {
+    int old_show_ref=show_ref;
+    show_ref=1;
+    vm_dump_ltv(vm_env,vm_deq(vm_env,VMRES_DICT,KEEP),res_name[VMRES_DICT]);
+    vm_dump_ltv(vm_env,vm_deq(vm_env,VMRES_STACK,KEEP),res_name[VMRES_STACK]);
+    show_ref=old_show_ref;
+    return;
+}
+
+extern void vm_hoist(VM_ENV *vm_env) {
+    LTV *ltv=NULL,*ltvltv=NULL;
+    THROW(!(ltv=vm_stack_deq(vm_env,POP)),LTV_NULL); // ,"popping ltv to hoist");
+    THROW(!(ltvltv=cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL)),LTV_NULL); // allocate an LTV *
+    (*(LTV **) ltvltv->data)=ltv; // ltvltv->data is a pointer to an LTV *
+    THROW(!(LT_put(ltvltv,"TYPE_CAST",HEAD,ltv)),LTV_NULL);
+    THROW(!(vm_stack_enq(vm_env,ltvltv)),LTV_NULL); // ,"pushing hoisted ltv cvar");
+ done:
+    return;
+}
+
+extern void vm_plop(VM_ENV *vm_env) {
+    LTV *cvar_ltv=NULL,*ptr=NULL;
+    THROW(!(cvar_ltv=vm_stack_deq(vm_env,POP)),LTV_NULL);
+    THROW(!(cvar_ltv->flags&LT_CVAR),LTV_NULL); // "checking at least if it's a cvar" // TODO: verify it's an "(LTV)*"
+    THROW(!(ptr=*(LTV **) (cvar_ltv->data)),LTV_NULL);
+    THROW(!(vm_stack_enq(vm_env,ptr)),LTV_NULL);
+ done:
+    LTV_release(cvar_ltv);
     return;
 }
 
@@ -301,40 +352,6 @@ void vmop_TERM_START(VM_ENV *vm_env) { VMOP_DEBUG();
         vm_reset_wip(vm_env);
         NEXTCALL(vm_env);
     }
-}
-
-void vmop_BUILTIN(VM_ENV *vm_env) { VMOP_DEBUG();
-    int status=0;
-    if (!vm_env->state) {
-        int match(char *key) { return !strncmp(key,vm_env->ext_data,vm_env->ext_length); }
-        LTV *cvar_ltv=NULL,*ptr=NULL;
-
-        if (match("dump")) {
-            vm_dump(vm_env,&vm_env->ltv[VMRES_DICT],res_name[VMRES_DICT]);
-            vm_dump(vm_env,&vm_env->ltv[VMRES_STACK],res_name[VMRES_STACK]);
-        } else if (match("import")) {
-            LTV *mod=NULL;
-            STRY(cif_curate_module(vm_stack_deq(vm_env,KEEP),false),"importing module");
-        } else if (match("locals")) {
-            int old_show_ref=show_ref;
-            show_ref=1;
-            vm_dump(vm_env,vm_deq(vm_env,VMRES_DICT,KEEP),res_name[VMRES_DICT]);
-            vm_dump(vm_env,vm_deq(vm_env,VMRES_STACK,KEEP),res_name[VMRES_STACK]);
-            show_ref=old_show_ref;
-        } else if (match("hoist")) { // ltv -> cvar(ltv)
-            LTV *ltv=NULL;
-            THROW(!(ltv=vm_stack_deq(vm_env,POP)),LTV_NULL); // ,"popping ltv to hoist");
-            THROW(!(vm_stack_enq(vm_env,cif_create_cvar(cif_type_info("LTV"),ltv,NULL))),LTV_NULL); // ,"pushing hoisted ltv cvar");
-        } else if (match("plop")) { // cvar(ltv) -> ltv
-            THROW(!(cvar_ltv=vm_stack_deq(vm_env,POP)),LTV_NULL);
-            THROW(!(cvar_ltv->flags&LT_CVAR),LTV_NULL); // "checking at least if it's a cvar" // TODO: verify it's an "(LTV)*"
-            THROW(!(ptr=*(LTV **) (cvar_ltv->data)),LTV_NULL);
-            THROW(!(vm_stack_enq(vm_env,ptr)),LTV_NULL);
-        }
-    done:
-        LTV_release(cvar_ltv);
-    }
-    NEXTCALL(vm_env);
 }
 
 void vmop_REF(VM_ENV *vm_env) { VMOP_DEBUG();
@@ -542,7 +559,6 @@ VMOP_CALL vmop_call[] = {
     vmop_CTX_KEEP,
     vmop_CATCH,
     vmop_TERM_START,
-    vmop_BUILTIN,
     vmop_REF,
     vmop_DEREF,
     vmop_PUSHWIP,

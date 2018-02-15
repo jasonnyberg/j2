@@ -1,2 +1,8 @@
+[ENV vm_import!]  @import
+[ENV vm_dump!]    @dump
+[ENV vm_locals!]  @locals
+[ENV vm_hoist!]   @hoist
+[ENV vm_plop!]    @plop
+
 [get_stdin! brl! ! repl!]@repl
 repl() | `stack`

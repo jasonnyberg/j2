@@ -38,7 +38,7 @@ int jit_asm(EMITTER emit,void *data,int len)
 }
 
 #define EDICT_OPS "@/!&|=+%:"
-#define EDICT_BLOCK_OPS "()<>{}`"
+#define EDICT_BLOCK_OPS "()<>{}"
 int jit_edict(EMITTER emit,void *data,int len)
 {
     int status=0;
@@ -66,9 +66,6 @@ int jit_edict(EMITTER emit,void *data,int len)
         }
         else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) {
             EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(BLK_START);
-        }
-        else if ((tlen=series(tdata,len,NULL,NULL,"``"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(BUILTIN);
         }
         if (!advance(tlen)) { // no block, look for an atom
             char *ops_data=tdata;

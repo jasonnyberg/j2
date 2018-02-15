@@ -40,7 +40,6 @@ enum {
     VMOP_CTX_KEEP,
     VMOP_CATCH,
     VMOP_TERM_START, // start of non-excep
-    VMOP_BUILTIN,
     VMOP_REF,
     VMOP_DEREF,
     VMOP_PUSHWIP,

@@ -34,6 +34,35 @@ typedef int (*EMITTER)(VM_CMD *cmd);
 typedef int (*COMPILER)(EMITTER emit,void *data,int len);
 
 enum {
+    VMOP_YIELD,
+    VMOP_EXT,
+    VMOP_CTX_POP,
+    VMOP_CTX_KEEP,
+    VMOP_CATCH,
+    VMOP_TERM_START, // start of non-excep
+    VMOP_BUILTIN,
+    VMOP_REF,
+    VMOP_DEREF,
+    VMOP_PUSHWIP,
+    VMOP_ITER_POP,
+    VMOP_ITER_KEEP,
+    VMOP_ASSIGN,
+    VMOP_REMOVE,
+    VMOP_EVAL,
+    VMOP_THROW,
+    VMOP_COMPARE,
+    VMOP_SPLIT,
+    VMOP_MERGE,
+    VMOP_RDLOCK,
+    VMOP_WRLOCK,
+    VMOP_UNLOCK,
+    VMOP_FUN_START,
+    VMOP_CTX_START,
+    VMOP_BLK_START,
+    VMOP_COUNT
+} VM_OPCODES;
+
+enum {
     FORMAT_asm,
     FORMAT_edict,
     FORMAT_xml,

@@ -121,7 +121,6 @@ typedef enum {
     TYPEF_EXTERNAL   = 1<<0xb,
     TYPEF_VECTOR     = 1<<0xc,
     TYPEF_SYMBOLIC   = 1<<0xd,
-    TYPEF_DLADDR     = 1<<0xe,
 } TYPE_FLAGS;
 
 
@@ -146,7 +145,6 @@ typedef struct
     Dwarf_Signed location; // ??
     Dwarf_Unsigned addr; // from loclist
     Dwarf_Bool external;
-    void *dladdr; // address resolved via dynamic linker
 } TYPE_INFO_LTV;
 
 extern LTV *cif_module;
@@ -163,7 +161,7 @@ extern int cif_ffi_prep(LTV *type);
 extern LTV *cif_rval_create(LTV *lambda,void *data);
 extern int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
 extern LTV *cif_coerce(LTV *arg,LTV *type);
-extern int cif_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_ltvs);
+extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);
 
 extern LTV *cif_type_info(char *typename);
 extern LTV *cif_find_base(LTV *type,int tag);
@@ -178,7 +176,7 @@ extern int cif_iszero(LTV *cvar);
 extern int cif_ispos(LTV *cvar);
 extern int cif_isneg(LTV *cvar);
 
-extern int cif_cb_create(LTV *function_type,
+extern int cif_create_cb(LTV *function_type,
                          void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),
                          LTV *env);
 

@@ -230,7 +230,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
             if (cleanup && ltvr->ltv) descend_ltv(ltvr,ltvr->ltv);
             else if (preop && (rval=preop(&null,&ltvr,&parent,depth,&flags)) ||
                      ((flags&LT_TRAVERSE_HALT) || (rval=descend_ltv(ltvr,ltvr->ltv))) ||
-                     postop && (rval=postop(&null,&ltvr,&parent,depth,&flags)))
+                     postop && ((flags|=LT_TRAVERSE_POST),(rval=postop(&null,&ltvr,&parent,depth,&flags))))
                 goto done;
         done:
             return rval;
@@ -248,7 +248,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
                 if (cleanup && ltvr->ltv) descend_ltv(ltvr,ltvr->ltv);
                 else if (preop && (rval=preop(&parent,&ltvr,&child,depth,&flags)) ||
                          ((flags&LT_TRAVERSE_HALT) || (rval=descend_ltv(ltvr,ltvr->ltv))) ||
-                         postop && (rval=postop(&parent,&ltvr,&child,depth,&flags)))
+                         postop && ((flags|=LT_TRAVERSE_POST),(rval=postop(&parent,&ltvr,&child,depth,&flags))))
                     goto done;
             done:
                 return rval;
@@ -260,7 +260,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
             if (cleanup) CLL_map(&lti->ltvs,FWD,descend_ltvr);
             else if (preop && (rval=preop(&lti,&child,&parent,depth,&flags)) ||
                      ((flags&LT_TRAVERSE_HALT) || (rval=child?descend_ltvr(&child->lnk):CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,descend_ltvr))) ||
-                     postop && (rval=postop(&lti,&child,&parent,depth,&flags)))
+                     postop && ((flags|=LT_TRAVERSE_POST),(rval=postop(&lti,&child,&parent,depth,&flags))))
                 goto done;
         done:
             return rval;
@@ -281,7 +281,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
             ltv->flags&=~LT_RVIS;
             if (rval) goto done;
 
-            if (postop && (rval=postop(&child,&parent,&ltv,depth,&flags))) goto done;
+            if (postop && ((flags|=LT_TRAVERSE_POST),(rval=postop(&child,&parent,&ltv,depth,&flags)))) goto done;
         }
 
     done:

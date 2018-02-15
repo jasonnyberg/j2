@@ -228,7 +228,6 @@ int print_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
     if (type_info->flags&TYPEF_ADDR)       fprintf(ofile,"|addr 0x%x",      type_info->addr);
     if (type_info->flags&TYPEF_EXTERNAL)   fprintf(ofile,"|external %u",    type_info->external);
     if (type_info->flags&TYPEF_SYMBOLIC)   fprintf(ofile,"|symbolic");
-    if (type_info->dladdr)                 fprintf(ofile,"|dladdr 0x%x",    type_info->dladdr);
     return status;
 }
 
@@ -365,12 +364,12 @@ LTV *cif_assign_cvar(LTV *dst,LTV *src)
 void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
 {
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTI)) {
+        if ((*flags&LT_TRAVERSE_LTI)) {
             int len=strlen((*lti)->name);
             if (series((*lti)->name,len,NULL," ",NULL)<len)
                 (*flags)|=LT_TRAVERSE_HALT;
         }
-        else if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
+        else if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
             return op((*ltv),flags);
         return NULL;
     }
@@ -421,16 +420,13 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                 case DW_TAG_structure_type:
                     cvar_map(type,type_info_op); // traverse type hierarchy
                     break;
+                case DW_TAG_subprogram:
+                case DW_TAG_subroutine_type:
                 case DW_TAG_pointer_type: {
                     TYPE_UVALUE uval;
                     char buf[64];
                     if (Type_getUVAL(cvar,&uval))
                         fprintf(ofile,"%s",Type_pushUVAL(&uval,buf));
-                    break;
-                    LTV *base_type=LT_get(type,TYPE_BASE,HEAD,KEEP);
-                    void *loc=*(void **) cvar->data;
-                    if (base_type && loc)
-                        LTV_enq(&queue,cif_create_cvar(base_type,loc,NULL),HEAD);
                     break;
                 }
                 case DW_TAG_array_type:
@@ -836,7 +832,7 @@ int cif_dump_module(char *ofilename,LTV *module)
 
     void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags); // finesse: traverse flags below won't match if listree_acyclic sets LT_TRAVERSE_HALT
-        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR && !((*ltv)->flags&LT_TYPE)) {
+        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR && !((*ltv)->flags&LT_TYPE)) {
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
             fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_NAME));
             if (type_info->flags&TYPEF_BASE)
@@ -869,7 +865,7 @@ int cif_curate_module(LTV *module,int bootstrap)
         int status=0;
         void *dlhandle=NULL;
 
-        int derive_symbolic_name(TYPE_INFO_LTV *type_info) {
+        int derive_symbolic_name(TYPE_INFO_LTV *type_info,int post) {
             int status=0;
             if (!type_info->tag) return 0;
 
@@ -882,7 +878,7 @@ int cif_curate_module(LTV *module,int bootstrap)
             char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_NAME):NULL;
             char *composite_name=NULL;
 
-            void categorize_symbolic(char *sym,int link) {
+            void categorize_symbolic(char *sym) {
                 if (sym) {
                     type_info->flags|=TYPEF_SYMBOLIC;
                     attr_del(&type_info->ltv,TYPE_NAME);
@@ -893,7 +889,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                     dwarf_get_TAG_name(type_info->tag,&is);
                     if (!type_info->tag)
                         printf(CODE_RED "installing invalid type info" CODE_RESET "\n");
-                    else if (!link && LT_get(module,sym,HEAD,KEEP)) {
+                    else if (LT_get(module,sym,HEAD,KEEP)) {
                         if (type_info->tag!=sym_type_info->tag) {
                             const char *already;
                             dwarf_get_TAG_name(sym_type_info->tag,&already);
@@ -902,12 +898,6 @@ int cif_curate_module(LTV *module,int bootstrap)
                         }
                     } else { // if not a dup, place item into module
                         LT_put(module,sym,TAIL,&type_info->ltv);
-                    }
-                    if (link) { // dynamically link globals
-                        if (!type_info->dladdr) {
-                            type_info->flags|=TYPEF_DLADDR;
-                            type_info->dladdr=dlsym(dlhandle,sym);
-                        }
                     }
                 }
 
@@ -926,21 +916,21 @@ int cif_curate_module(LTV *module,int bootstrap)
                     break;
                 case DW_TAG_structure_type:
                     if (type_name)
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"struct %s",type_name),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"struct %s",type_name));
                     break;
                 case DW_TAG_union_type:
                     if (type_name)
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"union %s",type_name),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"union %s",type_name));
                     break;
                 case DW_TAG_enumeration_type:
                     if (type_name)
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"enum %s",type_name),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"enum %s",type_name));
                     break;
                 case DW_TAG_pointer_type:
                     if (!(type_info->flags&TYPEF_BASE))
                         base_symb="void";
                     if (base_symb)
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)*",base_symb),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)*",base_symb));
                     break;
                 case DW_TAG_array_type:
                     if (base_symb) {
@@ -951,49 +941,74 @@ int cif_curate_module(LTV *module,int bootstrap)
                                 type_info->bytesize=base_info->bytesize * (subrange->upper_bound+1);
                                 type_info->flags|=TYPEF_BYTESIZE;
                             }
-                            categorize_symbolic(FORMATA(composite_name,strlen(base_symb)+20,"(%s)[%d]",base_symb,subrange->upper_bound+1),0);
+                            categorize_symbolic(FORMATA(composite_name,strlen(base_symb)+20,"(%s)[%d]",base_symb,subrange->upper_bound+1));
                         }
                         else
-                            categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)[]",base_symb),0);
+                            categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)[]",base_symb));
                     }
                     break;
                 case DW_TAG_volatile_type:
                     if (base_symb)
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"volatile %s",base_symb),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"volatile %s",base_symb));
                     break;
                 case DW_TAG_const_type:
                     if (base_symb)
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"const %s",base_symb),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"const %s",base_symb));
                     break;
                 case DW_TAG_base_type:
                 case DW_TAG_enumerator:
                     if (type_name)
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
                     break;
                 case DW_TAG_typedef:
                     if (type_name)
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
                     else if (base_symb) // anonymous typedef
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
                     break;
                 case DW_TAG_subprogram:
                 case DW_TAG_subroutine_type:
-                    if (type_name) // GLOBAL!
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),1);
+                    if (type_name && post) { // GLOBAL!
+                        void *addr=NULL;
+                        if (addr=dlsym(dlhandle,type_name))
+                            LT_put(module,type_name,TAIL,cif_create_cvar(&type_info->ltv,addr,NULL));
+
+                        char buf[1024];
+                        char *bufloc=buf;
+                        int count=0;
+                        int marshaller(char *name,LTV *type) {
+                            count++;
+                            LTV *base=LT_get(type,TYPE_BASE,HEAD,KEEP);
+                            bufloc+=sprintf(bufloc,"%s,",attr_get(base,TYPE_NAME));
+                            return 0;
+                        }
+                        bufloc+=sprintf(bufloc,"%s(*)(",base_symb);
+                        STRY(cif_args_marshal(&type_info->ltv,marshaller),"marshalling ffi args"); // pre-
+                        bufloc+=sprintf(bufloc-(count?1:0),")");
+                        categorize_symbolic(buf);
+                    }
+
                     break;
                 case DW_TAG_variable:
-                    if (type_name) // GLOBAL!
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),1);
+                    if (type_name && base_info) { // GLOBAL!
+                        void *addr=NULL;
+                        if (addr=dlsym(dlhandle,type_name))
+                            LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
+
+                        // categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
+                        //type_info->flags|=TYPEF_DLADDR;
+                        //type_info->dladdr=dlsym(dlhandle,type_name);
+                    }
                     break;
                 case DW_TAG_subrange_type:
                     if (type_name) // still want to dedup!
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name),0);
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
                     break;
                 case DW_TAG_member:
                 case DW_TAG_formal_parameter:
                 case DW_TAG_unspecified_parameters: // varargs
                 case DW_TAG_compile_unit:
-                    categorize_symbolic(NULL,0);
+                    categorize_symbolic(NULL);
                     break;
                 default: // no name
                     break;
@@ -1004,8 +1019,8 @@ int cif_curate_module(LTV *module,int bootstrap)
 
         void *resolve_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
-            if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
-                derive_symbolic_name((TYPE_INFO_LTV *) (*ltv));
+            if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
+                derive_symbolic_name((TYPE_INFO_LTV *) (*ltv),(*flags)&LT_TRAVERSE_POST);
                 (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
             }
             return NULL;
@@ -1119,7 +1134,7 @@ int cif_curate_module(LTV *module,int bootstrap)
     }
 
     void *resolve_meta(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
+        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
             link_metatype((TYPE_INFO_LTV *) (*ltv));
         }
         return NULL;
@@ -1133,18 +1148,6 @@ int cif_curate_module(LTV *module,int bootstrap)
 
  done:
     return status;
-}
-
-
-void *cvar_addr(LTV *cvar)
-{
-    void *addr=cvar->data;
-    if (cvar->flags&LT_TYPE) {
-        TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) cvar;
-        if (til->flags&TYPEF_DLADDR)
-            addr=til->dladdr; // we'll let type definitions for extern symbols be used as a cvar
-    }
-    return addr;
 }
 
 
@@ -1208,7 +1211,7 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
 #define GETUVAL(member,type,uval)                                               \
     do {                                                                        \
         uval->member.dutype = type;                                             \
-        uval->member.val = *(typeof(uval->member.val) *) cvar_addr(cvar);       \
+        uval->member.val = *(typeof(uval->member.val) *) cvar->data;            \
     } while(0)
 
 #define GETUBITS(member,type,uval,bsize,boffset,issigned)                       \
@@ -1272,7 +1275,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
 }
 
 #define PUTUVAL(member,type,uval)                                               \
-    do { *(typeof(uval->member.val) *) cvar_addr(cvar) = uval->member.val; } while(0)
+    do { *(typeof(uval->member.val) *) cvar->data = uval->member.val; } while(0)
 
 #define PUTUBITS(member,type,uval,bsize,boffset,issigned)                       \
     do {                                                                        \
@@ -1485,7 +1488,7 @@ int cif_ffi_prep(LTV *type)
     }
 
     void *pre(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV)) {
+        if ((*flags&LT_TRAVERSE_LTV)) {
             char *name=attr_get((*ltv),TYPE_NAME);
             if ((*ltv)->flags&LT_TYPE) {
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
@@ -1517,7 +1520,7 @@ int cif_ffi_prep(LTV *type)
     }
 
     void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags==LT_TRAVERSE_LTV)) {
+        if ((*flags&LT_TRAVERSE_LTV)) {
             char *name=attr_get((*ltv),TYPE_NAME);
             if ((*ltv)->flags&LT_TYPE) {
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
@@ -1709,21 +1712,19 @@ LTV *cif_coerce(LTV *cvar,LTV *type)
     return status?NULL:result;
 }
 
-int cif_ffi_call(LTV *lambda,LTV *rval,CLL *coerced_args)
+int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_args)
 {
     int status=0;
     int index=0;
     void **args=NULL;
-    LTV *cif_ltv=LT_get(lambda,FFI_CIF,HEAD,KEEP);
-    TYPE_INFO_LTV *til=(TYPE_INFO_LTV *) lambda;
-    STRY(!(til->flags&TYPEF_DLADDR),"testing ffi call for DLADDR");
+    LTV *cif_ltv=LT_get(type,FFI_CIF,HEAD,KEEP);
     int arity=CLL_len(coerced_args);
     args=calloc(sizeof(void *),arity);
 
     void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; return NULL; }
     CLL_map(coerced_args,FWD,index_arg);
 
-    ffi_call((ffi_cif *) cif_ltv->data,til->dladdr,rval->data,args); // no return value
+    ffi_call((ffi_cif *) cif_ltv->data,loc,rval->data,args); // no return value
 
  done:
     return status;
@@ -1740,7 +1741,7 @@ LTV *cif_type_info(char *typename) { return LT_get(cif_module,typename,HEAD,KEEP
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int cif_cb_create(LTV *function_type,
+int cif_create_cb(LTV *function_type,
                   void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),
                   LTV *env)
 {

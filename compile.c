@@ -37,8 +37,8 @@ int jit_asm(EMITTER emit,void *data,int len)
         emit(cmd+i);
 }
 
-#define EDICT_OPS "@/!&|=+%:"
-#define EDICT_BLOCK_OPS "()<>{}"
+#define EDICT_OPS "@/&|"
+#define EDICT_MONO_OPS "!()<>"
 int jit_edict(EMITTER emit,void *data,int len)
 {
     int status=0;
@@ -53,54 +53,50 @@ int jit_edict(EMITTER emit,void *data,int len)
     }
 
     int compile_term() {
-        EMIT(TERM_START);
-
         if ((tlen=series(tdata,len,NULL,NULL,"[]"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(PUSHWIP);
+            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(PUSHEXT);
+            advance(tlen);
         }
-        else if ((tlen=series(tdata,len,NULL,NULL,"()"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(FUN_START); EMIT(YIELD);
-        }
-        else if ((tlen=series(tdata,len,NULL,NULL,"<>"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(CTX_START); EMIT(YIELD);
-        }
-        else if ((tlen=series(tdata,len,NULL,NULL,"{}"))) {
-            EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(BLK_START);
-        }
-        if (!advance(tlen)) { // no block, look for an atom
+        else if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) {
+            for (int i=0;i<tlen;i++)
+                switch (tdata[i]) {
+                    case '!': EMIT(EVAL);     break;
+                    case '<': EMIT(CTX_PUSH); break;
+                    case '>': EMIT(CTX_POP);  break;
+                    case '(': EMIT(NIL); EMIT(CTX_PUSH); EMIT(FUN_PUSH); break;
+                    case ')':                            EMIT(FUN_EVAL); EMIT(CTX_POP); EMIT(REMOVE); break;
+                    default: break;
+                }
+            advance(tlen);
+        } else { // no block, look for an atom
             char *ops_data=tdata;
             int ops_len=series(tdata,len,EDICT_OPS,NULL,NULL);
             advance(ops_len);
             int ref_len=0;
             while ((tlen=series(tdata+ref_len,len-ref_len,NULL,NULL,"''")) || // quoted ref component
-                   (tlen=series(tdata+ref_len,len-ref_len,NULL,WHITESPACE EDICT_OPS EDICT_BLOCK_OPS "'","[]"))) // unquoted ref
+                   (tlen=series(tdata+ref_len,len-ref_len,NULL,WHITESPACE EDICT_OPS EDICT_MONO_OPS "'","[]"))) // unquoted ref
                 ref_len+=tlen;
 
             if (ref_len) {
                 EMIT_EXT(tdata,ref_len,LT_DUP);
                 advance(ref_len);
-            }
+            } else
+                EMIT(RESET);
 
             tlen=ops_len+ref_len;
 
             if (ops_len && ops_data[0]=='|') // catch is a special case
                 EMIT(CATCH);
             else {
-                EMIT(REF);
+                if (ref_len)
+                    EMIT(REF);
                 if (!ops_len)
                     EMIT(DEREF);
                 for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
+                        case '&': EMIT(THROW);  break;
                         case '@': EMIT(ASSIGN); break;
                         case '/': EMIT(REMOVE); break;
-                        case '!': EMIT(EVAL); EMIT(YIELD); break;
-                        case '&': EMIT(THROW); break;
-                        case '=': EMIT(COMPARE); break;
-                        case '+': EMIT(MERGE); break;
-                        case '%': EMIT(SPLIT); break;
-                        case '^': EMIT(PUSHWIP); break;
-                        case ':': EMIT(ITER_POP); break;
-                        case ';': EMIT(ITER_KEEP); break;
                     }
                 }
             }

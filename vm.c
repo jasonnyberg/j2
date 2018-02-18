@@ -376,9 +376,10 @@ extern void vmop_EXT() { VMOP_DEBUG();
 
 extern void vmop_THROW() { VMOP_DEBUG();
     if (vm_env->state) goto done;
-    THROW(vm_use_ext(),LTV_NULL);
-    vm_ref_hres(ENV_LIST(VMRES_DICT),vm_env->ext);
-    THROW(1,REF_ltv(REF_HEAD(vm_env->ext)));
+    if (vm_use_ext())
+        THROW(1,vm_env->ext);
+    else
+        THROW(1,LTV_NULL);
  done: return;
 }
 

@@ -338,7 +338,7 @@ extern VMOP_CALL vmop_call[];
 
 //////////////////////////////////////////////////
 
-#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(stderr,"%s state %x\n",__func__,vm_env->state));
+#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(stderr,"%d %s\n",vm_env->state,__func__));
 
 extern void vmop_YIELD() { VMOP_DEBUG();
     vm_env->state|=VM_YIELD;
@@ -495,8 +495,7 @@ extern void vmop_FUN_PUSH() { VMOP_DEBUG();
 
 extern void vmop_FUN_EVAL() { VMOP_DEBUG();
     if (vm_env->state) goto done;
-    vm_push_code(compile_ltv(compilers[FORMAT_edict],vm_deq(VMRES_FUNC,POP)));
-    vm_env->state|=VM_YIELD;
+    vm_eval_ltv(vm_deq(VMRES_FUNC,POP));
  done: return;
 }
 

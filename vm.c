@@ -137,52 +137,49 @@ int vm_pop_code() { DEBUG(fprintf(stderr,CODE_RED "  POP CODE %x" CODE_RESET "\n
     return CLL_EMPTY(ENV_LIST(VMRES_CODE));
 }
 
-int vm_concat(int res) { // merge tos and nos LTVs
+void vm_concat(int res) { // merge tos and nos LTVs
     int status=0;
     LTV *tos,*nos,*ltv;
-    STRY(!(tos=vm_deq(res,POP)),"popping ext");
-    STRY(!(nos=vm_deq(res,POP)),"peeking ext");
-    STRY(!(ltv=LTV_concat(tos,nos)),"concatenating tos and ns");
+    THROW(!(tos=vm_deq(res,POP)),LTV_NULL);
+    THROW(!(nos=vm_deq(res,POP)),LTV_NULL);
+    THROW(!(ltv=LTV_concat(tos,nos)),LTV_NULL);
     vm_enq(res,ltv);
     LTV_release(tos);
     LTV_release(nos);
  done:
-    return status;
+    return;
 }
 
-int vm_listcat(int res) { // merge tos into head of nos
-    int status=0;
+void vm_listcat(int res) { // merge tos into head of nos
     LTV *tos,*nos;
-    STRY(!(tos=vm_deq(res,POP)),"popping res %d",res);
-    STRY(!(nos=vm_deq(res,KEEP)),"peeking res %d",res);
-    STRY(!(tos->flags&LT_LIST && nos->flags&LT_LIST),"verifying lists");
+    THROW(!(tos=vm_deq(res,POP)),LTV_NULL);
+    THROW(!(nos=vm_deq(res,KEEP)),LTV_NULL);
+    THROW(!(tos->flags&LT_LIST && nos->flags&LT_LIST),LTV_NULL);
     CLL_MERGE(LTV_list(nos),LTV_list(tos),HEAD);
     LTV_release(tos);
  done:
-    return status;
+    return;
 }
 
-int vm_ref_hres(CLL *cll,LTV *ref) {
+void vm_ref_hres(CLL *cll,LTV *ref) {
     int status=0;
     LTV *resolve_ltv(LTV *dict) { return REF_resolve(dict,ref,FALSE)?NULL:REF_ltv(REF_HEAD(ref)); }
     void *op(CLL *lnk) { return resolve_ltv(((LTVR *) lnk)->ltv); }
     CLL_map(cll,FWD,op);
  done:
-    return status;
+    return;
 }
 
-int vm_dump_ltv(LTV *ltv,char *label) {
-    int status=0;
+void vm_dump_ltv(LTV *ltv,char *label) {
     char *filename;
     printf("%s\n",label);
     print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0);
     graph_ltv_to_file(FORMATA(filename,32,"/tmp/%s.dot",label),ltv,0,label);
  done:
-    return status;
+    return;
 }
 
-int vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
-    int status=0;
+void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     CLL args; CLL_init(&args); // list of ffi arguments
     LTV *rval=NULL;
     int void_func;
@@ -201,32 +198,32 @@ int vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     done:
         return status;
     }
-    STRY(cif_args_marshal(ftype,marshaller),"marshalling ffi args"); // pre-
-    STRY(cif_ffi_call(ftype,lambda->data,rval,&args),"calling ffi");
+    THROW(cif_args_marshal(ftype,marshaller),LTV_NULL); // pre-
+    THROW(cif_ffi_call(ftype,lambda->data,rval,&args),LTV_NULL);
     if (void_func)
         LTV_release(rval);
     else
-        STRY(!vm_stack_enq(cif_coerce_c2i(rval)),"enqueing coerced rval onto stack");
+        THROW(!vm_stack_enq(cif_coerce_c2i(rval)),LTV_NULL);
     CLL_release(&args,LTVR_release); //  ALWAYS release at end, to give other code a chance to enq an LTV
  done:
-    return status;
+    return;
 }
 
-int vm_cvar(LTV *type) {
+void vm_cvar(LTV *type) {
     int status=0;
     LTV *cvar;
-    STRY(!type,"validating type");
-    STRY(!(cvar=cif_create_cvar(type,NULL,NULL)),"creating cvar");
-    STRY(!vm_stack_enq(cvar),"pushing cvar");
+    THROW(!type,LTV_NULL);
+    THROW(!(cvar=cif_create_cvar(type,NULL,NULL)),LTV_NULL);
+    THROW(!vm_stack_enq(cvar),LTV_NULL);
  done:
-    return status;
+    return;
 }
 
 void vm_eval_type(LTV *type) {
     if (type->flags&LT_TYPE)
-        THROW(vm_cvar(type),type);
+        vm_cvar(type);
     else
-        THROW(vm_ffi(type),type); // if not a type, it could be a function
+        vm_ffi(type); // if not a type, it could be a function
  done:
     return;
 }
@@ -338,7 +335,8 @@ extern VMOP_CALL vmop_call[];
 
 //////////////////////////////////////////////////
 
-#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(stderr,"%d %s\n",vm_env->state,__func__));
+#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(stderr,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__));
+#define SKIP_IF_STATE() do { if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__)); goto done; }} while(0);
 
 extern void vmop_YIELD() { VMOP_DEBUG();
     vm_env->state|=VM_YIELD;
@@ -348,19 +346,18 @@ extern void vmop_YIELD() { VMOP_DEBUG();
 }
 
 extern void vmop_RESET() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     vm_reset_ext();
  done: return;
 }
 
 extern void vmop_NIL() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     vm_stack_enq(LTV_NULL);
  done: return;
 }
 
 extern void vmop_EXT() { VMOP_DEBUG();
-    int status=0;
     if (vm_env->ext) // slimmed reset_ext()
         LTV_release(vm_env->ext);
     vm_env->ext=NULL;
@@ -375,7 +372,7 @@ extern void vmop_EXT() { VMOP_DEBUG();
 }
 
 extern void vmop_THROW() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     if (vm_use_ext())
         THROW(1,vm_env->ext);
     else
@@ -387,7 +384,7 @@ extern void vmop_CATCH() { VMOP_DEBUG();
     int status=0;
     if (!vm_env->state)
         vm_env->state|=VM_BYPASS;
-    else if (vm_env->state|VM_THROWING) {
+    else if (vm_env->state|VM_THROWING && (!vm_env->skipdepth)) {
         LTV *exception=NULL;
         STRY(!(exception=vm_deq(VMRES_CTXT,KEEP)),"peeking at exception stack");
         if (vm_use_ext()) {
@@ -410,29 +407,28 @@ extern void vmop_CATCH() { VMOP_DEBUG();
 }
 
 extern void vmop_PUSHEXT() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     if (vm_use_ext())
         vm_stack_enq(vm_env->ext);
  done: return;
 }
 
 extern void vmop_EVAL() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     vm_eval_ltv(vm_stack_deq(POP));
  done: return;
 }
 
 
 extern void vmop_REF() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     if (vm_use_ext())
         vm_env->ext=REF_create(vm_env->ext);
  done: return;
 }
 
 extern void vmop_DEREF() { VMOP_DEBUG();
-    if (vm_env->state)
-        goto done;
+    SKIP_IF_STATE();
     vm_ref_hres(ENV_LIST(VMRES_DICT),vm_use_ext());
     LTV *ltv=REF_ltv(REF_HEAD(vm_env->ext));
     if (!ltv)
@@ -442,8 +438,7 @@ extern void vmop_DEREF() { VMOP_DEBUG();
 }
 
 extern void vmop_ASSIGN() { VMOP_DEBUG();
-    if (vm_env->state)
-        goto done;
+    SKIP_IF_STATE();
     if (!vm_use_ext()) { // assign to TOS
         LTV *ltv;
         THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL);
@@ -459,7 +454,7 @@ extern void vmop_ASSIGN() { VMOP_DEBUG();
 }
 
 extern void vmop_REMOVE() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     if (vm_use_ext()) {
         vm_ref_hres(ENV_LIST(VMRES_DICT),vm_env->ext);
         REF_remove(REF_HEAD(vm_env->ext));
@@ -472,6 +467,7 @@ extern void vmop_REMOVE() { VMOP_DEBUG();
 extern void vmop_CTX_PUSH() { VMOP_DEBUG();
     if (vm_env->state) {
         vm_env->skipdepth++;
+        DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
         goto done;
     }
     THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),LTV_NULL);
@@ -480,22 +476,25 @@ extern void vmop_CTX_PUSH() { VMOP_DEBUG();
 }
 
 extern void vmop_CTX_POP() { VMOP_DEBUG();
-    if (vm_env->state)
-        if (--vm_env->skipdepth)
-            goto done;
-    THROW(vm_listcat(VMRES_STACK),LTV_NULL);
+    if (vm_env->state) {
+        if (vm_env->skipdepth>0)
+            vm_env->skipdepth--;;
+        DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
+        goto done;
+    }
+    vm_listcat(VMRES_STACK);
     THROW(!vm_stack_enq(vm_deq(VMRES_DICT,POP)),LTV_NULL);
  done: return;
 }
 
 extern void vmop_FUN_PUSH() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     THROW(!vm_enq(VMRES_FUNC,vm_stack_deq(POP)),LTV_NULL);
  done: return;
 }
 
 extern void vmop_FUN_EVAL() { VMOP_DEBUG();
-    if (vm_env->state) goto done;
+    SKIP_IF_STATE();
     vm_eval_ltv(vm_deq(VMRES_FUNC,POP));
  done: return;
 }
@@ -625,7 +624,7 @@ int vm_boot()
     char *bootstrap_code=
         "[bootstrap.edict] [r] file_open! @bootfile\n"
         "[bootfile brl! ! bootloop!]@bootloop\n"
-        "bootloop() | 0@RETURN\n";
+        "bootloop() | 0 RETURN@\n";
     LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,strlen(bootstrap_code));
     vm_bootstrap bootstrap=(vm_bootstrap) vm_create_cb("vm_bootstrap",cif_module,code);
     try_depth=0;

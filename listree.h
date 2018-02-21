@@ -146,7 +146,8 @@ extern LTI *LTI_last(LTV *ltv);
 extern LTI *LTI_next(LTI *lti);
 extern LTI *LTI_prev(LTI *lti);
 extern LTI *LTI_lookup(LTV *ltv,LTV *name,int insert); // find (or insert) lti matching "name" in ltv
-extern LTI *LTI_resolve(LTV *ltv,char *name,int insert);
+extern LTI *LTI_find(LTV *ltv,char *name,int insert,int flags); // wraps name with LTV/flags
+extern LTI *LTI_resolve(LTV *ltv,char *name,int insert); // lookup, via string name no wildcards
 
 extern int LTV_empty(LTV *ltv);
 extern LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr);

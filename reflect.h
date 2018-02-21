@@ -43,6 +43,7 @@
  */
 
 #define TYPE_NAME "die name" // a die's type name
+#define TYPE_SYMB "die symb" // a die's symbolic type name
 #define TYPE_BASE "die base" // a die's base's ltv
 #define TYPE_LIST "die list" // type's children, in die order
 #define TYPE_CAST "die cast" // a casted cvar's original data (lifespan protection)

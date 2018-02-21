@@ -28,37 +28,36 @@
 
 #include "util.h"
 #include "listree.h"
+#include "vm.h"
 
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
 extern int string(char *s) { printf("%s\n",s); }
+extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
 
-extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; }
-
-
-extern void capture() { stdin; stdout; stderr; }
 extern FILE *get_stdin() { return stdin; }
-
-/*
-extern LTV *read_compile(FILE *file,int format) { // temp hack until I can write this directly in edict
-    int status=0;
-    char *data;
-    int len;
-    STRY((data=balanced_readline(file,&len))==NULL,"reading balanced line from file");
-    LTV *ltv=NULL;
-    TRYCATCH(!(ltv=compile(compilers[format],data,len)),TRY_ERR,free_data,"compiling balanced line");
-    print_ltv(stdout,"bytecodes:\n",ltv,"\n",0);
- free_data:
-    DELETE(data);
- done:
-    return ltv;
-}
-*/
-
 extern LTV *brl(FILE *fp) {
     int len; char *data=NULL;
     return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
 }
 
+extern void throw(LTV *ltv) { vm_throw(ltv); }
+extern void try(int exp) { if (exp) vm_throw(LTV_NULL); }
+
 extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
 extern void file_close(FILE *fp) { fclose(fp); }
+
+
+extern void int_zero(int a) { if (a) throw(LTV_NULL); }
+extern void int_equal(int a,int b) { if (a!=b) throw(LTV_NULL); }
+extern int int_add(int a,int b) { return a+b; }
+extern int int_mul(int a,int b) { return a*b; }
+
+int benchint=0;
+extern void vm_bench() {
+    if (++benchint==10000) {
+        benchint=0;
+        throw(LTV_NULL);
+    }
+ done: return;
+}

@@ -86,8 +86,8 @@ static inline int minint(int a,int b) { return MIN(a,b); }
 static inline int maxint(int a,int b) { return MAX(a,b); }
 
 //////////////////////////////////////////////////
-#define DEBUG(stuff) do { stuff; } while(0)
-//#define DEBUG(stuff) do { /*stuff;*/ } while(0)
+//#define DEBUG(stuff) do { stuff; } while(0)
+#define DEBUG(stuff) do { /*stuff;*/ } while(0)
 //////////////////////////////////////////////////
 
 extern unsigned try_depth;

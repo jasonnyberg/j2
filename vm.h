@@ -21,6 +21,11 @@
 #ifndef VM_H
 #define VM_H
 
+#include "listree.h"
+
+extern void vm_throw(LTV *ltv);
+#define THROW(expression,ltv) do { if (expression) { vm_throw(ltv); goto done; } } while(0)
+
 extern int vm_boot();
 
 #endif // VM_H

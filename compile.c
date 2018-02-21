@@ -39,7 +39,8 @@ int jit_asm(EMITTER emit,void *data,int len)
 
 #define EDICT_OPS "@/&|"
 #define EDICT_MONO_OPS "!()<>"
-int jit_edict(EMITTER emit,void *data,int len)
+
+int _jit_edict(EMITTER emit,void *data,int len)
 {
     int status=0;
     char *tdata=(char *) data;
@@ -113,6 +114,7 @@ int jit_edict(EMITTER emit,void *data,int len)
     return status;
 }
 
+int jit_edict(EMITTER emit,void *data,int len) { return _jit_edict(emit,data,len); } // wrap, dwarf fucks up param list
 int jit_xml(EMITTER emit,void *data,int len)     { printf("unsupported\n"); }
 int jit_json(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
 int jit_yaml(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }

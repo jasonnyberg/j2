@@ -328,13 +328,16 @@ LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
     return lti;
 }
 
-LTI *LTI_resolve(LTV *ltv,char *name,int insert)
+LTI *LTI_find(LTV *ltv,char *name,int insert,int flags)
 {
-    LTV *nameltv=LTV_init(NEW(LTV),name,-1,LT_NOWC);
+    LTV *nameltv=LTV_init(NEW(LTV),name,-1,flags);
     LTI *lti=LTI_lookup(ltv,nameltv,insert);
     LTV_free(nameltv);
     return lti;
 }
+
+LTI *LTI_resolve(LTV *ltv,char *name,int insert) { return LTI_find(ltv,name,insert,LT_NOWC); }
+
 
 int LTV_empty(LTV *ltv)
 {
@@ -383,7 +386,7 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
 }
 
 // delete an lti from an ltv
-void LTV_erase(LTV *ltv,LTI *lti) { RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release); }
+void LTV_erase(LTV *ltv,LTI *lti) { if (ltv && lti) RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release); }
 
 LTV *LTV_dup(LTV *ltv)
 {

@@ -1,2 +1,10 @@
+[try(cif_curate_module(dup(try(cif_preview_module(dup()))) 0))]@import
+
+[vm_bench vm_hoist! vm_while! | vm_locals!]@fastbench
+[vm_bench [dup! ! loop!]@loop loop() | vm_locals!]@midbench
+[1000000 int! @@1m 0 int! @@a 1 int! @@b [a b vm_add! /@a a 1m int_equal! | loop!]@loop loop! | vm_locals!]@slowbench
+
 [get_stdin! brl! ! repl!]@repl
-repl() | `stack`
+repl() | vm_locals!
+
+[midbench!]/

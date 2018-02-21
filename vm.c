@@ -86,7 +86,6 @@ void debug(const char *fromwhere) { return; }
 // Basic Utillties
 
 #define ENV_LIST(res) LTV_list(&vm_env->ltv[res])
-#define THROW(expression,ltv) do { if (expression) { vm_enq(VMRES_CTXT,(ltv)); vm_reset_ext(); vm_env->state|=VM_THROWING; goto done; } } while(0)
 
 LTV *vm_enq(int res,LTV *tos) { return LTV_put(ENV_LIST(res),tos,HEAD,NULL); }
 LTV *vm_deq(int res,int pop)  { return LTV_get(ENV_LIST(res),pop,HEAD,NULL,NULL); }
@@ -98,9 +97,6 @@ LTV *vm_stack_deq(int pop) {
     return rval;
 }
 
-//////////////////////////////////////////////////
-// Specialized Utillties
-
 void vm_reset_ext() {
     vm_env->ext_length=vm_env->ext_flags=0;
     vm_env->ext_data=NULL;
@@ -108,6 +104,15 @@ void vm_reset_ext() {
         LTV_release(vm_env->ext);
     vm_env->ext=NULL;
 }
+
+void vm_throw(LTV *ltv) {
+    vm_env->state|=VM_THROWING;
+    vm_enq(VMRES_CTXT,(ltv));
+    vm_reset_ext();
+}
+
+//////////////////////////////////////////////////
+// Specialized Utillties
 
 LTV *vm_use_ext() {
     if (vm_env->ext_data && !vm_env->ext)
@@ -203,14 +208,7 @@ void vm_eval_type(LTV *type) {
         THROW(!vm_stack_enq(cvar),LTV_NULL);
     } else
         vm_ffi(type); // if not a type, it could be a function
- done:
-    return;
-}
-
-
-extern void vm_import() {
-    LTV *mod=NULL;
-    THROW(cif_curate_module(vm_stack_deq(KEEP),false),LTV_NULL);
+    vm_reset_ext();
  done:
     return;
 }
@@ -263,25 +261,13 @@ extern void vm_eval_ltv(LTV *ltv) {
  done: return;
 }
 
+extern void vm_while(LTV *ltv) {
+    while (!vm_env->state)
+        vm_eval_ltv(ltv);
+}
+
 extern void dup() {
-    THROW(vm_stack_enq(vm_stack_deq(KEEP)),LTV_NULL);
- done: return;
-}
-
-extern void int_equal(int a,int b) {
-    THROW(a!=b,LTV_NULL);
- done:
-    return;
-}
-
-extern int int_add(int a,int b) { return a+b; }
-
-extern void vm_bench() {
-    static int i=0;
-    if (++i==1000000) {
-        i=0;
-        THROW(1,LTV_NULL);
-    }
+    THROW(!vm_stack_enq(vm_stack_deq(KEEP)),LTV_NULL);
  done: return;
 }
 
@@ -289,25 +275,8 @@ extern void vm_bench() {
 // Opcode Handlers
 //////////////////////////////////////////////////
 
-typedef void (*VMOP_CALL)();
-extern VMOP_CALL vmop_call[];
-
-#define OPCODE (*(char *) vm_env->code_ltv->data)
-#define ADVANCE(INC) do { vm_env->code_ltv->data+=(INC); vm_env->code_ltv->len-=(INC); } while (0)
-
-//////////////////////////////////////////////////
-
 #define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(stderr,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__));
 #define SKIP_IF_STATE() do { if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__)); goto done; }} while(0);
-
-extern void vmop_YIELD() { VMOP_DEBUG();
-    vm_env->state|=VM_YIELD;
-    if (vm_env->code_ltv->len<=0) {
-        vm_env->state&=~VM_BYPASS;
-        if (vm_pop_code())
-            vm_env->state|=VM_COMPLETE;
-    }
-}
 
 extern void vmop_RESET() { VMOP_DEBUG();
     SKIP_IF_STATE();
@@ -318,20 +287,6 @@ extern void vmop_RESET() { VMOP_DEBUG();
 extern void vmop_NIL() { VMOP_DEBUG();
     SKIP_IF_STATE();
     vm_stack_enq(LTV_NULL);
- done: return;
-}
-
-extern void vmop_EXT() { VMOP_DEBUG();
-    if (vm_env->ext) // slimmed reset_ext()
-        LTV_release(vm_env->ext);
-    vm_env->ext=NULL;
-    vm_env->ext_length=ntohl(*(unsigned *) vm_env->code_ltv->data); ADVANCE(sizeof(unsigned));
-    vm_env->ext_flags=ntohl(*(unsigned *)  vm_env->code_ltv->data); ADVANCE(sizeof(unsigned));
-    vm_env->ext_data=vm_env->code_ltv->data;                        ADVANCE(vm_env->ext_length);
-    DEBUG(fprintf(stderr,CODE_BLUE " ");
-          fprintf(stderr,"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
-          fstrnprint(stderr,vm_env->ext_data,vm_env->ext_length);
-          fprintf(stderr,CODE_RESET "\n"));
  done: return;
 }
 
@@ -462,6 +417,38 @@ extern void vmop_FUN_EVAL() { VMOP_DEBUG();
     vm_eval_ltv(vm_deq(VMRES_FUNC,POP));
  done: return;
 }
+
+//////////////////////////////////////////////////
+
+typedef void (*VMOP_CALL)();
+extern VMOP_CALL vmop_call[];
+
+#define OPCODE (*(char *) vm_env->code_ltv->data)
+#define ADVANCE(INC) do { vm_env->code_ltv->data+=(INC); vm_env->code_ltv->len-=(INC); } while (0)
+
+extern void vmop_YIELD() { VMOP_DEBUG();
+    vm_env->state|=VM_YIELD;
+    if (vm_env->code_ltv->len<=0) {
+        vm_env->state&=~VM_BYPASS;
+        if (vm_pop_code())
+            vm_env->state|=VM_COMPLETE;
+    }
+}
+
+extern void vmop_EXT() { VMOP_DEBUG();
+    if (vm_env->ext) // slimmed reset_ext()
+        LTV_release(vm_env->ext);
+    vm_env->ext=NULL;
+    vm_env->ext_length=ntohl(*(unsigned *) vm_env->code_ltv->data); ADVANCE(sizeof(unsigned));
+    vm_env->ext_flags=ntohl(*(unsigned *)  vm_env->code_ltv->data); ADVANCE(sizeof(unsigned));
+    vm_env->ext_data=vm_env->code_ltv->data;                        ADVANCE(vm_env->ext_length);
+    DEBUG(fprintf(stderr,CODE_BLUE " ");
+          fprintf(stderr,"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
+          fstrnprint(stderr,vm_env->ext_data,vm_env->ext_length);
+          fprintf(stderr,CODE_RESET "\n"));
+ done: return;
+}
+//////////////////////////////////////////////////
 
 VMOP_CALL vmop_call[] = {
     vmop_YIELD,

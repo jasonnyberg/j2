@@ -1,3 +1,5 @@
+[compile_ltv(@code jit_edict code)]@compile
+[[a b c] compile compile!!! vm_locals!]@test_compile
 [try(cif_curate_module(dup(try(cif_preview_module(dup()))) 0))]@import
 
 [vm_bench vm_hoist! vm_while! | vm_locals!]@fastbench

@@ -65,7 +65,7 @@ int _jit_edict(EMITTER emit,void *data,int len)
                     case '<': EMIT(CTX_PUSH); break;
                     case '>': EMIT(CTX_POP);  break;
                     case '(': EMIT(NIL); EMIT(CTX_PUSH); EMIT(FUN_PUSH); break;
-                    case ')':                            EMIT(FUN_EVAL); EMIT(CTX_POP); EMIT(REMOVE); break;
+                    case ')': EMIT(FUN_EVAL); EMIT(CTX_POP); EMIT(REMOVE); break;
                     default: break;
                 }
             advance(tlen);
@@ -160,8 +160,36 @@ LTV *compile(COMPILER compiler,void *data,int len)
 LTV *compile_ltv(COMPILER compiler,LTV *ltv)
 {
     // print_ltv(stdout,CODE_RED "compile: ",ltv,CODE_RESET "\n",0);
-    if (ltv->flags&LT_CVAR)
+    if (ltv->flags&(LT_CVAR|LT_BC))
         return ltv; // FFI
     LTV *bc=compile(compiler,ltv->data,ltv->len);
     return bc;
+}
+
+char *opcode_name[] = { "YIELD","RESET","NIL","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL" };
+
+void disassemble(FILE *ofile,LTV *ltv)
+{
+    unsigned char *data,*code=(unsigned char *) ltv->data;
+    int i=0,length=0,flags=0;
+    fprintf(ofile,"BYTECODE:");
+    while (i<ltv->len) {
+        unsigned char opcode=code[i++];
+        switch(opcode) {
+            case VMOP_EXT:
+                length=ntohl(*(unsigned *) (code+i)); i+=sizeof(unsigned);
+                flags=ntohl(*(unsigned *)  (code+i)); i+=sizeof(unsigned);
+                data=code+i;                          i+=length;
+                fprintf(ofile,"\n" CODE_BLUE);
+                fprintf(ofile,"%d/%x [",length,flags);
+                fstrnprint(ofile,data,length);
+                fprintf(ofile,CODE_RESET "] ");
+                break;
+            case VMOP_RESET:
+                fprintf(ofile,"\n");
+            default:
+                fprintf(ofile,"%s ",opcode_name[opcode]);
+        }
+    }
+    fprintf(ofile,"\n");
 }

@@ -28,6 +28,7 @@
 #include "util.h"
 #include "listree.h"
 #include "reflect.h"
+#include "compile.h"
 
 #include "trace.h" // lttng
 
@@ -443,6 +444,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
                 else fprintf(ofile,"%*c[",depth*4,' ');
                 if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
+                else if ((*ltv)->flags&LT_BC)   disassemble(ofile,(*ltv));
                 else if ((*ltv)->flags&LT_CVAR) cif_print_cvar(ofile,(*ltv),depth);
                 else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
                 else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");

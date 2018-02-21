@@ -21,7 +21,6 @@
 
 #define _GNU_SOURCE
 #define _C99
-#include <setjmp.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -40,8 +39,6 @@
 #include "reflect.h"
 #include "vm.h"
 #include "compile.h"
-
-jmp_buf vm_yield_loc; // to punch out of bytecode interpreter
 
 pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
@@ -202,13 +199,14 @@ void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
 }
 
 void vm_eval_type(LTV *type) {
+    vm_reset_ext(); // sanitize
     if (type->flags&LT_TYPE) {
         LTV *cvar;
         THROW(!(cvar=cif_create_cvar(type,NULL,NULL)),LTV_NULL);
         THROW(!vm_stack_enq(cvar),LTV_NULL);
     } else
         vm_ffi(type); // if not a type, it could be a function
-    vm_reset_ext();
+    vm_reset_ext(); // sanitize again
  done:
     return;
 }

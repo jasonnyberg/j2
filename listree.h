@@ -50,7 +50,7 @@ typedef enum {
     LT_IMM  =0x00000400, // immediate value, not a pointer
     LT_NOWC =0x00000800, // do not do wildcard matching
     LT_BC   =0x00001000, // VM bytecode
-    LT_TAAT =0x00002000, // VM term-at-a-time bytecode
+
 
 
     LT_RO   =0x00010000, // META: disallow release

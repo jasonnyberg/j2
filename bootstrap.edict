@@ -1,12 +1,12 @@
 [compile_ltv(@code jit_edict code)]@compile
-[[a b c] compile compile!!! vm_locals!]@test_compile
+[[a b c] compile compile!!! locals!]@test_compile
 [try(cif_curate_module(dup(try(cif_preview_module(dup()))) 0))]@import
 
-[vm_bench vm_hoist! vm_while! | vm_locals!]@fastbench
-[vm_bench [dup! ! loop!]@loop loop() | vm_locals!]@midbench
-[1000000 int! @@1m 0 int! @@a 1 int! @@b [a b vm_add! /@a a 1m int_equal! | loop!]@loop loop! | vm_locals!]@slowbench
+[bench hoist! vm_while! | locals!]@fastbench
+[bench [dup! ! loop!]@loop loop! | locals!]@midbench
+
+[a b int_add! /@a a limit int_nequal! slowloop!]@slowloop
+[int! @@limit 0 int! @@a 1 int! @@b slowloop! | locals!]@slowbench
 
 [get_stdin! brl! ! repl!]@repl
-repl() | vm_locals!
-
-[midbench!]/
+[]<repl!>

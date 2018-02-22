@@ -35,9 +35,7 @@ typedef int (*EMITTER)(VM_CMD *cmd);
 typedef int (*COMPILER)(EMITTER emit,void *data,int len);
 
 enum {
-    VMOP_YIELD,
     VMOP_RESET,
-    VMOP_NIL,
     VMOP_EXT,
     VMOP_THROW,
     VMOP_CATCH,

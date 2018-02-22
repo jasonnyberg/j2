@@ -64,8 +64,8 @@ int _jit_edict(EMITTER emit,void *data,int len)
                     case '!': EMIT(EVAL);     break;
                     case '<': EMIT(CTX_PUSH); break;
                     case '>': EMIT(CTX_POP);  break;
-                    case '(': EMIT(NIL); EMIT(CTX_PUSH); EMIT(FUN_PUSH); break;
-                    case ')': EMIT(FUN_EVAL); EMIT(CTX_POP); EMIT(REMOVE); break;
+                    case '(': EMIT(FUN_PUSH); break;
+                    case ')': EMIT(FUN_EVAL); break;
                     default: break;
                 }
             advance(tlen);
@@ -108,7 +108,6 @@ int _jit_edict(EMITTER emit,void *data,int len)
 
     STRY(!tdata,"testing source code");
     while (skip_whitespace() && len && compile_term());
-    EMIT(YIELD);
 
  done:
     return status;
@@ -166,7 +165,7 @@ LTV *compile_ltv(COMPILER compiler,LTV *ltv)
     return bc;
 }
 
-char *opcode_name[] = { "YIELD","RESET","NIL","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL" };
+char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL" };
 
 void disassemble(FILE *ofile,LTV *ltv)
 {

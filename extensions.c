@@ -48,14 +48,19 @@ extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts);
 extern void file_close(FILE *fp) { fclose(fp); }
 
 
-extern void int_zero(int a) { if (a) throw(LTV_NULL); }
-extern void int_equal(int a,int b) { if (a!=b) throw(LTV_NULL); }
+extern LTV *null() { return LTV_NULL; }
+extern void is_null(LTV *tos) { if (!(tos->flags&LT_NULL)) throw(LTV_NULL); }
+
+extern void int_iszero(int a) { if (a) throw(LTV_NULL); }
+extern void int_iseq(int a,int b) { if (a!=b) throw(LTV_NULL); }
+extern void int_isneq(int a,int b) { if (a==b) throw(LTV_NULL); }
 extern int int_add(int a,int b) { return a+b; }
 extern int int_mul(int a,int b) { return a*b; }
 
 int benchint=0;
-extern void vm_bench() {
-    if (++benchint==10000) {
+extern void bench() {
+    if (++benchint==100000) {
+        printf("                                          done!\n");
         benchint=0;
         throw(LTV_NULL);
     }

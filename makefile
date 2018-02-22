@@ -7,5 +7,6 @@ clean: cmake; make -C build clean
 run:; MALLOC_CHECK=1 ./jj
 compilerun: compile run
 install: cmake; sudo make -C build install
-profile: cmake; valgrind --tool=callgrind build/jj
-inspect:; kcachegrind profile.callgrind
+fastbench: cmake; rm callgrind.out.*; echo "fastbench!" | (valgrind --tool=callgrind build/jj)
+midbench: cmake; rm callgrind.out.*; echo "midbench!" | (valgrind --tool=callgrind build/jj)
+inspect:; kcachegrind callgrind.out.*

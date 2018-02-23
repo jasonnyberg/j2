@@ -25,10 +25,11 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <dlfcn.h> // dlopen/dlsym/dlclose
 
 #include "util.h"
 #include "listree.h"
-#include "vm.h"
+#include "extensions.h"
 
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
@@ -46,7 +47,14 @@ extern void try(int exp) { if (exp) vm_throw(LTV_NULL); }
 
 extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
 extern void file_close(FILE *fp) { fclose(fp); }
-
+extern void pinglib(char *filename)
+{
+    void *dlhandle=dlopen(filename,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND);
+    if (!dlhandle)
+        printf("dlopen error: handle %x %s\n",dlhandle,dlerror());
+    else
+        dlclose(dlhandle);
+}
 
 extern LTV *null() { return LTV_NULL; }
 extern void is_null(LTV *tos) { if (!(tos->flags&LT_NULL)) throw(LTV_NULL); }

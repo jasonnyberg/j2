@@ -18,9 +18,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VM_H
-#define VM_H
+#ifndef EXTENSIONS_H
+#define EXTENSIONS_H
 
-extern int vm_boot();
+#include "listree.h"
 
-#endif // VM_H
+extern void vm_throw(LTV *ltv);
+#define THROW(expression,ltv) do { if (expression) { vm_throw(ltv); goto done; } } while(0)
+
+#endif

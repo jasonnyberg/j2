@@ -1,6 +1,11 @@
 [compile_ltv(@code jit_edict code)]@compile
 [[a b c] compile compile!!! locals!]@test_compile
-[try(cif_curate_module(dup(try(cif_preview_module(dup()))) 0))]@import
+
+[try(cif_preview_module!)]@preview
+[try(cif_curate_module(0))]@import
+[[lib]<@lib preview(lib) import(lib)>]@loadlib
+
+[[/home/jnyberg/htm/build/libhtmlib.so]@htm preview(htm) import(htm)]@testimport
 
 [bench hoist! vm_while! | locals!]@fastbench
 [bench [dup! ! loop!]@loop loop! | locals!]@midbench

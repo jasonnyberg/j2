@@ -38,6 +38,7 @@
 #include "util.h"
 #include "listree.h"
 #include "reflect.h"
+#include "extensions.h" // throw
 
 LTV *cif_module=NULL;// initialized/populated during bootstrap
 
@@ -145,13 +146,16 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data)
         if (!cu_data) cu_data=&cu_data_local; // allow caller to not care
 
         while (1) {
-            TRY(dwarf_next_cu_header_b(dbg,
+            TRY(dwarf_next_cu_header_c(dbg,
+                                       cu_data->is_info,
                                        &cu_data->header_length,
                                        &cu_data->version_stamp,
                                        &cu_data->abbrev_offset,
                                        &cu_data->address_size,
                                        &cu_data->length_size,
                                        &cu_data->extension_size,
+                                       &cu_data->sig8,
+                                       &cu_data->offset,
                                        &cu_data->next_cu_header_offset,
                                        &error),
                 "reading next cu header");
@@ -600,13 +604,17 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 
         Dwarf_Half vshort;
         STRY(dwarf_whatattr(*attr,&vshort,&error),"getting attr type");
+                Dwarf_Off voffset;
+                Dwarf_Sig8 vsig8;
 
         switch (vshort) {
             case DW_AT_name: // string
                 break;
             case DW_AT_type: // global_formref
+                STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
                 IF_OK(dwarf_global_formref(*attr,&type_info->base,&error),type_info->flags|=TYPEF_BASE);
                 DWARF_ID(type_info->base_str,type_info->base);
+                IF_OK(dwarf_formsig8(*attr,&type_info->sig8,&error),type_info->flags|=(TYPEF_BASE|TYPEF_SIGNATURE));
                 break;
             case DW_AT_low_pc:
                 IF_OK(dwarf_formsdata(*attr,&type_info->low_pc,&error),type_info->flags|=TYPEF_LOWPC);
@@ -641,6 +649,9 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_GNU_vector: // "The main difference between a regular array and the vector variant is that vectors are passed by value to functions."
                 type_info->flags|=TYPEF_VECTOR; // an attribute of an array
                 break;
+            case DW_AT_signature:
+                IF_OK(dwarf_formsig8(*attr,&type_info->sig8,&error),type_info->flags|=TYPEF_SIGNATURE);
+                break;
             case DW_AT_sibling:
             case DW_AT_high_pc:
             case DW_AT_decl_line:
@@ -671,44 +682,43 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_ranges:
             case DW_AT_explicit:
                 break;
-            default:
+            default: {
                 printf(CODE_RED "Unrecognized attr 0x%x\n",vshort);
+                Dwarf_Signed vint;
+                Dwarf_Unsigned vuint;
+                Dwarf_Addr vaddr;
+                Dwarf_Off voffset;
+                Dwarf_Half vshort;
+                Dwarf_Bool vbool;
+                Dwarf_Ptr vptr;
+                Dwarf_Block *vblock;
+                Dwarf_Sig8 vsig8;
+                char *vstr;
+                const char *vcstr;
+
+                STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
+                STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr formname");
+                printf("form %d (%s) ",vshort,vcstr);
+
+                STRY(dwarf_whatform_direct(*attr,&vshort,&error),"getting attr form_direct");
+                STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr form_direct name");
+                printf("form_direct %d (%s) ",vshort,vcstr);
+
+                IF_OK(dwarf_formref(*attr,&voffset,&error),       printf("formref 0x%"        DW_PR_DSx " ",voffset));
+                IF_OK(dwarf_global_formref(*attr,&voffset,&error),printf("global_formref 0x%" DW_PR_DSx " ",voffset));
+                IF_OK(dwarf_formaddr(*attr,&vaddr,&error),        printf("addr 0x%"           DW_PR_DUx " ",vaddr));
+                IF_OK(dwarf_formflag(*attr,&vbool,&error),        printf("flag %"             DW_PR_DSd " ",vbool));
+                IF_OK(dwarf_formudata(*attr,&vuint,&error),       printf("udata %"            DW_PR_DUu " ",vuint));
+                IF_OK(dwarf_formsdata(*attr,&vint,&error),        printf("sdata %"            DW_PR_DSd " ",vint));
+                IF_OK(dwarf_formblock(*attr,&vblock,&error),      printf("block 0x%"          DW_PR_DUx " ",vblock->bl_len));
+                IF_OK(dwarf_formstring(*attr,&vstr,&error),       printf("string %s ",                      vstr));
+                IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        printf("addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
+                                                                         vsig8.signature[0],vsig8.signature[1],vsig8.signature[2],vsig8.signature[3],
+                                                                         vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
+                printf("\n");
                 break;
+            }
         }
-
-        /*
-          Dwarf_Signed vint;
-          Dwarf_Unsigned vuint;
-          Dwarf_Addr vaddr;
-          Dwarf_Off voffset;
-          Dwarf_Half vshort;
-          Dwarf_Bool vbool;
-          Dwarf_Ptr vptr;
-          Dwarf_Block *vblock;
-          Dwarf_Sig8 vsig8;
-          char *vstr;
-          const char *vcstr;
-
-          STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
-          STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr formname");
-          printf("form %d (%s) ",vshort,vcstr);
-
-          STRY(dwarf_whatform_direct(*attr,&vshort,&error),"getting attr form_direct");
-          STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr form_direct name");
-          printf("form_direct %d (%s) ",vshort,vcstr);
-
-          IF_OK(dwarf_formref(*attr,&voffset,&error),       printf("formref 0x%"        DW_PR_DSx " ",voffset));
-          IF_OK(dwarf_global_formref(*attr,&voffset,&error),printf("global_formref 0x%" DW_PR_DSx " ",voffset));
-          IF_OK(dwarf_formaddr(*attr,&vaddr,&error),        printf("addr 0x%"           DW_PR_DUx " ",vaddr));
-          IF_OK(dwarf_formflag(*attr,&vbool,&error),        printf("flag %"             DW_PR_DSd " ",vbool));
-          IF_OK(dwarf_formudata(*attr,&vuint,&error),       printf("udata %"            DW_PR_DUu " ",vuint));
-          IF_OK(dwarf_formsdata(*attr,&vint,&error),        printf("sdata %"            DW_PR_DSd " ",vint));
-          IF_OK(dwarf_formblock(*attr,&vblock,&error),      printf("block 0x%"          DW_PR_DUx " ",vblock->bl_len));
-          IF_OK(dwarf_formstring(*attr,&vstr,&error),       printf("string %s ",                      vstr));
-          IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        printf("addr %02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x ",
-          vsig8.signature[0],vsig8.signature[1],vsig8.signature[2],vsig8.signature[3],
-          vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
-        */
 
         int get_expr_loclist_data(Dwarf_Unsigned exprlen,Dwarf_Ptr exprloc) {
             int status=0;
@@ -1010,13 +1020,18 @@ int _cif_curate_module(LTV *module,int bootstrap)
                             return 0;
                         }
                         bufloc+=sprintf(bufloc,"%s(*)(",base_symb);
-                        STRY(cif_args_marshal(&type_info->ltv,marshaller),"marshalling ffi args"); // pre-
+                        STRY(cif_args_marshal(&type_info->ltv,FWD,marshaller),"marshalling ffi args"); // pre-
                         bufloc+=sprintf(bufloc-(count?1:0),")");
                         TYPE_INFO_LTV *cvar_type=categorize_symbolic(buf); // GLOBAL!
                         if (type_name) {
                             void *addr=NULL;
-                            if (!LT_get(module,type_name,HEAD,KEEP) && (addr=dlsym(dlhandle,type_name)))
-                                LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
+                            if (!LT_get(module,type_name,HEAD,KEEP)) {
+                                dlerror(); // reset
+                                if ((addr=dlsym(dlhandle,type_name)))
+                                    LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
+                                else
+                                    printf("dlsym error: handle %x %s\n",dlhandle,dlerror());
+                            }
                         }
                     }
                     break;
@@ -1053,7 +1068,12 @@ int _cif_curate_module(LTV *module,int bootstrap)
         }
 
         char *f=bootstrap?NULL:filename;
-        STRY(!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE)),"in dlopen");
+        if (!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND))) {
+            printf("dlopen error: handle %x %s\n",dlhandle,dlerror());
+            goto done;
+        }
+
+
         STRY(ltv_traverse(index,resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
         STRY(dlclose(dlhandle),"in dlclose");
         //graph_types_to_file("/tmp/types.dot",types);
@@ -1613,7 +1633,7 @@ LTV *cif_rval_create(LTV *lambda,void *data)
     return ltv;
 }
 
-int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
+int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type))
 {
     int status=0;
     void *marshal_arg(CLL *lnk) {
@@ -1628,7 +1648,7 @@ int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type))
     }
     LTI *children=NULL;
     TRYCATCH(!(children=LTI_resolve(lambda,TYPE_LIST,0)),0,done,"retrieving ffi args");;
-    STRY(CLL_map(&children->ltvs,REV,marshal_arg)!=NULL,"marshalling ffi args");
+    STRY(CLL_map(&children->ltvs,dir,marshal_arg)!=NULL,"marshalling ffi args");
  done:
     return status;
 }
@@ -1705,12 +1725,24 @@ int cif_isneg(LTV *cvar)
     }
 }
 
+extern LTV *cif_get_meta(LTV *ltv) { return LT_get(ltv,TYPE_META,HEAD,KEEP); }
+
+extern LTV *cif_put_meta(LTV *ltv,LTV *meta) {
+    LTV *result=ltv;
+    if (ltv && meta) {
+        result=cif_create_cvar(meta,&ltv->data,NULL);
+        LT_put(result,TYPE_CAST,HEAD,ltv);
+    }
+    return result;
+}
+
 // convert interpreter params into something FFI can use
 // (hoist LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
 LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 {
     int status=0;
     LTV *result=ltv;
+    TYPE_UVALUE dst_uval,src_uval;
 
     /*
     int old_show_ref=show_ref;
@@ -1729,8 +1761,13 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
         int match(char *key) { return !strcmp(key,type_name); }
         if (match("(LTV)*")) // hoist LTV when dest is an LTV*
             result=cif_create_cvar(cif_type_info("LTV"),ltv,NULL);
-        else // assume for now that dest is a char*, create a cvar that refers to a char *
-            STRY(!(result=cif_create_cvar(type_base,&ltv->data,NULL)),"creating blind coersion"); // cvar->data=&ltv->data, i.e. cvar will point to a void*
+        else if (match("(char)*") || match("(unsigned char)*")) // ltv data -> char array
+            STRY(!(result=cif_create_cvar(type_base,&ltv->data,NULL)),"creating string coersion"); // cvar->data=&ltv->data, i.e. cvar will point to a void*
+        else if (Type_getUVAL(type,&dst_uval)) { // try to read text into a base type
+            result=cif_create_cvar(type,NULL,NULL);
+            Type_putUVAL(result,Type_pullUVAL(&dst_uval,ltv->data));
+        } else
+            vm_throw(LTV_NULL);
         STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
         ltv=result; // may need further coersions
     }
@@ -1745,11 +1782,9 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
         if (type_base==cvar_base)
             result=ltv;
         else {
-            LTV *cvar_metabase=LT_get(cvar_base,TYPE_META,HEAD,KEEP);
-            if (cvar_metabase && type_base==cvar_metabase) { // allow X to X* coersions
-                result=cif_create_cvar(cvar_metabase,&ltv->data,NULL);
-                STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
-            }
+            LTV *meta=cif_get_meta(cvar_base);
+            if (meta && type_base==meta) // allow X to X* coersions
+                result=cif_put_meta(ltv,meta);
         }
     }
  done:

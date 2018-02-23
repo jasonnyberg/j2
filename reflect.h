@@ -105,23 +105,29 @@ typedef struct {
     Dwarf_Half     address_size;
     Dwarf_Half     length_size;
     Dwarf_Half     extension_size;
+    Dwarf_Bool     is_info;
+    Dwarf_Sig8     sig8;
+    Dwarf_Unsigned offset;
 } CU_DATA;
 
 typedef enum {
-    TYPEF_BASE       = 1<<0x0,
-    TYPEF_CONSTVAL   = 1<<0x1,
-    TYPEF_BYTESIZE   = 1<<0x2,
-    TYPEF_BITSIZE    = 1<<0x3,
-    TYPEF_BITOFFSET  = 1<<0x4,
-    TYPEF_ENCODING   = 1<<0x5,
-    TYPEF_UPPERBOUND = 1<<0x6,
-    TYPEF_LOWPC      = 1<<0x7,
-    TYPEF_MEMBERLOC  = 1<<0x8,
-    TYPEF_LOCATION   = 1<<0x9,
-    TYPEF_ADDR       = 1<<0xa,
-    TYPEF_EXTERNAL   = 1<<0xb,
-    TYPEF_VECTOR     = 1<<0xc,
-    TYPEF_SYMBOLIC   = 1<<0xd,
+    TYPEF_BASE       = 1<<0x00,
+    TYPEF_CONSTVAL   = 1<<0x01,
+    TYPEF_BYTESIZE   = 1<<0x02,
+    TYPEF_BITSIZE    = 1<<0x03,
+    TYPEF_BITOFFSET  = 1<<0x04,
+    TYPEF_ENCODING   = 1<<0x05,
+    TYPEF_UPPERBOUND = 1<<0x06,
+    TYPEF_LOWPC      = 1<<0x07,
+    TYPEF_MEMBERLOC  = 1<<0x08,
+    TYPEF_LOCATION   = 1<<0x09,
+    TYPEF_ADDR       = 1<<0x0a,
+    TYPEF_EXTERNAL   = 1<<0x0b,
+    TYPEF_VECTOR     = 1<<0x0c,
+    TYPEF_SYMBOLIC   = 1<<0x0d,
+    TYPEF_SIGNATURE  = 1<<0x0e, // new for dwarf v4
+    TYPEF_IS_INFO    = 1<<0x0f, // new for dwarf v4
+    TYPEF_OFFSET     = 1<<0x10, // new for dwarf v4
 } TYPE_FLAGS;
 
 
@@ -145,7 +151,9 @@ typedef struct
     Dwarf_Addr data_member_location;
     Dwarf_Signed location; // ??
     Dwarf_Unsigned addr; // from loclist
-    Dwarf_Bool external;
+    Dwarf_Bool external; // new for dwarf v4
+    Dwarf_Unsigned offset; // new for dwarf v4
+    Dwarf_Sig8 sig8;
 } TYPE_INFO_LTV;
 
 extern LTV *cif_module;
@@ -160,7 +168,9 @@ extern int cif_preview_module(LTV *mod_ltv);
 extern int cif_ffi_prep(LTV *type);
 
 extern LTV *cif_rval_create(LTV *lambda,void *data);
-extern int cif_args_marshal(LTV *lambda,int (*marshal)(char *argname,LTV *type));
+extern int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type));
+extern LTV *cif_get_meta(LTV *ltv);
+extern LTV *cif_put_meta(LTV *ltv,LTV *meta);
 extern LTV *cif_coerce_i2c(LTV *arg,LTV *type);
 extern LTV *cif_coerce_c2i(LTV *arg);
 extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);

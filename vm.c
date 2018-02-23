@@ -39,6 +39,7 @@
 #include "reflect.h"
 #include "vm.h"
 #include "compile.h"
+#include "extensions.h"
 
 pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
@@ -197,7 +198,7 @@ static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     done:
         return status;
     }
-    THROW(cif_args_marshal(ftype,marshaller),LTV_NULL); // pre-
+    THROW(cif_args_marshal(ftype,REV,marshaller),LTV_NULL); // pre-
     THROW(cif_ffi_call(ftype,lambda->data,rval,&args),LTV_NULL);
     if (void_func)
         LTV_release(rval);
@@ -528,7 +529,7 @@ static void vm_cb_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
             LT_put(locals,name,HEAD,arg); // embed by name
         return 0;
     }
-    STRY(cif_args_marshal(ffi_type_info,marshaller),"marshalling ffi args");
+    STRY(cif_args_marshal(ffi_type_info,REV,marshaller),"marshalling ffi args");
 
     vm_eval();
 

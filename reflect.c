@@ -32,6 +32,7 @@
 #include <dwarf.h>
 #include <libdwarf.h>
 #include <dlfcn.h> // dlopen/dlsym/dlclose
+#include <arpa/inet.h>
 
 #include <ffi.h>
 
@@ -129,13 +130,14 @@ int traverse_sibling(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op)
     Dwarf_Die sibling=0;
     TRY(dwarf_siblingof(dbg,die,&sibling,&error),"retrieving dwarf_sibling");
     CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for DW_DLV_NO_ENTRY"); /* Done at this level. */
+    CATCH(dwarf_errno(error)==DW_DLE_DBG_NO_CU_CONTEXT,1,goto done,"checking for DW_DLE_DBG_NO_CU_CONTEX %s",dwarf_errmsg(error));
     SCATCH("checking dwarf_siblingof");
     STRY(traverse_die(dbg,sibling,op),"processing sibling");
  done:
     return status;
 }
 
-int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data)
+int traverse_cus(char *filename,int is_info,DIE_OP op,CU_DATA *cu_data)
 {
     int status=0;
     Dwarf_Debug dbg;
@@ -144,10 +146,12 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data)
     int read_cu_list() {
         CU_DATA cu_data_local;
         if (!cu_data) cu_data=&cu_data_local; // allow caller to not care
+        Dwarf_Die die;
+
 
         while (1) {
             TRY(dwarf_next_cu_header_c(dbg,
-                                       cu_data->is_info,
+                                       is_info,
                                        &cu_data->header_length,
                                        &cu_data->version_stamp,
                                        &cu_data->abbrev_offset,
@@ -162,6 +166,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data)
             DWARF_ID(cu_data->next_cu_header_offset_str,cu_data->next_cu_header_offset);
             CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for no next cu header");
             CATCH(status==DW_DLV_ERROR,status,goto done,"checking error dwarf_next_cu_header");
+            //int sres=dwarf_siblingof_b(dbg,NULL,is_info,&die,&error);
             STRY(traverse_sibling(dbg,NULL,op),"processing cu die and sibs");
         }
     done:
@@ -530,6 +535,15 @@ void graph_types_to_file(char *filename,LTV *ltv) {
     fclose(ofile);
 }
 
+int cif_die_offset(Dwarf_Die die,Dwarf_Off *offset,Dwarf_Error *error) {
+    int status=0;
+    Dwarf_Off cu_offset=0,die_offset=0;
+    STRY(dwarf_CU_dieoffset_given_die(die,&cu_offset,error),"getting cu offset");
+    STRY(dwarf_die_CU_offset(die,&cu_offset,error),"getting cu offset");
+    *offset=cu_offset+die_offset;
+ done:
+    return status;
+}
 
 #define IF_OK(cond,followup) if (cond==DW_DLV_OK) followup
 
@@ -547,6 +561,9 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
     DWARF_ID(type_info->id_str,type_info->die);
     DWARF_ID(cu_data->offset_str,type_info->die);
     STRY(dwarf_tag(die,&type_info->tag,&error),"getting die tag");
+
+    if (!dwarf_get_die_infotypes_flag(die))
+        type_info->flags|=TYPEF_IS_INFO;
 
     switch (type_info->tag)
     {
@@ -839,14 +856,16 @@ int _cif_preview_module(LTV *module) // just put the cu name under module
         Dwarf_Error error;
         char *cu_name=NULL;
         Dwarf_Off offset;
-        STRY(dwarf_dieoffset(die,&offset,&error),"getting global die offset");
+        STRY(dwarf_CU_dieoffset_given_die(die,&offset,&error),"getting global die offset");
         STRY(!(cu_name=get_diename(dbg,die)),"looking up cu die name");
         STRY(!attr_imm(module,cu_name,(long long) offset),"adding cu name to list of compute units");
     done:
         return status;
     }
     char *filename=PRINTA(filename,module->len,module->data);
-    return traverse_cus(filename,op,&cu_data);
+    return
+        //traverse_cus(filename,false,op,&cu_data) ||
+        traverse_cus(filename,true,op,&cu_data);
 }
 int cif_preview_module(LTV *module) { return _cif_preview_module(module); }
 
@@ -1026,11 +1045,13 @@ int _cif_curate_module(LTV *module,int bootstrap)
                         if (type_name) {
                             void *addr=NULL;
                             if (!LT_get(module,type_name,HEAD,KEEP)) {
-                                dlerror(); // reset
-                                if ((addr=dlsym(dlhandle,type_name)))
-                                    LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
-                                else
-                                    printf("dlsym error: handle %x %s\n",dlhandle,dlerror());
+                                if (dlhandle) {
+                                    dlerror(); // reset
+                                    if ((addr=dlsym(dlhandle,type_name)))
+                                        LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
+                                    else
+                                        printf("dlsym error: handle %x %s\n",dlhandle,dlerror());
+                                }
                             }
                         }
                     }
@@ -1038,7 +1059,7 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 case DW_TAG_variable:
                     if (type_name && base_info) { // GLOBAL!
                         void *addr=NULL;
-                        if (!LT_get(module,type_name,HEAD,KEEP) && (addr=dlsym(dlhandle,type_name)))
+                        if (!LT_get(module,type_name,HEAD,KEEP) && dlhandle && (addr=dlsym(dlhandle,type_name)))
                             LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
                     }
                     break;
@@ -1068,14 +1089,13 @@ int _cif_curate_module(LTV *module,int bootstrap)
         }
 
         char *f=bootstrap?NULL:filename;
-        if (!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND))) {
+        if (!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
             printf("dlopen error: handle %x %s\n",dlhandle,dlerror());
-            goto done;
-        }
 
 
         STRY(ltv_traverse(index,resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
-        STRY(dlclose(dlhandle),"in dlclose");
+        if (dlhandle)
+            STRY(dlclose(dlhandle),"in dlclose");
         //graph_types_to_file("/tmp/types.dot",types);
 
     done:
@@ -1154,7 +1174,12 @@ int _cif_curate_module(LTV *module,int bootstrap)
                     LTV *base=LT_get(index,type_info->base_str,HEAD,KEEP);
                     if (!base) { // may need to look ahead to resolve a base
                         Dwarf_Die basedie;
-                        STRY(dwarf_offdie_b(dbg,type_info->base,true,&basedie,&error),"looking up forward-referenced die");
+                        printf("looking up %s base %s\n",type_info->id_str,type_info->base_str);
+                        printf("sig8 %08x %08x\n",ntohl(*(unsigned *) &type_info->sig8.signature[0]),ntohl(*(unsigned *) &type_info->sig8.signature[4]));
+
+                        STRY(dwarf_offdie_b(dbg,type_info->base,(type_info->flags&TYPEF_IS_INFO)==0,
+                                            &basedie,&error),"looking up forward-referenced die");
+
                         STRY(curate_die(dbg,basedie),"processing forward-referenced die");
                         base=LT_get(index,type_info->base_str,HEAD,KEEP); // grabbing it from index
                     }
@@ -1188,7 +1213,8 @@ int _cif_curate_module(LTV *module,int bootstrap)
         return NULL;
     }
 
-    STRY(traverse_cus(filename,curate_die,&cu_data),"traversing module compute units");
+    //STRY(traverse_cus(filename,false,curate_die,&cu_data),"traversing module compute units");
+    STRY(traverse_cus(filename,true,curate_die,&cu_data),"traversing module compute units");
     resolve_symbols();
     LTV_release(index);
     STRY(ltv_traverse(module,remove_die_names,resolve_meta)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes

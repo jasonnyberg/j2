@@ -153,7 +153,7 @@ typedef struct
     Dwarf_Unsigned addr; // from loclist
     Dwarf_Bool external; // new for dwarf v4
     Dwarf_Unsigned offset; // new for dwarf v4
-    Dwarf_Sig8 sig8;
+    Dwarf_Sig8 sig8; // used in dwarf v4
 } TYPE_INFO_LTV;
 
 extern LTV *cif_module;

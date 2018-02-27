@@ -1047,11 +1047,11 @@ int _cif_curate_module(LTV *module,int bootstrap)
                             if (!LT_get(module,type_name,HEAD,KEEP)) {
                                 if (dlhandle) {
                                     dlerror(); // reset
-                                    if ((addr=dlsym(dlhandle,type_name)))
-                                        LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
-                                    else
-                                        printf("dlsym error: handle %x %s\n",dlhandle,dlerror());
-                                }
+                                    if (!(addr=dlsym(dlhandle,type_name)))
+                                        fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
+                                } else
+                                    fprintf(stderr,"no address for function %s\n",type_name);
+                                LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
                             }
                         }
                     }
@@ -1059,8 +1059,15 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 case DW_TAG_variable:
                     if (type_name && base_info) { // GLOBAL!
                         void *addr=NULL;
-                        if (!LT_get(module,type_name,HEAD,KEEP) && dlhandle && (addr=dlsym(dlhandle,type_name)))
+                        if (!LT_get(module,type_name,HEAD,KEEP)) {
+                            if (dlhandle) {
+                                dlerror(); // reset
+                                if (!(addr=dlsym(dlhandle,type_name)))
+                                    fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
+                            } else
+                                fprintf(stderr,"no address for variable %s\n",type_name);
                             LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
+                        }
                     }
                     break;
                 case DW_TAG_subrange_type:

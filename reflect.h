@@ -57,6 +57,9 @@
 
 #define TYPE_IDLEN 9
 #define DWARF_ID(str,global_offset) snprintf((str),TYPE_IDLEN,"%08x",(global_offset))
+#define DWARF_ALIAS(str,sig8) sprintf((str),CODE_BLUE "%08x %08x" CODE_RESET,                 \
+                                      ntohl(*(unsigned *) &(sig8).signature[0]),              \
+                                      ntohl(*(unsigned *) &(sig8).signature[4]))
 
 typedef enum
 {

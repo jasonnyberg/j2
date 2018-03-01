@@ -9,3 +9,6 @@ j2.iml
 j2.kdev4
 dwarf/myreader
 .zedstate
+test/math.so
+test/test.so
+test/testh.so

@@ -76,6 +76,19 @@ typedef struct {
 
 __thread VM_ENV *vm_env; // every thread can have a vm environment
 
+static LTV *vm_ltv_container=NULL; // holds LTVs we don't want garbage-collected
+static LTV *unstack_bc=NULL;
+
+__attribute__((constructor))
+static void init(void)
+{
+    VM_CMD unstack_asm[] = {{VMOP_RESET},{VMOP_CTX_POP},{VMOP_REMOVE}};
+    vm_ltv_container=LTV_NULL_LIST;
+    unstack_bc=compile(compilers[FORMAT_asm],unstack_asm,3);
+    LTV_put(LTV_list(vm_ltv_container),unstack_bc,HEAD,NULL);
+}
+
+
 //////////////////////////////////////////////////
 void debug(const char *fromwhere) { return; }
 //////////////////////////////////////////////////
@@ -118,9 +131,9 @@ static LTV *vm_use_ext() {
     return vm_env->ext;
 }
 
-static void vm_push_code(LTV *ltv,int stack) {
+static void vm_push_code(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
-    LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC|(stack?LT_STK:0));
+    LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
     THROW(!opcode_ltv,LTV_NULL);
     DEBUG(fprintf(stderr,CODE_RED "  %s CODE %x" CODE_RESET "\n",(stack?"STACK":"PUSH"),opcode_ltv->data));
     THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),LTV_NULL); // encaps code ltv within tracking ltv
@@ -147,14 +160,7 @@ static void vm_listcat(int res) { // merge tos into head of nos
     return;
 }
 
-static void vm_unstack() {
-    vm_listcat(VMRES_STACK);
-    LTV_release(vm_deq(VMRES_DICT,POP));
-}
-
 static void vm_pop_code() { DEBUG(fprintf(stderr,CODE_RED "  %s CODE %x" CODE_RESET "\n",(vm_env->code_ltv->flags&LT_STK?"UNSTACK":"POP"),vm_env->code_ltv->data));
-    if (vm_env->code_ltv->flags&LT_STK)
-        vm_unstack();
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);
     if (CLL_EMPTY(ENV_LIST(VMRES_CODE)))
@@ -222,15 +228,13 @@ static void vm_eval_type(LTV *type) {
     return;
 }
 
-static void vm_eval_ltv(LTV *ltv,int stacked) {
+static void vm_eval_ltv(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
     if (ltv->flags&LT_CVAR) { // type, ffi, ...
         vm_eval_type(ltv);
-        if (stacked)
-            vm_unstack();
     }
     else {
-        vm_push_code(compile_ltv(compilers[FORMAT_edict],ltv),stacked);
+        vm_push_code(compile_ltv(compilers[FORMAT_edict],ltv));
         vm_env->state|=VM_YIELD;
     }
  done: return;
@@ -286,7 +290,7 @@ extern void plop() {
 
 extern void vm_while(LTV *ltv) {
     while (!vm_env->state)
-        vm_eval_ltv(ltv,false);
+        vm_eval_ltv(ltv);
 }
 
 extern void dup() {
@@ -351,7 +355,7 @@ static void vmop_PUSHEXT() { VMOP_DEBUG();
 
 static void vmop_EVAL() { VMOP_DEBUG();
     SKIP_IF_STATE();
-    vm_eval_ltv(vm_stack_deq(POP),false);
+    vm_eval_ltv(vm_stack_deq(POP));
  done: return;
 }
 
@@ -438,7 +442,8 @@ static void vmop_FUN_EVAL() { VMOP_DEBUG();
     if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
         DESKIP;
     } else {
-        vm_eval_ltv(vm_deq(VMRES_FUNC,POP),true); // signal CTX_POP and REMOVE after eval
+        vm_push_code(unstack_bc); // stack signal to CTX_POP and REMOVE after eval
+        vm_eval_ltv(vm_deq(VMRES_FUNC,POP));
     }
  done: return;
 }
@@ -570,7 +575,7 @@ extern void *vm_create_cb(char *callback_type,LTV *root,LTV *code)
     LTV *dict_anchor=LTV_NULL;
     LT_put(dict_anchor,"ENV",HEAD,env_cvar);
 
-    vm_push_code(code,false); // ,"pushing code");
+    vm_push_code(code);
     STRY(!vm_enq(VMRES_DICT,dict_anchor),"adding anchor to dict");
     STRY(!vm_enq(VMRES_DICT,root),"adding reflection to dict");
     STRY(!vm_enq(VMRES_STACK,LTV_NULL_LIST),"initializing stack");

@@ -180,9 +180,9 @@ extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);
 
 extern LTV *cif_type_info(char *typename);
 extern LTV *cif_find_base(LTV *type,int tag);
-extern LTV *cif_find_basic(LTV *type);
+extern LTV *cif_find_concrete(LTV *type);
+extern LTV *cif_find_indexable(LTV *type);
 extern LTV *cif_find_function(LTV *type);
-extern LTV *cif_isaddr(LTV *cvar);
 
 extern int cif_dump_module(char *ofilename,LTV *module);
 extern LTV *cif_isaddr(LTV *cvar);

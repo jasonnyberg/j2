@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 add_definitions(-std=gnu99 -ggdb3 -feliminate-dwarf2-dups)
 include_directories(.)
-add_library (testlib SHARED test.c)
+add_library (testlib SHARED test.c testc.c)
 add_executable (test testb.c)
 target_link_libraries (test testlib)

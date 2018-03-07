@@ -254,6 +254,14 @@ extern void locals() {
     return;
 }
 
+extern void stack() {
+    int old_show_ref=show_ref;
+    show_ref=1;
+    vm_dump_ltv(vm_deq(VMRES_STACK,KEEP),res_name[VMRES_STACK]);
+    show_ref=old_show_ref;
+    return;
+}
+
 extern void hoist() {
     LTV *ltv=NULL,*ltvltv=NULL;
     THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to hoist");
@@ -564,7 +572,7 @@ extern void *vm_create_cb(char *callback_type,LTV *root,LTV *code)
 
     vm_push_code(code,false); // ,"pushing code");
     STRY(!vm_enq(VMRES_DICT,dict_anchor),"adding anchor to dict");
-    STRY(!vm_enq(VMRES_DICT,root),"addning reflection to dict");
+    STRY(!vm_enq(VMRES_DICT,root),"adding reflection to dict");
     STRY(!vm_enq(VMRES_STACK,LTV_NULL_LIST),"initializing stack");
 
     STRY(cif_create_cb(ffi_cif_ltv,vm_cb_thunk,env_cvar),"creating vm environment/callback");

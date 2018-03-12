@@ -170,9 +170,9 @@ extern void graph_ltv_to_file(char *filename,LTV *ltv,int maxdepth,char *label);
 
 extern CLL *LTV_list(LTV *ltv);
 
-#define LTV_enq(ltvs,ltv,end) LTV_put((ltvs),(ltv),(end),NULL)
-#define LTV_deq(ltvs,end)     LTV_get((ltvs),POP,(end),NULL,NULL)
-#define LTV_peek(ltvs,end)    LTV_get((ltvs),KEEP,(end),NULL,NULL)
+extern LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end);
+extern LTV *LTV_deq(CLL *ltvs,int end);
+extern LTV *LTV_peek(CLL *ltvs,int end);
 
 //////////////////////////////////////////////////
 // Basic LT construction
@@ -194,8 +194,8 @@ typedef struct REF {
     int reverse;
 } REF;
 
-#define REF_HEAD(ltv) ((REF *) CLL_HEAD(&(ltv)->sub.ltvs))
-#define REF_TAIL(ltv) ((REF *) CLL_TAIL(&(ltv)->sub.ltvs))
+extern REF *REF_HEAD(LTV *ltv);
+extern REF *REF_TAIL(LTV *ltv);
 
 extern LTV *REF_create(LTV *refs);
 extern int REF_delete(LTV *refs); // clears refs, prunes listree branch

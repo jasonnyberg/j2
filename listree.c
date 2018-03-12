@@ -466,6 +466,8 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
         listree_traverse(ltvs,preop,NULL);
     else
         fprintf(ofile,"NULL");
+
+    fflush(ofile);
 }
 
 void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
@@ -681,6 +683,10 @@ CLL *LTV_list(LTV *ltv)
     return (ltv && ltv->flags&LT_LIST)? &ltv->sub.ltvs:NULL;
 }
 
+LTV *LTV_enq(CLL *ltvs,LTV *ltv,int end) { return LTV_put((ltvs),(ltv),(end),NULL); }
+LTV *LTV_deq(CLL *ltvs,int end)          { return LTV_get((ltvs),POP,(end),NULL,NULL); }
+LTV *LTV_peek(CLL *ltvs,int end)         { return LTV_get((ltvs),KEEP,(end),NULL,NULL); }
+
 LTV *LT_put(LTV *parent,char *name,int end,LTV *child)
 {
     if (parent && name && child) {
@@ -708,6 +714,9 @@ LTV *LT_get(LTV *parent,char *name,int end,int pop)
 //////////////////////////////////////////////////
 
 int ref_count=0;
+
+REF *REF_HEAD(LTV *ltv) { return ((REF *) CLL_HEAD(&(ltv)->sub.ltvs)); }
+REF *REF_TAIL(LTV *ltv) { return ((REF *) CLL_TAIL(&(ltv)->sub.ltvs)); }
 
 REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
 REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }

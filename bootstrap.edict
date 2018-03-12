@@ -1,3 +1,8 @@
+[
+]@newline
+
+[LTV_concat!]@concat
+
 [compile_ltv(@code jit_edict code)]@compile
 [[a b c] compile compile!!! locals!]@test_compile
 

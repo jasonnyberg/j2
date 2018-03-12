@@ -37,6 +37,8 @@ extern int string(char *s) { printf("%s\n",s); }
 extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
 
 extern FILE *get_stdin() { return stdin; }
+extern FILE *get_stdout() { return stdout; }
+extern FILE *get_stderr() { return stderr; }
 extern LTV *brl(FILE *fp) {
     int len; char *data=NULL;
     return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;

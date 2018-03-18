@@ -246,7 +246,6 @@ extern void is_lit() {
     THROW(ltv->flags&LT_NSTR,LTV_NULL); // throw if non-string
     int tlen=series(ltv->data,ltv->len,WHITESPACE,NULL,NULL);
     THROW(tlen&&ltv->len==tlen,LTV_NULL);
-    //
  done:
     return;
 }

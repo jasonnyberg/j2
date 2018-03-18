@@ -9,3 +9,6 @@ testh.so: ; gcc -g3 --shared -std=gnu99 -ggdb3 -gdwarf-4 -fno-eliminate-unused-d
 test.so: ; gcc -g3 --shared -std=gnu99 -ggdb3 -gdwarf-4 -fno-eliminate-unused-debug-types -o $@ test.c
 math.so: ; gcc -g3 --shared -std=gnu99 -ggdb3 -gdwarf-4 -fno-eliminate-unused-debug-types -o $@ math.c
 
+libify:
+	gcc -c -g -fPIC math.c -o math.o
+	gcc -shared -o libmath.so math.o -Wl,--whole-archive /usr/lib/libtommath.a -Wl,--no-whole-archive

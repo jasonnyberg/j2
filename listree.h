@@ -59,9 +59,9 @@ typedef enum {
     LT_LIST =0x00080000, // META: hold children in unlabeled list, rather than default rbtree
     LT_NAP  =LT_IMM|LT_NULL,                // not a pointer
     LT_FREE =LT_DUP|LT_OWN,                 // need to free data upon release
-    LT_NSTR =LT_NAP|LT_BIN|LT_CVAR,         // not a string
     LT_META =LT_RO|LT_AVIS|LT_RVIS|LT_LIST, // need to be preserved during LTV_renew
     LT_REFL =LT_TYPE|LT_FFI|LT_CIF,         // used for reflection; visibility controlled by "show_ref"
+    LT_NSTR =LT_NAP|LT_BIN|LT_CVAR|LT_REFL, // not a string
     LT_NDUP =LT_FREE|LT_REFS|LT_CVAR|LT_REFL|LT_LIST, // need to be excised during LTV_dup
 } LTV_FLAGS;
 

@@ -240,8 +240,44 @@ static void vm_eval_ltv(LTV *ltv) {
  done: return;
 }
 
+extern void is_lit() {
+    LTV *ltv;
+    THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to split");
+    THROW(ltv->flags&LT_NSTR,LTV_NULL); // throw if non-string
+    int tlen=series(ltv->data,ltv->len,WHITESPACE,NULL,NULL);
+    THROW(tlen&&ltv->len==tlen,LTV_NULL);
+ done:
+    return;
+}
 
+extern void split() {
+    LTV *ltv=NULL;
+    char *tdata=NULL;
+    int len=0,tlen=0;
 
+    int advance(int adv) { adv=MIN(adv,len); tdata+=adv; len-=adv; return adv; }
+
+    THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to split");
+    THROW(ltv->flags&LT_NSTR,LTV_NULL); // throw if non-string
+    if (!ltv->len) {
+        THROW(1,LTV_NULL);
+        LTV_release(ltv);
+    }
+    tdata=ltv->data;
+    len=ltv->len;
+    advance(series(tdata,len,WHITESPACE,NULL,NULL)); // skip whitespace
+    if ((tlen=series(tdata,len,NULL,WHITESPACE,"[]"))) {
+        LTV *car=LTV_init(NEW(LTV),tdata,tlen,LT_DUP); // CAR
+        advance(tlen);
+        advance(series(tdata,len,WHITESPACE,NULL,NULL)); // skip whitespace
+        LTV *cdr=LTV_init(NEW(LTV),tdata,len,LT_DUP); // CDR
+        vm_stack_enq(cdr);
+        vm_stack_enq(car);
+    }
+ done:
+    LTV_release(ltv);
+    return;
+}
 
 extern void dump() {
     vm_dump_ltv(&vm_env->ltv[VMRES_DICT],res_name[VMRES_DICT]);

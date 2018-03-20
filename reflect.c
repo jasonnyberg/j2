@@ -1889,7 +1889,7 @@ extern LTV *cif_put_meta(LTV *ltv,LTV *meta) {
 }
 
 // convert interpreter params into something FFI can use
-// (hoist LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
+// (encaps LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
 LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 {
     int status=0;
@@ -1911,7 +1911,7 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
     if (!(ltv->flags&LT_CVAR)) { // first, dress a non-cvar ltv up in something appropriate
         char *type_name=attr_get(type_base,TYPE_SYMB);
         int match(char *key) { return !strcmp(key,type_name); }
-        if (match("(LTV)*")) // hoist LTV when dest is an LTV*
+        if (match("(LTV)*")) // encaps LTV when dest is an LTV*
             result=cif_create_cvar(cif_type_info("LTV"),ltv,NULL);
         else if (match("(char)*") || match("(unsigned char)*")) // ltv data -> char array
             STRY(!(result=cif_create_cvar(type_base,&ltv->data,NULL)),"creating string coersion"); // cvar->data=&ltv->data, i.e. cvar will point to a void*

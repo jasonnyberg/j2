@@ -302,18 +302,18 @@ extern void stack() {
     return;
 }
 
-extern void hoist() {
+extern void encaps() {
     LTV *ltv=NULL,*ltvltv=NULL;
-    THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to hoist");
+    THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to encaps");
     THROW(!(ltvltv=cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL)),LTV_NULL); // allocate an LTV *
     (*(LTV **) ltvltv->data)=ltv; // ltvltv->data is a pointer to an LTV *
     THROW(!(LT_put(ltvltv,"TYPE_CAST",HEAD,ltv)),LTV_NULL);
-    THROW(!(vm_stack_enq(ltvltv)),LTV_NULL); // ,"pushing hoisted ltv cvar");
+    THROW(!(vm_stack_enq(ltvltv)),LTV_NULL); // ,"pushing encaps ltv cvar");
  done:
     return;
 }
 
-extern void plop() {
+extern void decaps() {
     LTV *cvar_ltv=NULL,*ptr=NULL;
     THROW(!(cvar_ltv=vm_stack_deq(POP)),LTV_NULL);
     THROW(!(cvar_ltv->flags&LT_CVAR),LTV_NULL); // "checking at least if it's a cvar" // TODO: verify it's an "(LTV)*"

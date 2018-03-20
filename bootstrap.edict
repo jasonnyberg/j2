@@ -14,7 +14,7 @@
 [loadlib([/home/jnyberg/htm/build/libhtmlib.so]) @htm htm.init(0 0)]@testimport2
 [loadlib([/home/jnyberg/htm/build/libhtmlib.so]) <init(0 0)>]@testimport3
 
-[bench hoist! vm_while! | locals!]@fastbench
+[bench encaps! vm_while! | locals!]@fastbench
 [bench [dup! ! loop!]@loop loop! | locals!]@midbench
 
 [a b int_add! /@a a limit int_nequal! slowloop!]@slowloop

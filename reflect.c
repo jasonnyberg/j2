@@ -630,6 +630,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         case DW_TAG_array_type:
         case DW_TAG_volatile_type:
         case DW_TAG_const_type:
+        case DW_TAG_restrict_type:
         case DW_TAG_structure_type:
         case DW_TAG_union_type:
         case DW_TAG_enumeration_type:
@@ -1090,6 +1091,10 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 case DW_TAG_const_type:
                     if (post && base_symb)
                         categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"const %s",base_symb));
+                    break;
+                case DW_TAG_restrict_type:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"restrict %s",base_symb));
                     break;
                 case DW_TAG_base_type:
                 case DW_TAG_enumerator:

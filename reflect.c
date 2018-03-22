@@ -29,8 +29,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <dwarf.h>
-#include <libdwarf.h>
+#include <libdwarf/dwarf.h>
+#include <libdwarf/libdwarf.h>
 #include <dlfcn.h> // dlopen/dlsym/dlclose
 #include <arpa/inet.h>
 

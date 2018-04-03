@@ -21,6 +21,10 @@
 
 #define _GNU_SOURCE
 #define _C99
+#include <libelf.h>
+#include <elfutils/libdwelf.h>
+#include <unistd.h>
+#include <fcntl.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -56,6 +60,42 @@ extern void pinglib(char *filename)
         printf("dlopen error: handle %x %s\n",dlhandle,dlerror());
     else
         dlclose(dlhandle);
+}
+
+ LTV *get_separated_debug_filename(char *filename)
+{
+    LTV *debug_filename=NULL;
+    if ( elf_version ( EV_CURRENT ) != EV_NONE ) {
+        int fd=open(filename,O_RDONLY);
+        if (fd) {
+            Elf *elf=elf_begin(fd,ELF_C_READ,NULL);
+            if (elf) {
+                GElf_Word crc;
+                const void *buildid;
+                const char *debuglink=dwelf_elf_gnu_debuglink(elf,&crc);
+                if (debuglink) {
+                    ssize_t idlen=dwelf_elf_gnu_build_id(elf,&buildid);
+                    Dwarf *dwarf=dwarf_begin_elf(elf,DWARF_C_READ,NULL);
+                    if (dwarf) {
+                        const char *altname;
+                        int idlen=dwelf_dwarf_gnu_debugaltlink(dwarf,&altname,&buildid);
+                        dwarf_end(dwarf);
+                    }
+                    debug_filename=LTV_init(NEW(LTV),mymalloc(256),256,LT_OWN);
+                    char *buf=(char *) debug_filename->data;
+                    buf+=sprintf(buf,"/usr/lib/debug/.build-id/%02x",*((unsigned char *) buildid++));
+                    buf+=sprintf(buf,"/");
+                    while (--idlen)
+                        buf+=sprintf(buf,"%02x",*((unsigned char *) buildid++));
+                    buf+=sprintf(buf,".debug");
+                    debug_filename->len=((void *) buf)-debug_filename->data;
+                }
+                elf_end(elf);
+            }
+            close(fd);
+        }
+    }
+    return debug_filename;
 }
 
 extern LTV *null() { return LTV_NULL; }

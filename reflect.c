@@ -177,6 +177,12 @@ int traverse_cus(char *filename,Dwarf_Bool is_info,DIE_OP op,CU_DATA *cu_data)
         return status;
     }
 
+    LTV *debug_link_filename=get_separated_debug_filename(filename);
+    if (debug_link_filename) {
+        printf("Using alt debug filename %s for %s\n",(char *) debug_link_filename->data,filename);
+        filename=(char *) debug_link_filename->data;
+    }
+
     int filedesc = -1;
     STRY((filedesc=open(filename,O_RDONLY))<0,"opening dwarf2edict input file %s",filename);
     TRYCATCH(dwarf_init(filedesc,DW_DLC_READ,NULL,NULL,&dbg,&error),status,close_file,"initializing dwarf reader");
@@ -186,6 +192,7 @@ int traverse_cus(char *filename,Dwarf_Bool is_info,DIE_OP op,CU_DATA *cu_data)
  close_file:
     close(filedesc);
  done:
+    LTV_release(debug_link_filename);
     return status;
 }
 
@@ -444,21 +451,6 @@ LTV *cif_assign_cvar(LTV *dst,LTV *src)
     return status?NULL:dst;
 }
 
-void *cvar_map(LTV *ltv,void *(*op)(LTV *cvar,LT_TRAVERSE_FLAGS *flags))
-{
-    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags&LT_TRAVERSE_LTI)) {
-            int len=strlen((*lti)->name);
-            if (series((*lti)->name,len,NULL," ",NULL)<len)
-                (*flags)|=LT_TRAVERSE_HALT;
-        }
-        else if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR)
-            return op((*ltv),flags);
-        return NULL;
-    }
-    return ltv_traverse(ltv,traverse_types,NULL);
-}
-
 int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 {
     int status=0;
@@ -472,10 +464,8 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
         int status=0;
         LTV *type=NULL;
 
-        void *type_info_op(LTV *ltv,LT_TRAVERSE_FLAGS *flags) {
-            int status=0;
-            TRYCATCH(!(ltv->flags&LT_TYPE) || ltv==type,0,done,"skipping non-TYPE_INFO and parent-type ltvs");
-            *flags|=LT_TRAVERSE_HALT;
+        void *type_info_op(CLL *lnk) {
+            LTV *ltv=((LTVR *) lnk)->ltv;
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) ltv;
             switch (type_info->tag) {
                 case DW_TAG_member:
@@ -500,9 +490,12 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 
             switch(type_info->tag) {
                 case DW_TAG_union_type:
-                case DW_TAG_structure_type:
-                    cvar_map(type,type_info_op); // traverse type hierarchy
+                case DW_TAG_structure_type: {
+                    LTI *children=NULL;
+                    if ((children=LTI_resolve(type,TYPE_LIST,0)))
+                        CLL_map(&children->ltvs,FWD,type_info_op);
                     break;
+                }
                 case DW_TAG_subprogram:
                 case DW_TAG_subroutine_type:
                     fprintf(ofile,"0x%x",type->data);
@@ -850,7 +843,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 
                         case DW_OP_stack_value: // 0x9f
                         case DW_OP_lit16: // 0x40
-
+                        case DW_OP_GNU_parameter_ref: // unreferenced parameter
                             // printf(" Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                             break;
                         default:
@@ -1125,33 +1118,29 @@ int _cif_curate_module(LTV *module,int bootstrap)
                         STRY(cif_args_marshal(&type_info->ltv,FWD,marshaller),"marshalling ffi args"); // pre-
                         bufloc+=sprintf(bufloc-(count?1:0),")");
                         TYPE_INFO_LTV *cvar_type=categorize_symbolic(buf); // GLOBAL!
-                        if (type_name) {
+                        if (type_name && !LT_get(module,type_name,HEAD,KEEP)) {
                             void *addr=NULL;
-                            if (!LT_get(module,type_name,HEAD,KEEP)) {
-                                if (dlhandle) {
-                                    dlerror(); // reset
-                                    if (!(addr=dlsym(dlhandle,type_name)))
-                                        fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
-                                } else
-                                    fprintf(stderr,"no address for function %s\n",type_name);
-                                LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
-                            }
+                            if (dlhandle) {
+                                dlerror(); // reset
+                                if (!(addr=dlsym(dlhandle,type_name)))
+                                    fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
+                            } else
+                                fprintf(stderr,"no address for function %s\n",type_name);
+                            LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
                         }
                     }
                     break;
                 case DW_TAG_variable:
                     if (post) {
-                        if (type_name && base_info) { // GLOBAL!
+                        if (type_name && !LT_get(module,type_name,HEAD,KEEP) && base_info) { // GLOBAL!
                             void *addr=NULL;
-                            if (!LT_get(module,type_name,HEAD,KEEP)) {
-                                if (dlhandle) {
-                                    dlerror(); // reset
-                                    if (!(addr=dlsym(dlhandle,type_name)))
-                                        fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
-                                } else
-                                    fprintf(stderr,"no address for variable %s\n",type_name);
-                                LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
-                            }
+                            if (dlhandle) {
+                                dlerror(); // reset
+                                if (!(addr=dlsym(dlhandle,type_name)))
+                                    fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
+                            } else
+                                fprintf(stderr,"no address for variable %s\n",type_name);
+                            LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
                         }
                     }
                     break;
@@ -1467,6 +1456,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar,TYPE_UVALUE *uval)
             else if (size==4)  GETUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
             else if (size==8)  GETUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
             break;
+        case DW_ATE_boolean:
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
             if      (size==1)  GETUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
@@ -1530,6 +1520,7 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
             else if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
             else if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
             break;
+        case DW_ATE_boolean:
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
             if      (size==1)  PUTUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
@@ -1617,6 +1608,7 @@ LTV *basic_ffi_ltv(LTV *type)
             else if (size==4)  rval=ffi_type_ltv[FT_SINT32];
             else if (size==8)  rval=ffi_type_ltv[FT_SINT64];
             break;
+        case DW_ATE_boolean:
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
             if      (size==1)  rval=ffi_type_ltv[FT_UINT8];

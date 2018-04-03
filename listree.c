@@ -433,10 +433,10 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
 {
     void *preop(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
-        switch (*flags&LT_TRAVERSE_TYPE) {
+        switch ((*flags)&LT_TRAVERSE_TYPE) {
             case LT_TRAVERSE_LTI:
                 if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
-                    *flags|=LT_TRAVERSE_HALT;
+                    (*flags)|=LT_TRAVERSE_HALT;
                 else
                     fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
                 break;
@@ -453,12 +453,16 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 if (post) fprintf(ofile,"%s",post);
                 else fprintf(ofile,"]\n");
 
+                if ((*flags)&LT_TRAVERSE_HALT) // already visited
+                    fprintf(ofile,"%*c  (subtree omitted...)\n",MAX(0,depth*4-2),' ');
+
                 if (LTV_hide(*ltv))
-                    *flags|=LT_TRAVERSE_HALT;
+                    (*flags)|=LT_TRAVERSE_HALT;
                 break;
             default:
                 break;
         }
+    done:
         return NULL;
     }
 

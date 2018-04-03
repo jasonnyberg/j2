@@ -4,7 +4,7 @@ add_definitions(-fdebug-types-section)
 include_directories(.)
 add_library(reflect SHARED trace.c util.c cll.c rbtree.c listree.c reflect.c compile.c vm.c extensions.c)
 add_executable(jj jj.c)
-target_link_libraries(jj reflect dwarf elf dl ffi pthread)
+target_link_libraries(jj reflect dwarf elf dw dl ffi pthread)
 install(TARGETS reflect jj
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib)

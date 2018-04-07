@@ -527,7 +527,7 @@ VMOP_CALL vmop_call[] = {
 //////////////////////////////////////////////////
 // Opcode Dispatch
 
-static VMOP_CALL dispatch(VMOP_CALL call) {
+static VMOP_CALL vm_dispatch(VMOP_CALL call) {
     ADVANCE(1);
     call();
     if (vm_env->code_ltv->len<=0) {
@@ -538,13 +538,13 @@ static VMOP_CALL dispatch(VMOP_CALL call) {
     return vm_env->state?NULL:vmop_call[OPCODE];
 }
 
-static int vm_eval() {
+static int vm_run() {
     while (!(vm_env->state&(VM_COMPLETE|VM_ERROR))) {
         vm_reset_ext();
         vm_get_code();
         VMOP_CALL call=vmop_call[OPCODE];
         do {
-            call=dispatch(call);
+            call=vm_dispatch(call);
         } while (call);
         vm_env->state&=~(VM_YIELD);
     }
@@ -580,14 +580,18 @@ static void vm_cb_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
     }
     STRY(cif_args_marshal(ffi_type_info,REV,marshaller),"marshalling ffi args");
 
-    vm_eval();
+    char *thunk="ENV.THUNK!";
+    LTV *code=compile(compilers[FORMAT_edict],thunk,-1);
+    vm_push_code(code);
+
+    vm_run();
 
  done:
     return;
 }
 
 
-extern void *vm_create_cb(char *callback_type,LTV *root,LTV *code)
+extern void *vm_create_cb(char *callback_type,LTV *root,char *code)
 {
     int status=0;
 
@@ -610,8 +614,8 @@ extern void *vm_create_cb(char *callback_type,LTV *root,LTV *code)
 
     LTV *dict_anchor=LTV_NULL;
     LT_put(dict_anchor,"ENV",HEAD,env_cvar);
+    LT_put(env_cvar,"THUNK",HEAD,LTV_init(NEW(LTV),code,-1,LT_DUP));
 
-    vm_push_code(code);
     STRY(!vm_enq(VMRES_DICT,dict_anchor),"adding anchor to dict");
     STRY(!vm_enq(VMRES_DICT,root),"adding reflection to dict");
     STRY(!vm_enq(VMRES_STACK,LTV_NULL_LIST),"initializing stack");
@@ -630,13 +634,8 @@ extern void *vm_create_cb(char *callback_type,LTV *root,LTV *code)
 
 typedef int (*vm_bootstrap)();
 
-extern int vm_boot()
+extern int vm_eval(char *code)
 {
-    char *bootstrap_code=
-        "[bootstrap.edict] [r] file_open! @bootfile\n"
-        "[bootfile brl! ! bootloop!]@bootloop\n"
-        "[]<bootloop!> | locals! 0 RETURN@\n";
-    LTV *code=compile(compilers[FORMAT_edict],bootstrap_code,strlen(bootstrap_code));
     vm_bootstrap bootstrap=(vm_bootstrap) vm_create_cb("vm_bootstrap",cif_module,code);
     try_depth=0;
     int result=bootstrap();

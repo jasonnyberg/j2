@@ -24,11 +24,11 @@ Current external requirements: (Any GNU/Linux distro worth its salt
 has these:
 
 * gcc, cmake
-* libdwarf, libelf (to read elf/dwarf debug section)
+* libdwarf, libdw, libelf (to read elf/dwarf debug section)
 * libdl (for dlopen, dlsym...)
-* libffi (to make dynamic function calls into C libraries)
+* libffi (to make dynamic function calls to/from C libraries)
 * libpthread (the VM will support multithreading)
-* rlwrap (REPL conveniences; not strictly required)
+* libreadline, rlwrap (REPL conveniences; not strictly required)
 
 To run: Assuming gcc, cmake, and libraries are not too ancient, simply
 run "make" to get into the REPL.
@@ -75,11 +75,12 @@ TODO:
 
 * resurrect read from file (DONE)
 * external module (ultimately, compile-unit) loading (DONE)
+* external debug info support (DONE) (debian-style /usr/lib/debug/.build-id/XX/YYYYY....)
 * resurrect "map", "throw/catch" operators (throw/catch DONE, map etc. coming soon)
 * basic cvar/ffi type coersion (DONE)
 * symbolic ffi parameters
 * array indexing (DONE)
 * caller/callee hooks (insert shims between operators and operands i.e. "comma" operator)
-* relationship-preserving save/restore of listrees
+* graph-preserving save/restore of listrees
 * xml, json, yaml, swagger, lisp, mathematica-map bytecode compilers
 * core libraries...

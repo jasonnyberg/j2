@@ -20,5 +20,9 @@
 [a b int_add! /@a a limit int_nequal! slowloop!]@slowloop
 [int! @@limit 0 int! @@a 1 int! @@b slowloop! | locals!]@slowbench
 
-[get_stdin! brl! ! repl!]@repl
-[]<repl!>
+[pthread_t! @thread vm_thread_create(thread) ! thread | /thread]@async
+
+[vm_thunk! vm_create_cb([vm_thunk] ENV.ROOT [square(Arg0) encaps! RETURN@]) @ @thunk
+ async(thunk 3) @thread [waiting...] stack!/ thread await! stack!]@test_async_await
+
+repl(get_stdin!)

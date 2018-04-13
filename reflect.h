@@ -191,8 +191,6 @@ extern int cif_iszero(LTV *cvar);
 extern int cif_ispos(LTV *cvar);
 extern int cif_isneg(LTV *cvar);
 
-extern int cif_create_cb(LTV *function_type,
-                         void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),
-                         LTV *env);
+extern LTV *cif_create_closure(LTV *function_type,void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA));
 
 #endif

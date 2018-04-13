@@ -74,7 +74,8 @@ typedef struct {
     unsigned skipdepth;
 } VM_ENV;
 
-__thread VM_ENV *vm_env; // every thread can have a vm environment
+__thread LTV *vm_env_stack=NULL; // every thread can have a stack of vm_environments (supports interpreter->C->interpreter->C...
+__thread VM_ENV *vm_env=NULL; // every thread can have an active vm environment
 
 static LTV *vm_ltv_container=NULL; // holds LTVs we don't want garbage-collected
 static LTV *unstack_bc=NULL;
@@ -135,7 +136,7 @@ static void vm_push_code(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
     LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
     THROW(!opcode_ltv,LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  %s CODE %x" CODE_RESET "\n",(stack?"STACK":"PUSH"),opcode_ltv->data));
+    DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",opcode_ltv->data));
     THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),LTV_NULL); // encaps code ltv within tracking ltv
     THROW(!vm_enq(VMRES_CODE,opcode_ltv),LTV_NULL);
  done:
@@ -160,7 +161,7 @@ static void vm_listcat(int res) { // merge tos into head of nos
     return;
 }
 
-static void vm_pop_code() { DEBUG(fprintf(stderr,CODE_RED "  %s CODE %x" CODE_RESET "\n",(vm_env->code_ltv->flags&LT_STK?"UNSTACK":"POP"),vm_env->code_ltv->data));
+static void vm_pop_code() { DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);
     if (CLL_EMPTY(ENV_LIST(VMRES_CODE)))
@@ -230,13 +231,11 @@ static void vm_eval_type(LTV *type) {
 
 static void vm_eval_ltv(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
-    if (ltv->flags&LT_CVAR) { // type, ffi, ...
+    if (ltv->flags&LT_CVAR) // type, ffi, ...
         vm_eval_type(ltv);
-    }
-    else {
+    else
         vm_push_code(compile_ltv(compilers[FORMAT_edict],ltv));
-        vm_env->state|=VM_YIELD;
-    }
+    vm_env->state|=VM_YIELD;
  done: return;
 }
 
@@ -302,16 +301,22 @@ extern void stack() {
     return;
 }
 
-extern void encaps() {
-    LTV *ltv=NULL,*ltvltv=NULL;
-    THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to encaps");
+extern LTV *encaps_ltv(LTV *ltv) {
+    LTV *ltvltv=NULL;
     THROW(!(ltvltv=cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL)),LTV_NULL); // allocate an LTV *
     (*(LTV **) ltvltv->data)=ltv; // ltvltv->data is a pointer to an LTV *
     THROW(!(LT_put(ltvltv,"TYPE_CAST",HEAD,ltv)),LTV_NULL);
-    THROW(!(vm_stack_enq(ltvltv)),LTV_NULL); // ,"pushing encaps ltv cvar");
+ done:
+    return ltvltv;
+}
+
+extern void encaps() {
+    THROW(!(vm_stack_enq(encaps_ltv(vm_stack_deq(POP)))),LTV_NULL); // ,"pushing encaps ltv cvar");
  done:
     return;
 }
+
+extern LTV *decaps_ltv(LTV *ltv) { return ltv; } // all the work is done via coersion
 
 extern void decaps() {
     LTV *cvar_ltv=NULL,*ptr=NULL;
@@ -454,7 +459,7 @@ static void vmop_CTX_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_CTX_POP() { VMOP_DEBUG();
-    if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
+    if (vm_env->state && vm_env->skipdepth) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
         DESKIP;
     } else {
         vm_listcat(VMRES_STACK);
@@ -475,7 +480,7 @@ static void vmop_FUN_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_FUN_EVAL() { VMOP_DEBUG();
-    if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
+    if (vm_env->state && vm_env->skipdepth) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
         DESKIP;
     } else {
         vm_push_code(unstack_bc); // stack signal to CTX_POP and REMOVE after eval
@@ -539,6 +544,7 @@ static VMOP_CALL vm_dispatch(VMOP_CALL call) {
 }
 
 static int vm_run() {
+    vm_push_code(compile(compilers[FORMAT_edict],"CODE!",-1));
     while (!(vm_env->state&(VM_COMPLETE|VM_ERROR))) {
         vm_reset_ext();
         vm_get_code();
@@ -557,103 +563,102 @@ static int vm_run() {
 //////////////////////////////////////////////////
 
 // Translate a prepared C callback into an edict function/environment and evaluate it
-static void vm_cb_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
+static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
 {
     int status=0;
     char *argid=NULL;
 
-    LTV *env_cvar=(LTV *) USER_DATA;
-    LTV *ffi_type_info=LT_get(env_cvar,"FFI_CIF_LTV",HEAD,KEEP);
+    if (!vm_env_stack)
+        vm_env_stack=LTV_NULL_LIST;
 
-    LTV *locals=LTV_init(NEW(LTV),"THUNK_LOCALS",-1,LT_NONE);
-    STRY(!vm_enq(VMRES_DICT,locals),"pushing locals into dict");
+    LTV *continuation=(LTV *) USER_DATA;
 
-    LT_put(locals,"RETURN",HEAD,cif_rval_create(ffi_type_info,RET)); // embed return val cvar in environment; ok if it fails
+    LTV *env_cvar=cif_create_cvar(cif_type_info("VM_ENV"),NEW(VM_ENV),NULL);
+    STRY(!env_cvar,"validating creation of env cvar");
 
-    int index=0;
-    int marshaller(char *name,LTV *type) {
-        LTV *arg=cif_create_cvar(type,ARGS[index],NULL);
-        LT_put(locals,FORMATA(argid,32,"Arg%d",index++),HEAD,arg); // embed by index
-        if (name)
-            LT_put(locals,name,HEAD,arg); // embed by name
-        return 0;
+    LTV_put(LTV_list(vm_env_stack),env_cvar,HEAD,NULL);
+    vm_env=(VM_ENV *) env_cvar->data;
+
+    {
+        vm_env->state=0;
+
+        for (int i=0;i<VMRES_COUNT;i++)
+            LTV_init(&vm_env->ltv[i],NULL,0,LT_NULL|LT_LIST);
+
+        STRY(!vm_enq(VMRES_STACK,LTV_NULL_LIST),"initializing env stack");
+        STRY(!vm_enq(VMRES_DICT,env_cvar),"adding continuation to env");
+        STRY(!vm_enq(VMRES_DICT,continuation),"adding continuation to env");
+
+        LTV *locals=LTV_init(NEW(LTV),"THUNK_LOCALS",-1,LT_NONE);
+        STRY(!vm_enq(VMRES_DICT,locals),"pushing locals into dict");
+
+        int index=0;
+        int marshaller(char *name,LTV *type) {
+            LTV *arg=cif_create_cvar(type,ARGS[index],NULL);
+            LT_put(locals,FORMATA(argid,32,"ARG%d",index++),HEAD,arg); // embed by index
+            if (name)
+                LT_put(locals,name,HEAD,arg); // embed by name
+            return 0;
+        }
+        LTV *ffi_type_info=LT_get(continuation,TYPE_BASE,HEAD,KEEP);
+        STRY(cif_args_marshal(ffi_type_info,REV,marshaller),"marshalling ffi args");
+        LT_put(locals,"RETURN",HEAD,cif_rval_create(ffi_type_info,RET)); // embed return val cvar in environment; ok if it fails
+
+        vm_run();
     }
-    STRY(cif_args_marshal(ffi_type_info,REV,marshaller),"marshalling ffi args");
 
-    char *thunk="ENV.THUNK!";
-    LTV *code=compile(compilers[FORMAT_edict],thunk,-1);
-    vm_push_code(code);
-
-    vm_run();
+    LTV_release(LTV_get(LTV_list(vm_env_stack),POP,HEAD,NULL,NULL));
+    if ((env_cvar=LTV_get(LTV_list(vm_env_stack),KEEP,HEAD,NULL,NULL)))
+        vm_env=(VM_ENV *) env_cvar->data;
 
  done:
     return;
 }
 
+extern void *vm_await(pthread_t thread) {
+    void *result=NULL;
+    pthread_join(thread,&result);
+    return result;
+}
 
-extern void *vm_create_cb(char *callback_type,LTV *root,char *code)
-{
+extern pthread_t vm_async(LTV *continuation,void *arg) {
+    pthread_t thread;
+    pthread_attr_t attr={};
+    pthread_attr_init(&attr);
+    THROW(pthread_create(&thread,&attr,(void *(*)(void *)) continuation->data,arg),LTV_NULL);
+ done:
+    return thread;
+}
+
+extern LTV *vm_continuation(LTV *ffi_sig,LTV *root,LTV *code) {
     int status=0;
 
-    if (vm_env) // this thread already has a vm
-        return NULL;
-
-    LTV *ffi_cif_ltv=cif_find_function(cif_type_info(callback_type));
-    STRY(!ffi_cif_ltv,"validating callback type");
-
-    LTV *env_cvar=cif_create_cvar(cif_type_info("VM_ENV"),NEW(VM_ENV),NULL);
-    STRY(!env_cvar,"validating creation of env cvar");
-
-    //////////////////////////////////////////////////
-    vm_env=env_cvar->data;
-    //////////////////////////////////////////////////
-
-    for (int i=0;i<VMRES_COUNT;i++)
-        LTV_init(&vm_env->ltv[i],NULL,0,LT_NULL|LT_LIST);
-    vm_env->state=0;
-
-    LTV *dict_anchor=LTV_NULL;
-    LT_put(dict_anchor,"ENV",HEAD,env_cvar);
-    LT_put(env_cvar,"THUNK",HEAD,LTV_init(NEW(LTV),code,-1,LT_DUP));
-
-    STRY(!vm_enq(VMRES_DICT,dict_anchor),"adding anchor to dict");
-    STRY(!vm_enq(VMRES_DICT,root),"adding reflection to dict");
-    STRY(!vm_enq(VMRES_STACK,LTV_NULL_LIST),"initializing stack");
-
-    STRY(cif_create_cb(ffi_cif_ltv,vm_cb_thunk,env_cvar),"creating vm environment/callback");
-    LTV *exec_ltv=LT_get(env_cvar,"EXECUTABLE",HEAD,KEEP);
-
+    LTV *continuation=NULL;
+    THROW(!(continuation=cif_create_closure(ffi_sig,vm_closure_thunk)),LTV_NULL);
+    LT_put(continuation,"CODE",HEAD,code);
+    LT_put(continuation,"ROOT",HEAD,root);
  done:
-    if (status) {
-        LTV_release(env_cvar);
-        env_cvar=NULL;
-    }
-    return exec_ltv->data;
+    return continuation;
+}
+
+//typedef LTV *(*vm_thunk)(void *);
+
+extern void *vm_thunk(void *arg) { return NULL; }
+
+extern LTV *vm_eval(LTV *root,LTV *code,LTV *arg) {
+    return vm_await(vm_async(vm_continuation(cif_type_info("(void)*(*)((void)*)"),root,code),arg));
 }
 
 
-typedef int (*vm_bootstrap)();
+char *vm_interpreter=
+    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
+    "ROOT<repl([bootstrap.edict] [r] file_open!)>";
 
-extern int vm_eval(char *code)
-{
-    vm_bootstrap bootstrap=(vm_bootstrap) vm_create_cb("vm_bootstrap",cif_module,code);
+extern int vm_interpret() {
     try_depth=0;
-    int result=bootstrap();
-    printf("Result: %d\n",result);
+    LTV *arg=encaps_ltv(LTV_init(NEW(LTV),"done",-1,LT_NONE));
+    LTV *result=vm_eval(cif_module,LTV_init(NEW(LTV),vm_interpreter,-1,LT_NONE),arg);
+    if (result)
+        print_ltv(stdout,"",result,"\n",0);
     return 0;
 }
-
-// ideas:
-// generic a->b djykstra
-
-/*
-  special
-  * readfrom (push file_tok(filename))
-  * import (curate dwarf)
-  * preview (dwarf->TOC)
-  * cvar (pop_type()->ref_create_cvar()->push())
-  * ffi (type->ref_ffi_prep)
-  * dump (TOS or whole stack)
-  * dup (TOS)
-  * ro (TOS->set read_only)
-  */

@@ -20,9 +20,4 @@
 
 #include "vm.h"
 
-char *interpreter=
-    "[bootstrap.edict] [r] file_open! @bootfile\n"
-    "[bootfile brl! ! bootloop!]@bootloop\n"
-    "[]<bootloop!> | 0 RETURN@\n";
-
-int main(int argc, char *argv[]) { return vm_eval(interpreter); }
+int main(int argc, char *argv[]) { return vm_interpret(); }

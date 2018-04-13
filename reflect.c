@@ -1905,6 +1905,15 @@ extern LTV *cif_put_meta(LTV *ltv,LTV *meta) {
     return result;
 }
 
+/*
+extern LTV *cif_box(LTV *ltv) {
+    LTV *result=ltv;
+    LTV *meta=cif_get_meta(cvar_base);
+    if (meta && type_base==meta) // allow X to X* coersions
+        result=cif_put_meta(ltv,meta);
+}
+*/
+
 // convert interpreter params into something FFI can use
 // (encaps LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
 LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
@@ -2012,22 +2021,24 @@ LTV *cif_type_info(char *typename) { return LT_get(cif_module,typename,HEAD,KEEP
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 
-int cif_create_cb(LTV *function_type,
-                  void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA),
-                  LTV *env)
+LTV *cif_create_closure(LTV *function_type,void (*thunk) (ffi_cif *CIF, void *RET, void**ARGS, void *USER_DATA))
 {
     int status=0;
-    LTV *ffi_cif_ltv=LT_get(function_type,FFI_CIF,HEAD,KEEP);
+    LTV *closure=NULL;
+
+    LTV *function_ltv=NULL,*ffi_cif_ltv=NULL;
+    STRY(!(function_ltv=cif_find_function(function_type)),"finding closure type");
+    STRY(!(ffi_cif_ltv=LT_get(function_ltv,FFI_CIF,HEAD,KEEP)),"getting closure cif");
     ffi_cif *cif=(ffi_cif *) ffi_cif_ltv->data;
     void *executable=NULL;
     void *writeable=ffi_closure_alloc(sizeof(ffi_closure),&executable);
-    STRY(ffi_prep_closure_loc(writeable,cif,thunk,env,executable)!=FFI_OK,"creating closure");
-    LT_put(env,"FFI_CIF_LTV",HEAD,function_type); // embed env with callback's function type ltv
-    LT_put(env,"WRITEABLE", HEAD,LTV_init(NEW(LTV),writeable, 0,LT_NONE));
-    LT_put(env,"EXECUTABLE",HEAD,LTV_init(NEW(LTV),executable,0,LT_NONE));
+    STRY(!(closure=cif_create_cvar(function_ltv,NULL,NULL)),"creating closure cvar");
+    STRY(ffi_prep_closure_loc(writeable,cif,thunk,closure,executable)!=FFI_OK,"prepping closure"); // closure passes itself to callback
+    LTV_renew(closure,executable,0,LT_NONE); // update closure with function pointer
+    LT_put(closure,"WRITEABLE", HEAD,LTV_init(NEW(LTV),writeable, 0,LT_NONE));
 
  done:
-    return status;
+    return closure;
 }
 
 

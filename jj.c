@@ -20,4 +20,4 @@
 
 #include "vm.h"
 
-int main(int argc, char *argv[]) { return vm_interpret(); }
+int main(int argc, char *argv[]) { return vm_interpret()!=(void *) 0x0; }

@@ -1381,6 +1381,7 @@ char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
         case TYPE_FLOAT4:  sprintf(buf,"%g",    uval->float4.val);  break;
         case TYPE_FLOAT8:  sprintf(buf,"%g",    uval->float8.val);  break;
         case TYPE_FLOAT16: sprintf(buf,"%Lg",   uval->float16.val); break;
+        case TYPE_ADDR:    sprintf(buf,"%p",    uval->addr.val);    break;
         default:           buf[0]=0; break;
     }
     return buf;
@@ -1401,6 +1402,7 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
         case TYPE_FLOAT4:  sscanf(buf,"%g",  &uval->float4.val);          break;
         case TYPE_FLOAT8:  sscanf(buf,"%g",  &uval->float8.val);          break;
         case TYPE_FLOAT16: sscanf(buf,"%Lg", &uval->float16.val);         break;
+        case TYPE_ADDR:    sscanf(buf,"%p",  &uval->addr.val);            break;
         default:           buf[0]=0; break;
     }
     return uval;
@@ -1410,24 +1412,25 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval,char *buf)
 #define UVAL2VAR(uval,var)                                                      \
     do {                                                                        \
         switch (uval.dutype) {                                                  \
-            case TYPE_INT1S:   var=(typeof(var)) uval.int1s.val; break;         \
-            case TYPE_INT2S:   var=(typeof(var)) uval.int2s.val; break;         \
-            case TYPE_INT4S:   var=(typeof(var)) uval.int4s.val; break;         \
-            case TYPE_INT8S:   var=(typeof(var)) uval.int8s.val; break;         \
-            case TYPE_INT1U:   var=(typeof(var)) uval.int1u.val; break;         \
-            case TYPE_INT2U:   var=(typeof(var)) uval.int2u.val; break;         \
-            case TYPE_INT4U:   var=(typeof(var)) uval.int4u.val; break;         \
-            case TYPE_INT8U:   var=(typeof(var)) uval.int8u.val; break;         \
-            case TYPE_FLOAT4:  var=(typeof(var)) uval.float4.val; break;        \
-            case TYPE_FLOAT8:  var=(typeof(var)) uval.float8.val; break;        \
+            case TYPE_INT1S:   var=(typeof(var)) uval.int1s.val;   break;       \
+            case TYPE_INT2S:   var=(typeof(var)) uval.int2s.val;   break;       \
+            case TYPE_INT4S:   var=(typeof(var)) uval.int4s.val;   break;       \
+            case TYPE_INT8S:   var=(typeof(var)) uval.int8s.val;   break;       \
+            case TYPE_INT1U:   var=(typeof(var)) uval.int1u.val;   break;       \
+            case TYPE_INT2U:   var=(typeof(var)) uval.int2u.val;   break;       \
+            case TYPE_INT4U:   var=(typeof(var)) uval.int4u.val;   break;       \
+            case TYPE_INT8U:   var=(typeof(var)) uval.int8u.val;   break;       \
+            case TYPE_FLOAT4:  var=(typeof(var)) uval.float4.val;  break;       \
+            case TYPE_FLOAT8:  var=(typeof(var)) uval.float8.val;  break;       \
             case TYPE_FLOAT16: var=(typeof(var)) uval.float16.val; break;       \
+            case TYPE_ADDR:    var=(typeof(var)) uval.addr.val;    break;       \
         }                                                                       \
     } while(0)
 
-#define GETUVAL(member,type,uval)                                               \
-    do {                                                                        \
-        uval->member.dutype = type;                                             \
-        uval->member.val = *(typeof(uval->member.val) *) cvar->data;            \
+#define GETUVAL(member,type,uval)                                       \
+    do {                                                                \
+        uval->member.dutype = type;                                     \
+        uval->member.val = *(typeof(uval->member.val) *) cvar->data;    \
     } while(0)
 
 #define GETUBITS(member,type,uval,bsize,boffset,issigned)                       \

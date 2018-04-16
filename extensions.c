@@ -62,7 +62,7 @@ extern void pinglib(char *filename)
         dlclose(dlhandle);
 }
 
- LTV *get_separated_debug_filename(char *filename)
+LTV *get_separated_debug_filename(char *filename)
 {
     LTV *debug_filename=NULL;
     if ( elf_version ( EV_CURRENT ) != EV_NONE ) {

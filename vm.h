@@ -21,6 +21,6 @@
 #ifndef VM_H
 #define VM_H
 
-extern int vm_interpret();
+extern void *vm_interpret();
 
 #endif // VM_H

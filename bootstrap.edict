@@ -23,6 +23,29 @@
 [pthread_t! @thread vm_thread_create(thread) ! thread | /thread]@async
 
 [vm_thunk! vm_create_cb([vm_thunk] ENV.ROOT [square(Arg0) encaps! RETURN@]) @ @thunk
- async(thunk 3) @thread [waiting...] stack!/ thread await! stack!]@test_async_await
+async(thunk 3) @thread [waiting...] stack!/ thread await! stack!]@test_async_await
+
+[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>] [square(3)])]@async_test1
+
+[
+encaps(vm_continuation(encaps('(LTV)*(*)((LTV)*)') ROOT [ROOT<ARG0 stack! RETURN @>]))@cont
+vm_async(cont encaps([square(3)]))@taskA
+encaps(vm_await(taskA))
+stack!
+]@async_test2
+
+[
+encaps(vm_continuation(encaps('(void)*(*)((void)*)') ROOT [ROOT<ARG0 stack! RETURN @>]))@contA
+vm_async(contA 3)@taskA
+vm_await(taskA)@intermediate
+
+encaps(vm_continuation(encaps('(void)*(*)((void)*)') ROOT [ROOT<ARG0 'long long int'!@ stack! RETURN @>]))@contB
+vm_async(contB intermediate)@taskB vm_await(taskB)
+
+stack!
+]@async_test3
+
+
+async_test3!
 
 repl(get_stdin!)

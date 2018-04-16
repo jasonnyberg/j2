@@ -621,11 +621,13 @@ extern void *vm_await(pthread_t thread) {
     return result;
 }
 
+typedef void *(*vm_thunk)(void *); // make sure a pthread thunk type is aliased
+
 extern pthread_t vm_async(LTV *continuation,void *arg) {
     pthread_t thread;
     pthread_attr_t attr={};
     pthread_attr_init(&attr);
-    THROW(pthread_create(&thread,&attr,(void *(*)(void *)) continuation->data,arg),LTV_NULL);
+    THROW(pthread_create(&thread,&attr,(vm_thunk) continuation->data,arg),LTV_NULL);
  done:
     return thread;
 }
@@ -641,24 +643,15 @@ extern LTV *vm_continuation(LTV *ffi_sig,LTV *root,LTV *code) {
     return continuation;
 }
 
-//typedef LTV *(*vm_thunk)(void *);
-
-extern void *vm_thunk(void *arg) { return NULL; }
-
-extern LTV *vm_eval(LTV *root,LTV *code,LTV *arg) {
+extern void *vm_eval(LTV *root,LTV *code,LTV *arg) {
     return vm_await(vm_async(vm_continuation(cif_type_info("(void)*(*)((void)*)"),root,code),arg));
 }
 
-
 char *vm_interpreter=
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
-    "ROOT<repl([bootstrap.edict] [r] file_open!)>";
+    "ROOT<repl([bootstrap.edict] [r] file_open!)> 0 RETURN@";
 
-extern int vm_interpret() {
+extern void *vm_interpret() {
     try_depth=0;
-    LTV *arg=encaps_ltv(LTV_init(NEW(LTV),"done",-1,LT_NONE));
-    LTV *result=vm_eval(cif_module,LTV_init(NEW(LTV),vm_interpreter,-1,LT_NONE),arg);
-    if (result)
-        print_ltv(stdout,"",result,"\n",0);
-    return 0;
+    return vm_eval(cif_module,LTV_init(NEW(LTV),vm_interpreter,-1,LT_NONE),NULL);
 }

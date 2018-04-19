@@ -1813,7 +1813,7 @@ int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type)
         LTV *arg=((LTVR *) lnk)->ltv;
         LTV *arg_type=LT_get(arg,FFI_TYPE,HEAD,KEEP);
         char *name=attr_get(arg_type,TYPE_SYMB);
-        LTV *type=((LTVR *) lnk)->ltv;
+        LTV *type=cif_find_symbolic(((LTVR *) lnk)->ltv);
         STRY(marshal(name,type),"retrieving ffi arg from environment");
     done:
         return status?NON_NULL:NULL;
@@ -1917,6 +1917,22 @@ extern LTV *cif_box(LTV *ltv) {
 }
 */
 
+int is_readable(LTV *type)
+{
+    if (type && type->flags&LT_TYPE) {
+        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type;
+        switch(type_info->tag) {
+            case DW_TAG_enumeration_type:
+                //case DW_TAG_pointer_type:
+            case DW_TAG_base_type:
+                return true;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
 // convert interpreter params into something FFI can use
 // (encaps LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
 LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
@@ -1944,11 +1960,13 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
             result=cif_create_cvar(cif_type_info("LTV"),ltv,NULL);
         else if (match("(char)*") || match("(unsigned char)*")) // ltv data -> char array
             STRY(!(result=cif_create_cvar(type_base,&ltv->data,NULL)),"creating string coersion"); // cvar->data=&ltv->data, i.e. cvar will point to a void*
-        else if (Type_getUVAL(type,&dst_uval)) { // try to read text into a base type
+        else if (is_readable(type_base)) {
             result=cif_create_cvar(type,NULL,NULL);
+            Type_getUVAL(result,&dst_uval); // try to read plaintext into a base type
             Type_putUVAL(result,Type_pullUVAL(&dst_uval,ltv->data));
-        } else
-            vm_throw(LTV_NULL);
+        } else {
+            STRY((vm_throw(LTV_NULL),1),"no i2c coersion");
+        }
         STRY(!(LT_put(result,TYPE_CAST,HEAD,ltv)),"linking original to coersion");
         ltv=result; // may need further coersions
     }

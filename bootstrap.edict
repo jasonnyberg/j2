@@ -20,32 +20,21 @@
 [a b int_add! /@a a limit int_nequal! slowloop!]@slowloop
 [int! @@limit 0 int! @@a 1 int! @@b slowloop! | locals!]@slowbench
 
-[pthread_t! @thread vm_thread_create(thread) ! thread | /thread]@async
-
-[vm_thunk! vm_create_cb([vm_thunk] ENV.ROOT [square(Arg0) encaps! RETURN@]) @ @thunk
-async(thunk 3) @thread [waiting...] stack!/ thread await! stack!]@test_async_await
-
 [vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>] [square(3)])]@async_test1
 
-[
-encaps(vm_continuation(encaps('(LTV)*(*)((LTV)*)') ROOT [ROOT<ARG0 stack! RETURN @>]))@cont
-vm_async(cont encaps([square(3)]))@taskA
-encaps(vm_await(taskA))
-stack!
-]@async_test2
+[[]<@thunk @root @sig encaps(vm_continuation(encaps(sig) root thunk))>/]@continuation
+[[]<@continuation @arg vm_async(continuation arg)@thread>]@async
+[<vm_await(thread)>/]@await
 
-[
-encaps(vm_continuation(encaps('(void)*(*)((void)*)') ROOT [ROOT<ARG0 stack! RETURN @>]))@contA
-vm_async(contA 3)@taskA
-vm_await(taskA)@intermediate
+[await(async([square(3)] continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>])))]@async_test6
 
-encaps(vm_continuation(encaps('(void)*(*)((void)*)') ROOT [ROOT<ARG0 'long long int'!@ stack! RETURN @>]))@contB
-vm_async(contB intermediate)@taskB vm_await(taskB)
+[continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>])@C
+ [square(2)] async(C) @T1
+ [square(3)] async(C) @T2
+ minus(await(T2) await(T1))
+ stack!
+ ]@async_test7
 
-stack!
-]@async_test3
-
-
-async_test3!
+[minus(1)]@decrement
 
 repl(get_stdin!)

@@ -198,7 +198,7 @@ static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
         int status=0;
         LTV *arg=NULL, *coerced=NULL;
         STRY(!(arg=vm_stack_deq(POP)),"popping ffi arg (%s) from stack",name); // FIXME: attempt to resolve by name first
-        STRY(!(coerced=cif_coerce_i2c(arg,type)),"coercing ffi arg");
+        STRY(!(coerced=cif_coerce_i2c(arg,type)),"coercing ffi arg (%s)",name);
         LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
         LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
         LTV_release(arg);
@@ -329,9 +329,9 @@ extern void decaps() {
     return;
 }
 
-extern void vm_while(LTV *ltv) {
+extern void vm_while(LTV *lambda) {
     while (!vm_env->state)
-        vm_eval_ltv(ltv);
+        vm_eval_ltv(lambda);
 }
 
 extern void dup() {
@@ -615,19 +615,19 @@ static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
     return;
 }
 
-extern void *vm_await(pthread_t thread) {
-    void *result=NULL;
-    pthread_join(thread,&result);
+extern LTV *vm_await(pthread_t thread) {
+    LTV *result=NULL;
+    pthread_join(thread,(void *) &result);
     return result;
 }
 
 typedef void *(*vm_thunk)(void *); // make sure a pthread thunk type is aliased
 
-extern pthread_t vm_async(LTV *continuation,void *arg) {
+extern pthread_t vm_async(LTV *continuation,LTV *arg) {
     pthread_t thread;
     pthread_attr_t attr={};
     pthread_attr_init(&attr);
-    THROW(pthread_create(&thread,&attr,(vm_thunk) continuation->data,arg),LTV_NULL);
+    THROW(pthread_create(&thread,&attr,(vm_thunk) continuation->data,(void *) arg),LTV_NULL);
  done:
     return thread;
 }
@@ -643,15 +643,18 @@ extern LTV *vm_continuation(LTV *ffi_sig,LTV *root,LTV *code) {
     return continuation;
 }
 
-extern void *vm_eval(LTV *root,LTV *code,LTV *arg) {
-    return vm_await(vm_async(vm_continuation(cif_type_info("(void)*(*)((void)*)"),root,code),arg));
+extern LTV *vm_eval(LTV *root,LTV *code,LTV *arg) {
+    return vm_await(vm_async(vm_continuation(cif_type_info("(LTV)*(*)((LTV)*)"),root,code),arg));
 }
 
 char *vm_interpreter=
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
-    "ROOT<repl([bootstrap.edict] [r] file_open!)> 0 RETURN@";
+    "ROOT<repl([bootstrap.edict] [r] file_open!) ARG0 decaps! <> encaps! RETURN @>";
 
-extern void *vm_interpret() {
+extern int vm_interpret() {
     try_depth=0;
-    return vm_eval(cif_module,LTV_init(NEW(LTV),vm_interpreter,-1,LT_NONE),NULL);
+    LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),vm_interpreter,-1,LT_NONE),LTV_NULL);
+    if (rval)
+        print_ltv(stdout,"",rval,"\n",0);
+    return !rval;
 }

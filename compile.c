@@ -37,8 +37,8 @@ int jit_asm(EMITTER emit,void *data,int len)
         emit(cmd+i);
 }
 
-#define EDICT_OPS "@/&|"
-#define EDICT_MONO_OPS "!()<>"
+#define EDICT_OPS "@/!&|^"
+#define EDICT_MONO_OPS "()<>"
 
 int _jit_edict(EMITTER emit,void *data,int len)
 {
@@ -61,7 +61,6 @@ int _jit_edict(EMITTER emit,void *data,int len)
         else if ((tlen=series(tdata,len,EDICT_MONO_OPS,NULL,NULL))) {
             for (int i=0;i<tlen;i++)
                 switch (tdata[i]) {
-                    case '!': EMIT(EVAL);     break;
                     case '<': EMIT(CTX_PUSH); break;
                     case '>': EMIT(CTX_POP);  break;
                     case '(': EMIT(FUN_PUSH); break;
@@ -95,9 +94,11 @@ int _jit_edict(EMITTER emit,void *data,int len)
                     EMIT(DEREF);
                 for (int i=0;i<ops_len;i++) {
                     switch (ops_data[i]) {
-                        case '&': EMIT(THROW);  break;
-                        case '@': EMIT(ASSIGN); break;
-                        case '/': EMIT(REMOVE); break;
+                        case '@': EMIT(ASSIGN);  break;
+                        case '/': EMIT(REMOVE);  break;
+                        case '!': EMIT(EVAL);    break;
+                        case '&': EMIT(THROW);   break;
+                        case '^': EMIT(PUSHEXT); break;
                     }
                 }
             }

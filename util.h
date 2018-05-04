@@ -88,8 +88,9 @@ static inline int minint(int a,int b) { return MIN(a,b); }
 static inline int maxint(int a,int b) { return MAX(a,b); }
 
 //////////////////////////////////////////////////
-//#define DEBUG(stuff) do { stuff; } while(0)
-#define DEBUG(stuff) do { /*stuff;*/ } while(0)
+#define DEBUG(stuff) do {                                             \
+        /*stuff;*/                                                    \
+    } while(0)
 //////////////////////////////////////////////////
 
 extern unsigned try_depth;
@@ -119,7 +120,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
 
 #define TRY_ERR -1
 
-/** run sequential steps without nesting, with error reporting, and with support for unrolling */
+/* run sequential steps without nesting, with error reporting, and with support for unrolling */
 #pragma GCC diagnostic ignored "-Wformat-zero-length"
 #define TRY(_cond_,_msg_...)                                            \
     do {                                                                \

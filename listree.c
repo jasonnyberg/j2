@@ -846,9 +846,10 @@ int REF_delete(LTV *refs)
     return status;
 }
 
-int REF_resolve(LTV *root,LTV *refs,int insert)
+int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
 {
     int status=0;
+    LTV *root=root_ltv;
     STRY(!refs || !(refs->flags&LT_REFS),"validating params");
     CLL *cll=LTV_list(refs);
     REF *ref=NULL;
@@ -1000,10 +1001,10 @@ LTV *REF_ltv(REF *ref)   {
 void REF_print(FILE *ofile,REF *ref,char *label)
 {
     fprintf(ofile,label);
-    print_ltvs(ofile,"root(",&ref->root,")",1);
-    print_ltvs(ofile,"key(",&ref->keys,")",1);
-    fprintf(ofile,"lti(%x)",ref->lti);
-    print_ltv(ofile,"ltv(",ref->ltvr?ref->ltvr->ltv:NULL,")",1);
+    print_ltvs(ofile,"root(",&ref->root,") ",1);
+    print_ltvs(ofile,"key(",&ref->keys,") ",1);
+    fprintf(ofile,"lti(%x) ",REF_lti(ref));
+    print_ltv(ofile,"ltv(",REF_ltv(ref),")",1);
     fprintf(ofile,"\n");
 }
 

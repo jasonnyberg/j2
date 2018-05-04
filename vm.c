@@ -132,24 +132,6 @@ static LTV *vm_use_ext() {
     return vm_env->ext;
 }
 
-static void vm_push_code(LTV *ltv) {
-    THROW(!ltv,LTV_NULL);
-    LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
-    THROW(!opcode_ltv,LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",opcode_ltv->data));
-    THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),LTV_NULL); // encaps code ltv within tracking ltv
-    THROW(!vm_enq(VMRES_CODE,opcode_ltv),LTV_NULL);
- done:
-    return;
-}
-
-static void vm_get_code() {
-    vm_env->code_ltvr=NULL;
-    THROW(!(vm_env->code_ltv=LTV_get(ENV_LIST(VMRES_CODE),KEEP,HEAD,NULL,&vm_env->code_ltvr)),LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  GET CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
- done: return;
-}
-
 static void vm_listcat(int res) { // merge tos into head of nos
     LTV *tos,*nos;
     THROW(!(tos=vm_deq(res,POP)),LTV_NULL);
@@ -161,7 +143,25 @@ static void vm_listcat(int res) { // merge tos into head of nos
     return;
 }
 
-static void vm_pop_code() { DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
+static void vm_code_push(LTV *ltv) {
+    THROW(!ltv,LTV_NULL);
+    LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
+    THROW(!opcode_ltv,LTV_NULL);
+    DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",opcode_ltv->data));
+    THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),LTV_NULL); // encaps code ltv within tracking ltv
+    THROW(!vm_enq(VMRES_CODE,opcode_ltv),LTV_NULL);
+ done:
+    return;
+}
+
+static void vm_code_peek() {
+    vm_env->code_ltvr=NULL;
+    THROW(!(vm_env->code_ltv=LTV_get(ENV_LIST(VMRES_CODE),KEEP,HEAD,NULL,&vm_env->code_ltvr)),LTV_NULL);
+    DEBUG(fprintf(stderr,CODE_RED "  GET CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
+ done: return;
+}
+
+static void vm_code_pop() { DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);
     if (CLL_EMPTY(ENV_LIST(VMRES_CODE)))
@@ -239,7 +239,7 @@ static void vm_eval_ltv(LTV *ltv) {
     if (ltv->flags&LT_CVAR) // type, ffi, ...
         vm_eval_type(ltv);
     else
-        vm_push_code(compile_ltv(compilers[FORMAT_edict],ltv));
+        vm_code_push(compile_ltv(compilers[FORMAT_edict],ltv));
     vm_env->state|=VM_YIELD;
  done: return;
 }
@@ -399,6 +399,16 @@ static void vmop_PUSHEXT() { VMOP_DEBUG();
         vm_stack_enq(vm_env->ext);
         if (vm_env->ext->flags&LT_REFS)
             vm_resolve(vm_env->ext);
+    } else {
+        LTV *stack;
+        THROW(!(stack=vm_deq(VMRES_STACK,KEEP)),LTV_NULL);
+        LTV *dest=NULL;
+        THROW(!(dest=vm_stack_deq(POP)),LTV_NULL);
+        if ((dest->flags&LT_REFS) && REF_lti(REF_HEAD(dest)))
+            CLL_MERGE(&(REF_lti(REF_HEAD(dest))->ltvs),LTV_list(stack),HEAD);
+        else if (dest->flags&LT_LIST)
+            CLL_MERGE(LTV_list(dest),LTV_list(stack),HEAD);
+        vm_stack_enq(dest);
     }
  done: return;
 }
@@ -497,7 +507,7 @@ static void vmop_FUN_EVAL() { VMOP_DEBUG();
     if (vm_env->state && vm_env->skipdepth) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
         DESKIP;
     } else {
-        vm_push_code(unstack_bc); // stack signal to CTX_POP and REMOVE after eval
+        vm_code_push(unstack_bc); // stack signal to CTX_POP and REMOVE after eval
         vm_eval_ltv(vm_deq(VMRES_FUNC,POP));
     }
  done: return;
@@ -552,16 +562,16 @@ static VMOP_CALL vm_dispatch(VMOP_CALL call) {
     if (vm_env->code_ltv->len<=0) {
         vm_env->state|=VM_YIELD;
         vm_env->state&=~VM_BYPASS;
-        vm_pop_code();
+        vm_code_pop();
     }
     return vm_env->state?NULL:vmop_call[OPCODE];
 }
 
 static int vm_run() {
-    vm_push_code(compile(compilers[FORMAT_edict],"CODE!",-1));
+    vm_code_push(compile(compilers[FORMAT_edict],"CODE!",-1));
     while (!(vm_env->state&(VM_COMPLETE|VM_ERROR))) {
         vm_reset_ext();
-        vm_get_code();
+        vm_code_peek();
         VMOP_CALL call=vmop_call[OPCODE];
         do {
             call=vm_dispatch(call);

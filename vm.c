@@ -403,12 +403,12 @@ static void vmop_PUSHEXT() { VMOP_DEBUG();
         LTV *stack;
         THROW(!(stack=vm_deq(VMRES_STACK,KEEP)),LTV_NULL);
         LTV *dest=NULL;
-        THROW(!(dest=vm_stack_deq(POP)),LTV_NULL);
-        if ((dest->flags&LT_REFS) && REF_lti(REF_HEAD(dest)))
+        if ((dest=vm_stack_deq(KEEP)) && (dest->flags&LT_REFS) && (dest=vm_stack_deq(POP))) {
+            if (!REF_lti(REF_HEAD(dest))) // create LTI if it's not already resolved
+                REF_resolve(vm_deq(VMRES_DICT,KEEP),dest,TRUE);
             CLL_MERGE(&(REF_lti(REF_HEAD(dest))->ltvs),LTV_list(stack),HEAD);
-        else if (dest->flags&LT_LIST)
-            CLL_MERGE(LTV_list(dest),LTV_list(stack),HEAD);
-        vm_stack_enq(dest);
+            vm_stack_enq(dest);
+        }
     }
  done: return;
 }

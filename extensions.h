@@ -21,10 +21,6 @@
 #ifndef EXTENSIONS_H
 #define EXTENSIONS_H
 
-#include "listree.h"
-
-extern void vm_throw(LTV *ltv);
-#define THROW(expression,ltv) do { if (expression) { vm_throw(ltv); goto done; } } while(0)
 extern LTV *get_separated_debug_filename(char *filename);
 
 #endif

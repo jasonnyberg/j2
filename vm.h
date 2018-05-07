@@ -21,6 +21,16 @@
 #ifndef VM_H
 #define VM_H
 
+#include "listree.h"
+
 extern int vm_interpret();
+
+#define THROW(expression,ltv) do { if (expression) { vm_throw(ltv); goto done; } } while(0)
+
+extern void vm_throw(LTV *ltv);
+extern LTV *vm_stack_enq(LTV *ltv);
+extern LTV *vm_stack_deq(int pop);
+extern LTV *vm_resolve(LTV *ref);
+extern void vm_eval_ltv(LTV *ltv);
 
 #endif // VM_H

@@ -102,8 +102,8 @@ void debug(const char *fromwhere) { return; }
 static LTV *vm_enq(int res,LTV *tos) { return LTV_put(ENV_LIST(res),tos,HEAD,NULL); }
 static LTV *vm_deq(int res,int pop)  { return LTV_get(ENV_LIST(res),pop,HEAD,NULL,NULL); }
 
-static LTV *vm_stack_enq(LTV *ltv) { return LTV_enq(LTV_list(vm_deq(VMRES_STACK,KEEP)),ltv,HEAD); }
-static LTV *vm_stack_deq(int pop) {
+LTV *vm_stack_enq(LTV *ltv) { return LTV_enq(LTV_list(vm_deq(VMRES_STACK,KEEP)),ltv,HEAD); }
+LTV *vm_stack_deq(int pop) {
     void *op(CLL *lnk) { return LTV_get(LTV_list(((LTVR *) lnk)->ltv),pop,HEAD,NULL,NULL); }
     LTV *rval=CLL_map(ENV_LIST(VMRES_STACK),FWD,op);
     return rval;
@@ -177,7 +177,7 @@ static void vm_resolve_at(CLL *cll,LTV *ref) {
     return;
 }
 
-static LTV *vm_resolve(LTV *ref) {
+LTV *vm_resolve(LTV *ref) {
     vm_resolve_at(ENV_LIST(VMRES_DICT),ref);
     return REF_ltv(REF_HEAD(vm_env->ext));
 }
@@ -234,7 +234,7 @@ static void vm_eval_type(LTV *type) {
     return;
 }
 
-static void vm_eval_ltv(LTV *ltv) {
+void vm_eval_ltv(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
     if (ltv->flags&LT_CVAR) // type, ffi, ...
         vm_eval_type(ltv);
@@ -250,8 +250,8 @@ extern void is_lit() {
     THROW(ltv->flags&LT_NSTR,LTV_NULL); // throw if non-string
     int tlen=series(ltv->data,ltv->len,WHITESPACE,NULL,NULL);
     THROW(tlen && ltv->len==tlen,LTV_NULL);
-    LTV_release(ltv);
  done:
+    LTV_release(ltv);
     return;
 }
 

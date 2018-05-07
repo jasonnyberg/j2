@@ -39,7 +39,8 @@
 #include "util.h"
 #include "listree.h"
 #include "reflect.h"
-#include "extensions.h" // throw
+#include "vm.h"
+#include "extensions.h"
 
 LTV *cif_module=NULL;// initialized/populated during bootstrap
 

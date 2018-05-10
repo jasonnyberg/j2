@@ -627,9 +627,10 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
     STRY(!type_info || !cu_data,"validating params");
 
     STRY(die==NULL,"testing for null die");
-    STRY(dwarf_dieoffset(die,&type_info->die,&error),"getting global die offset");
-    DWARF_ID(type_info->id_str,type_info->die);
-    DWARF_ID(cu_data->offset_str,type_info->die);
+    Dwarf_Off goff;
+    STRY(dwarf_dieoffset(die,&goff,&error),"getting global die offset");
+    DWARF_ID(type_info->id_str,goff);
+    DWARF_ID(cu_data->offset_str,goff);
     STRY(dwarf_tag(die,&type_info->tag,&error),"getting die tag");
 
     if (dwarf_get_die_infotypes_flag(die))
@@ -693,8 +694,8 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 
         Dwarf_Half vshort;
         STRY(dwarf_whatattr(*attr,&vshort,&error),"getting attr type");
-                Dwarf_Off voffset;
-                Dwarf_Sig8 vsig8;
+        Dwarf_Off voffset;
+        Dwarf_Sig8 vsig8;
 
         switch (vshort) {
             case DW_AT_name: // string
@@ -946,7 +947,7 @@ int cif_dump_module(char *ofilename,LTV *module)
     int status=0;
     FILE *ofile=fopen(ofilename,"w");
 
-    void *traverse_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    void *traverse_types(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags); // finesse: traverse flags below won't match if listree_acyclic sets LT_TRAVERSE_HALT
         if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR && !((*ltv)->flags&LT_TYPE)) {
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
@@ -1000,7 +1001,6 @@ int _cif_curate_module(LTV *module,int bootstrap)
             TRYCATCH(type_info->flags&TYPEF_SYMBOLIC,0,done,"checking if symbolic name already derived");
             TYPE_INFO_LTV *base_info=NULL;
             if (type_info->flags&TYPEF_BASE) // link to base type
-                //STRY(!(base_info=(TYPE_INFO_LTV *) LT_get(index,type_info->base_str,HEAD,KEEP)),"looking up base die for %s",type_info->id_str);
                 STRY(!(base_info=(TYPE_INFO_LTV *) LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)),"looking up base die for %s",type_info->id_str);
 
             char *type_name=attr_get(&type_info->ltv,TYPE_NAME);
@@ -1049,8 +1049,10 @@ int _cif_curate_module(LTV *module,int bootstrap)
                     }
                 }
 
-                if (!deduped)
+                if (!deduped) {
+                    DEBUG(printf("installing symbolic type_info %s (%d)\n",sym,type_info->die));
                     LT_put(module,sym,TAIL,&type_info->ltv);
+                }
 
                 return deduped?deduped:type_info;
             }
@@ -1182,11 +1184,10 @@ int _cif_curate_module(LTV *module,int bootstrap)
             return status;
         }
 
-        void *resolve_types(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        void *resolve_types(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
                 derive_symbolic_name((TYPE_INFO_LTV *) (*ltv),(*flags)&LT_TRAVERSE_POST);
-                // (*lti)=LTI_resolve((*ltv),TYPE_BASE,false); // just descend types
             }
             return NULL;
         }
@@ -1268,13 +1269,6 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 if ((name=get_diename(dbg,die))) // name is allocated from heap...
                     STRY(!attr_own(&type_info->ltv,TYPE_NAME,name),"naming type info");
 
-                /*
-                  if (type_info->tag==DW_TAG_type_unit) {
-                  type_info->sig8=cu_data.sig8;
-                  type_info->flags|=TYPEF_SIGNATURE;
-                  }
-                */
-
                 if (type_info->tag) {
                     DEBUG(fprintf(stdout,"%*c",MAX(0,depth*4-2),' '));
                     DEBUG(print_type_info(stdout,type_info));
@@ -1323,31 +1317,30 @@ int _cif_curate_module(LTV *module,int bootstrap)
         return work_op(NULL,die,0);
     }
 
-    void *resolve_aliases(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    void *resolve_aliases(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
             LTV *base=resolve_alias(*ltv);
             if (base)
                 LT_put((*ltv),TYPE_BASE,HEAD,base);
         }
-        listree_acyclic(lti,ltvr,ltv,depth,flags); // at end of body because LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
         return NULL;
     }
 
-    void *remove_die_names(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    void *remove_die_names(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE)
             attr_del((*ltv),TYPE_NAME);
-        listree_acyclic(lti,ltvr,ltv,depth,flags); // at end of body because LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
         return NULL;
     }
 
-    void *resolve_meta(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        void link_metatype(TYPE_INFO_LTV *type_info) {
+    void *resolve_meta(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
+            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *)(*ltv);
             LTV *base_info=NULL;
             if (type_info->tag==DW_TAG_pointer_type && (base_info=LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)))
                 LT_put(base_info,TYPE_META,TAIL,&type_info->ltv);
         }
-        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
-            link_metatype((TYPE_INFO_LTV *) (*ltv));
         return NULL;
     }
 
@@ -1670,6 +1663,7 @@ int cif_ffi_prep(LTV *type)
         int status=0;
         int largest=0;
         char *name=attr_get(ltv,TYPE_SYMB);
+        DEBUG(printf("ffi_prep child for %s\n",name));
         LTI *children=LTI_resolve(ltv,TYPE_LIST,0);
         if (tag==DW_TAG_union_type)
             *count=1;
@@ -1683,6 +1677,7 @@ int cif_ffi_prep(LTV *type)
                 LTV *child_type=((LTVR *) lnk)->ltv;
                 char *child_name=attr_get(child_type,TYPE_SYMB);
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) child_type->data;
+                DEBUG(printf("ffi_prep child %s(%s)\n",child_name,type_info->id_str));
                 LTV *child_ffi_ltv=cvar_ffi_ltv(child_type,&size);
                 STRY(!child_ffi_ltv,"validating child ffi ltv");
 
@@ -1710,11 +1705,12 @@ int cif_ffi_prep(LTV *type)
         return status;
     }
 
-    void *pre(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    void *pre(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         if ((*flags&LT_TRAVERSE_LTV)) {
             char *name=attr_get((*ltv),TYPE_SYMB);
             if ((*ltv)->flags&LT_TYPE) {
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+                DEBUG(printf("ffi_prep pre %s(%s)\n",name,type_info->id_str));
                 int size=0;
                 switch (type_info->tag) {
                     case DW_TAG_union_type:
@@ -1742,11 +1738,12 @@ int cif_ffi_prep(LTV *type)
         return status?NON_NULL:NULL;
     }
 
-    void *post(LTI **lti,LTVR **ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    void *post(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         if ((*flags&LT_TRAVERSE_LTV)) {
             char *name=attr_get((*ltv),TYPE_SYMB);
             if ((*ltv)->flags&LT_TYPE) {
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+                DEBUG(printf("ffi_prep post %s(%s)\n",name,type_info->id_str));
                 if (!LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) {
                     switch (type_info->tag) {
                         case DW_TAG_union_type:

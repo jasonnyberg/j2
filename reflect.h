@@ -140,7 +140,6 @@ typedef struct
     int depth;
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
-    Dwarf_Off die;
     Dwarf_Off base;
     TYPE_FLAGS flags;
     Dwarf_Half tag; // kind of item (base, struct, etc.

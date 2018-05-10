@@ -33,6 +33,7 @@
 #include "trace.h" // lttng
 
 int show_ref=0;
+int lti_count=0,ltvr_count=0,ltv_count=0;
 
 //////////////////////////////////////////////////
 // LisTree
@@ -99,6 +100,7 @@ LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags)
 {
     if (ltv && ((flags&LT_NAP) || data)) { // null ptr is error
+        ltv_count++;
         ZERO(*ltv);
         if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
         LTV_renew(ltv,data,len,flags);
@@ -111,6 +113,7 @@ void LTV_free(LTV *ltv)
     if (ltv) {
         LTV_renew(ltv,NULL,0,0);
         RELEASE(ltv);
+        ltv_count--;
     }
 }
 
@@ -139,6 +142,7 @@ void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
 LTVR *LTVR_init(LTVR *ltvr,LTV *ltv)
 {
     if (ltvr && ltv) {
+        ltvr_count++;
         ZERO(*ltvr);
         CLL_init(&ltvr->lnk);
         ltvr->ltv=ltv;
@@ -155,6 +159,7 @@ LTV *LTVR_free(LTVR *ltvr)
         if ((ltv=ltvr->ltv))
             ltv->refs--;
         RELEASE(ltvr);
+        ltvr_count--;
     }
     return ltv;
 }
@@ -164,6 +169,7 @@ LTV *LTVR_free(LTVR *ltvr)
 LTI *LTI_init(LTI *lti,char *name,int len)
 {
     if (lti && name) {
+        lti_count++;
         ZERO(*lti);
         lti->name=bufdup(name,len);
         CLL_init(&lti->ltvs);
@@ -176,6 +182,7 @@ void LTI_free(LTI *lti)
     if (lti) {
         RELEASE(lti->name);
         RELEASE(lti);
+        lti_count--;
     }
 }
 

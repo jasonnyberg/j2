@@ -11,8 +11,8 @@
 [[preview(lib) import(lib) lib](@lib)]@loadlib
 
 [loadlib([test/build/libtestlib.so]) @test test.y.1 stack!]@testimport
-[loadlib([/home/jnyberg/htm/build/libhtmlib.so]) @htm htm.init(0 0)]@testimport2
-[loadlib([/home/jnyberg/htm/build/libhtmlib.so]) <init(0 0)>]@testimport3
+[loadlib([/home/jnyberg/htm/build/libhtmlib.so]) @htm htm.init(int! '((char)*)*'!)]@testimport2
+[loadlib([/home/jnyberg/htm/build/libhtmlib.so]) <init(int! '((char)*)*'!)>]@testimport3
 
 [bench encaps! vm_while! | locals!]@fastbench
 [bench [dup! ! loop!]@loop loop! | locals!]@midbench

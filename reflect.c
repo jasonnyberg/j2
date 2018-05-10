@@ -1128,28 +1128,29 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 case DW_TAG_subprogram:
                 case DW_TAG_subroutine_type:
                     if (post) {
-                        char buf[1024];
-                        char *bufloc=buf;
-                        int count=0;
-                        int marshaller(char *name,LTV *type) {
-                            count++;
-                            LTV *base=cif_find_symbolic(type);
-                            bufloc+=sprintf(bufloc,"%s,",attr_get(base,TYPE_SYMB));
-                            return 0;
-                        }
-                        bufloc+=sprintf(bufloc,"%s(*)(",base_symb);
-                        STRY(cif_args_marshal(&type_info->ltv,FWD,marshaller),"marshalling ffi args"); // pre-
-                        bufloc+=sprintf(bufloc-(count?1:0),")");
-                        TYPE_INFO_LTV *cvar_type=categorize_symbolic(buf); // GLOBAL!
                         if (type_name && !LT_get(module,type_name,HEAD,KEEP)) {
                             void *addr=NULL;
                             if (dlhandle) {
                                 dlerror(); // reset
-                                if (!(addr=dlsym(dlhandle,type_name)))
-                                    fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
+                                if ((addr=dlsym(dlhandle,type_name))) {
+                                    char buf[1024];
+                                    char *bufloc=buf;
+                                    int count=0;
+                                    int marshaller(char *name,LTV *type) {
+                                        count++;
+                                        LTV *base=cif_find_symbolic(type);
+                                        bufloc+=sprintf(bufloc,"%s,",attr_get(base,TYPE_SYMB));
+                                        return 0;
+                                    }
+                                    bufloc+=sprintf(bufloc,"%s(*)(",base_symb);
+                                    STRY(cif_args_marshal(&type_info->ltv,FWD,marshaller),"marshalling ffi args"); // pre-
+                                    bufloc+=sprintf(bufloc-(count?1:0),")");
+                                    TYPE_INFO_LTV *cvar_type=categorize_symbolic(buf); // GLOBAL!
+                                    LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
+                                } else
+                                    DEBUG(fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror()));
                             } else
-                                fprintf(stderr,"no address for function %s\n",type_name);
-                            LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
+                                fprintf(stderr,"no dlhandle for function %s\n",type_name);
                         }
                     }
                     break;
@@ -1159,11 +1160,12 @@ int _cif_curate_module(LTV *module,int bootstrap)
                             void *addr=NULL;
                             if (dlhandle) {
                                 dlerror(); // reset
-                                if (!(addr=dlsym(dlhandle,type_name)))
-                                    fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror());
+                                if ((addr=dlsym(dlhandle,type_name)))
+                                    LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
+                                else
+                                    DEBUG(fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror()));
                             } else
-                                fprintf(stderr,"no address for variable %s\n",type_name);
-                            LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
+                                fprintf(stderr,"no dlhandle for variable %s\n",type_name);
                         }
                     }
                     break;

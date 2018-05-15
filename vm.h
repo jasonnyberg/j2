@@ -30,6 +30,8 @@ extern int vm_interpret();
 extern void vm_throw(LTV *ltv);
 extern LTV *vm_stack_enq(LTV *ltv);
 extern LTV *vm_stack_deq(int pop);
+extern LTV *encaps_ltv(LTV *ltv);
+extern LTV *decaps_ltv(LTV *ltv);
 extern LTV *vm_resolve(LTV *ref);
 extern void vm_eval_ltv(LTV *ltv);
 

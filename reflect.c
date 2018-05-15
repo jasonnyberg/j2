@@ -948,12 +948,13 @@ int cif_dump_module(char *ofilename,LTV *module)
     FILE *ofile=fopen(ofilename,"w");
 
     void *traverse_types(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        listree_acyclic(lti,ltvr,ltv,depth,flags); // finesse: traverse flags below won't match if listree_acyclic sets LT_TRAVERSE_HALT
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
         if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_CVAR && !((*ltv)->flags&LT_TYPE)) {
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
-            fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_SYMB));
             if (type_info->flags&TYPEF_BASE)
                 fprintf(ofile,"\"%s\" -> \"%s\"\n",type_info->id_str,type_info->base_str);
+            if (!(*flags)&LT_TRAVERSE_HALT)
+                fprintf(ofile,"\"%s\" [label=\"%s\"]\n",type_info->id_str,attr_get((*ltv),TYPE_SYMB));
         }
         return NULL;
     }
@@ -1043,14 +1044,14 @@ int _cif_curate_module(LTV *module,int bootstrap)
                             const char *already,*named;
                             named=attr_get(&sym_type_info->ltv,TYPE_NAME);
                             dwarf_get_TAG_name(sym_type_info->tag,&already);
-                            printf(CODE_RED "type info tag conflict: %s (%s:%p vs. %s:%p), installing %d/%s but found %d/%s" CODE_RESET "\n",
-                                   sym,type_name,type_info,named,sym_type_info,type_info->tag,is,sym_type_info->tag,already);
+                            printf(CODE_RED "conflict for \"%s\": %s (%s) \"%s\" vs. (installed)  %s (%s) \"%s\"" CODE_RESET "\n",
+                                   sym,is,type_info->id_str,type_name,already,sym_type_info->id_str,named);
                         }
                     }
                 }
 
                 if (!deduped) {
-                    DEBUG(printf("installing symbolic type_info %s (%d)\n",sym,type_info->die));
+                    DEBUG(printf("installing symbolic type_info %s (%s)\n",sym,type_info->id_str));
                     LT_put(module,sym,TAIL,&type_info->ltv);
                 }
 
@@ -1187,9 +1188,10 @@ int _cif_curate_module(LTV *module,int bootstrap)
         }
 
         void *resolve_types(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-            listree_acyclic(lti,ltvr,ltv,depth,flags);
-            if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) { // finesse: LT_TRAVERSE_LTV won't match if listree_acyclic set LT_TRAVERSE_HALT
-                derive_symbolic_name((TYPE_INFO_LTV *) (*ltv),(*flags)&LT_TRAVERSE_POST);
+            if (!listree_acyclic(lti,ltvr,ltv,depth,flags)) {
+                if (((*flags)&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
+                    derive_symbolic_name((TYPE_INFO_LTV *) (*ltv),(*flags)&LT_TRAVERSE_POST);
+                }
             }
             return NULL;
         }
@@ -1320,28 +1322,30 @@ int _cif_curate_module(LTV *module,int bootstrap)
     }
 
     void *resolve_aliases(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        listree_acyclic(lti,ltvr,ltv,depth,flags);
-        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
-            LTV *base=resolve_alias(*ltv);
-            if (base)
-                LT_put((*ltv),TYPE_BASE,HEAD,base);
+        if (!listree_acyclic(lti,ltvr,ltv,depth,flags)) {
+            if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
+                LTV *base=resolve_alias(*ltv);
+                if (base)
+                    LT_put((*ltv),TYPE_BASE,HEAD,base);
+            }
         }
         return NULL;
     }
 
     void *remove_die_names(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        listree_acyclic(lti,ltvr,ltv,depth,flags);
-        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE)
-            attr_del((*ltv),TYPE_NAME);
+        if (!listree_acyclic(lti,ltvr,ltv,depth,flags)) {
+            if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE)
+                attr_del((*ltv),TYPE_NAME);
+        }
         return NULL;
     }
 
     void *resolve_meta(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
-            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *)(*ltv);
-            LTV *base_info=NULL;
-            if (type_info->tag==DW_TAG_pointer_type && (base_info=LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)))
-                LT_put(base_info,TYPE_META,TAIL,&type_info->ltv);
+            if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
+                TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *)(*ltv);
+                LTV *base_info=NULL;
+                if (type_info->tag==DW_TAG_pointer_type && (base_info=LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)))
+                    LT_put(base_info,TYPE_META,TAIL,&type_info->ltv);
         }
         return NULL;
     }
@@ -1708,29 +1712,33 @@ int cif_ffi_prep(LTV *type)
     }
 
     void *pre(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if ((*flags&LT_TRAVERSE_LTV)) {
-            char *name=attr_get((*ltv),TYPE_SYMB);
-            if ((*ltv)->flags&LT_TYPE) {
-                TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
-                DEBUG(printf("ffi_prep pre %s(%s)\n",name,type_info->id_str));
-                int size=0;
-                switch (type_info->tag) {
-                    case DW_TAG_union_type:
-                    case DW_TAG_structure_type:
-                    case DW_TAG_subprogram:
-                    case DW_TAG_subroutine_type:
-                        if (LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) // definitely have traversed this subtree
-                            *flags|=LT_TRAVERSE_HALT;
-                        break; // complex types, handle in post
-                    default: { // fill in basic types in pre, halting traversal for each
-                        LTV *basic_type=cif_find_concrete(*ltv);
-                        if (basic_type && !LT_get(basic_type,FFI_TYPE,HEAD,KEEP)) {
-                            LTV *ftl=basic_ffi_ltv(basic_type); // only returns something for basic types
-                            if (ftl) { // basic types
-                                STRY(!LT_put(basic_type,FFI_TYPE,HEAD,ftl),"installing basic ffi type");
+        if (((*flags)&LT_TRAVERSE_LTV)) {
+            if ((*ltv)->flags&LT_RVIS) // allow absolute descent but not recursive descent
+                (*flags)|=LT_TRAVERSE_HALT;
+            else {
+                char *name=attr_get((*ltv),TYPE_SYMB);
+                if ((*ltv)->flags&LT_TYPE) {
+                    TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+                    DEBUG(printf("ffi_prep pre %s(%s)\n",name,type_info->id_str));
+                    int size=0;
+                    switch (type_info->tag) {
+                        case DW_TAG_union_type:
+                        case DW_TAG_structure_type:
+                        case DW_TAG_subprogram:
+                        case DW_TAG_subroutine_type:
+                            if (LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) // definitely have traversed this subtree
+                                *flags|=LT_TRAVERSE_HALT;
+                            break; // complex types, handle in post
+                        default: { // fill in basic types in pre, halting traversal for each
+                            LTV *basic_type=cif_find_concrete(*ltv);
+                            if (basic_type && !LT_get(basic_type,FFI_TYPE,HEAD,KEEP)) {
+                                LTV *ftl=basic_ffi_ltv(basic_type); // only returns something for basic types
+                                if (ftl) { // basic types
+                                    STRY(!LT_put(basic_type,FFI_TYPE,HEAD,ftl),"installing basic ffi type");
+                                }
                             }
+                            break;
                         }
-                        break;
                     }
                 }
             }
@@ -1953,11 +1961,11 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 
     LTV *type_base=cif_find_concrete(type);
 
+    char *type_name=attr_get(type_base,TYPE_SYMB);
+    int match(char *key) { return !strcmp(key,type_name); }
     if (!(ltv->flags&LT_CVAR)) { // first, dress a non-cvar ltv up in something appropriate
-        char *type_name=attr_get(type_base,TYPE_SYMB);
-        int match(char *key) { return !strcmp(key,type_name); }
-        if (match("(LTV)*")) // encaps LTV when dest is an LTV*
-            result=cif_create_cvar(cif_type_info("LTV"),ltv,NULL);
+        if (match("(LTV)*"))
+            result=cif_create_cvar(cif_type_info("LTV"),ltv,NULL); // encaps LTV when dest is an LTV*
         else if (match("(char)*") || match("(unsigned char)*")) // ltv data -> char array
             STRY(!(result=cif_create_cvar(type_base,&ltv->data,NULL)),"creating string coersion"); // cvar->data=&ltv->data, i.e. cvar will point to a void*
         else if (is_readable(type_base)) {
@@ -1979,6 +1987,8 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
             LTV *meta=cif_get_meta(cvar_base);
             if (meta && type_base==meta) // allow X to X* coersions
                 result=cif_put_meta(ltv,meta);
+            else if (match("(LTV)*"))
+                result=encaps_ltv(ltv);
         }
     }
  done:

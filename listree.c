@@ -218,9 +218,9 @@ void LTI_release(RBN *rbn) {
 
 // add to preop to avoid repeat visits in listree traverse
 void *listree_acyclic(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-    if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_AVIS)
+    if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&(LT_AVIS|LT_RVIS))
         *flags|=LT_TRAVERSE_HALT;
-    return NULL;
+    return (*flags)&LT_TRAVERSE_HALT?NON_NULL:NULL;
 }
 
 void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
@@ -259,7 +259,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
         LT_TRAVERSE_FLAGS flags=LT_TRAVERSE_LTV;
         if (cleanup) // only descends (and cleans up) LTVs w/absolute visited flag
             return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && !(ltv->flags&LT_REFS))? LTV_map(ltv,FWD,descend_lti,descend_ltvr):NULL;
-        else if (!(ltv->flags&LT_RVIS)) {
+        else {
             if (preop && (rval=preop(&child,parent_ltvr,&ltv,depth,&flags))) goto done;
             if ((flags&LT_TRAVERSE_HALT) || (ltv->flags&LT_REFS)) goto done;
             ltv->flags|=LT_RVIS;
@@ -442,7 +442,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 else fprintf(ofile,"]\n");
 
                 if ((*flags)&LT_TRAVERSE_HALT) // already visited
-                    fprintf(ofile,"%*c  (subtree omitted...)\n",MAX(0,depth*4-2),' ');
+                    fprintf(ofile,"%*c (subtree omitted...)\n",MAX(0,depth*4-2),' ');
 
                 if (LTV_hide(*ltv))
                     (*flags)|=LT_TRAVERSE_HALT;
@@ -543,27 +543,23 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
     void *preop(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
-        switch(*flags) {
-            case LT_TRAVERSE_LTI:
-                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
-                    *flags|=LT_TRAVERSE_HALT;
-                else
-                    lti2dot(*ltv,*lti);
-                break;
-            case LT_TRAVERSE_LTV:
-                if (*lti)
-                    lti_ltvr2dot(*lti,ltvr);
-                else if (ltvr)
-                    ltv_ltvr2dot(*ltv,ltvr);
-
+        if ((*flags)&LT_TRAVERSE_LTI) {
+            if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                *flags|=LT_TRAVERSE_HALT;
+            else
+                lti2dot(*ltv,*lti);
+        } else if ((*flags)&LT_TRAVERSE_LTV) {
+            if (*lti)
+                lti_ltvr2dot(*lti,ltvr);
+            else if (ltvr)
+                ltv_ltvr2dot(*ltv,ltvr);
+            if (!((*flags)&LT_TRAVERSE_HALT)) {
                 ltv2dot(ltvr,*ltv,depth,flags);
                 if (LTV_hide(*ltv))
                     *flags|=LT_TRAVERSE_HALT;
                 else
                     ltv_descend(*ltv);
-                break;
-            default: // finesse: if LT_TRAVERSE_HALT is set by listree_acyclic, none of the above will hit
-                break;
+            }
         }
         return NULL;
     }
@@ -616,27 +612,23 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
     void *preop(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
         listree_acyclic(lti,ltvr,ltv,depth,flags);
-        switch(*flags) {
-            case LT_TRAVERSE_LTI:
-                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
-                    *flags|=LT_TRAVERSE_HALT;
-                else
-                    lti2dot(*ltv,*lti);
-                break;
-            case LT_TRAVERSE_LTV:
-                if (*lti)
-                    lti_ltvr2dot(*lti,ltvr);
-                else if (ltvr)
-                    ltv_ltvr2dot(*ltv,ltvr);
-
+        if ((*flags)&LT_TRAVERSE_LTI) {
+            if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                *flags|=LT_TRAVERSE_HALT;
+            else
+                lti2dot(*ltv,*lti);
+        } else if ((*flags)&LT_TRAVERSE_LTV) {
+            if (*lti)
+                lti_ltvr2dot(*lti,ltvr);
+            else if (ltvr)
+                ltv_ltvr2dot(*ltv,ltvr);
+            if (!((*flags)&LT_TRAVERSE_HALT)) {
                 ltv2dot(ltvr,*ltv,depth,flags);
                 if (LTV_hide(*ltv))
                     *flags|=LT_TRAVERSE_HALT;
                 else
                     ltv_descend(*ltv);
-                break;
-            default: // finesse: if LT_TRAVERSE_HALT is set by listree_acyclic, none of the above will hit
-                break;
+            }
         }
         return NULL;
     }

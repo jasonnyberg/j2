@@ -307,7 +307,7 @@ extern void stack() {
     return;
 }
 
-extern LTV *encaps_ltv(LTV *ltv) {
+LTV *encaps_ltv(LTV *ltv) {
     LTV *ltvltv=NULL;
     THROW(!(ltvltv=cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL)),LTV_NULL); // allocate an LTV *
     (*(LTV **) ltvltv->data)=ltv; // ltvltv->data is a pointer to an LTV *
@@ -322,7 +322,7 @@ extern void encaps() {
     return;
 }
 
-extern LTV *decaps_ltv(LTV *ltv) { return ltv; } // all the work is done via coersion
+LTV *decaps_ltv(LTV *ltv) { return ltv; } // all the work is done via coersion
 
 extern void decaps() {
     LTV *cvar_ltv=NULL,*ptr=NULL;

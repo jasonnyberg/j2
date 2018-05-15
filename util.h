@@ -89,7 +89,7 @@ static inline int maxint(int a,int b) { return MAX(a,b); }
 
 //////////////////////////////////////////////////
 #define DEBUG(stuff) do {                                             \
-        /*stuff;*/                                                    \
+       /* stuff; */                                                   \
     } while(0)
 //////////////////////////////////////////////////
 

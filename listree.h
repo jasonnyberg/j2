@@ -152,6 +152,7 @@ extern LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr); //
 extern void LTV_erase(LTV *ltv,LTI *lti);
 
 extern LTV *LTV_dup(LTV *ltv);
+extern LTV *LTV_copy(LTV *ltv,unsigned maxdepth);
 extern LTV *LTV_concat(LTV *a,LTV *b);
 extern int LTV_wildcard(LTV *ltv);
 

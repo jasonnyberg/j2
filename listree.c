@@ -387,6 +387,68 @@ LTV *LTV_dup(LTV *ltv)
     return LTV_init(NEW(LTV),ltv->data,ltv->len,flags);
 }
 
+LTV *LTV_copy(LTV *ltv,unsigned maxdepth)
+{
+    LTV *index=LTV_NULL,*dupes=LTV_NULL;
+    char buf[32];
+    int index_ltv(LTV *ltv) {
+        LTV *dup=NULL;
+        sprintf(buf,"%p",ltv);
+        if (!LT_get(index,buf,HEAD,KEEP)) {
+            LT_put(index,buf,HEAD,ltv);
+            if (!(ltv->flags&(LT_CVAR|LT_REFS)))
+                dup=LTV_dup(ltv);
+            if (dup)
+                LT_put(dupes,buf,HEAD,LTV_dup(ltv));
+        }
+    }
+
+    void *index_ltvs(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        if (!((*flags)&LT_TRAVERSE_HALT) && ((*flags)&LT_TRAVERSE_LTV) && depth<=maxdepth) {
+            index_ltv(*ltv);
+            if ((*ltv)->flags&(LT_CVAR|LT_REFS))
+                (*flags)|=LT_TRAVERSE_HALT;
+        }
+        if (depth==maxdepth)
+            (*flags)|=LT_TRAVERSE_HALT;
+        return NULL;
+    }
+    ltv_traverse(ltv,index_ltvs,NULL)!=NULL,LTV_NULL;
+
+    LTV *new_or_used(LTV *ltv) {
+        char buf[32];
+        sprintf(buf,"%p",ltv);
+        LTV *rval=NULL;
+        return ((rval=LT_get(dupes,buf,HEAD,KEEP)))?rval:ltv;
+    }
+
+    void *descend_lti(RBN *rbn) {
+        LTI *lti=(LTI *) rbn;
+        LTV *orig=LTV_peek(&lti->ltvs,HEAD);
+        LTV *dupe=LT_get(dupes,lti->name,HEAD,KEEP);
+
+        void *copy_children(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+            if (((*flags)&LT_TRAVERSE_LTV) && depth==1 && (*lti)) {
+                LT_put(dupe,(*lti)->name,TAIL,new_or_used(*ltv));
+                (*flags)|=LT_TRAVERSE_HALT;
+            }
+            return NULL;
+        }
+
+        ltv_traverse(orig,copy_children,NULL)!=NULL,LTV_NULL;
+    done:
+        return NULL;
+    }
+    LTV_map(index,FWD,descend_lti,NULL);
+
+    LTV *result=new_or_used(ltv);
+    LTV_release(index);
+    LTV_release(dupes);
+ done:
+    return result;
+}
+
 LTV *LTV_concat(LTV *a,LTV *b)
 {
     int status=0;

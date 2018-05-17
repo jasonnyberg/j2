@@ -108,7 +108,7 @@ typedef int (*DIE_OP)(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags);
 int traverse_siblings(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op,DIEWALK_FLAGS flags)
 {
     int status=0;
-    Dwarf_Error error;
+    Dwarf_Error error=0;
     Dwarf_Die sibling=0;
 
  iterate:
@@ -134,7 +134,7 @@ int traverse_siblings(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op,DIEWALK_FLAGS flag
 int traverse_child(Dwarf_Debug dbg,Dwarf_Die die,DIE_OP op,DIEWALK_FLAGS flags)
 {
     int status=0;
-    Dwarf_Error error;
+    Dwarf_Error error=0;
     Dwarf_Die child=0;
     TRY(dwarf_child(die,&child,&error),"retrieving dwarf_child");
     CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking dwarf child's existence");
@@ -148,7 +148,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
 {
     int status=0;
     Dwarf_Debug dbg;
-    Dwarf_Error error;
+    Dwarf_Error error=0;
 
     int read_cu_list() {
         CU_DATA cu_data_local;
@@ -620,7 +620,7 @@ int cif_die_offset(Dwarf_Die die,Dwarf_Off *offset,Dwarf_Error *error) {
 int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU_DATA *cu_data)
 {
     int status=0;
-    Dwarf_Error error;
+    Dwarf_Error error=0;
 
     char *diename = NULL;
 
@@ -911,7 +911,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 char *get_diename(Dwarf_Debug dbg,Dwarf_Die die)
 {
     int status=0;
-    Dwarf_Error error;
+    Dwarf_Error error=0;
     char *diename=NULL;
     STRY(dwarf_diename(die,&diename,&error)==DW_DLV_ERROR,"checking dwarf_diename");
     char *type_info_name=diename?bufdup(diename,-1):NULL;
@@ -926,7 +926,7 @@ int _cif_preview_module(LTV *module) // just put the cu name under module
     CU_DATA cu_data;
     int op(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags) {
         int status=0;
-        Dwarf_Error error;
+        Dwarf_Error error=0;
         char *cu_name=NULL;
         Dwarf_Off offset;
         STRY(dwarf_CU_dieoffset_given_die(die,&offset,&error),"getting global die offset");
@@ -1213,7 +1213,7 @@ int _cif_curate_module(LTV *module,int bootstrap)
     int curate_die(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags) {
         int work_op(LTV *parent,Dwarf_Die die,int depth) { // propagates parentage through the stateless DIE_OP calls
             int status=0;
-            Dwarf_Error error;
+            Dwarf_Error error=0;
             TYPE_INFO_LTV *type_info=NULL;
             TYPE_INFO_LTV *parent_type_info=(TYPE_INFO_LTV *) parent;
 

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 #add_definitions(-fPIC -std=gnu99 -ggdb3 -gdwarf-4 -fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.)
-add_definitions(-fPIC -std=gnu99 -ggdb3 -gdwarf-4)
+add_definitions(-fPIC -std=gnu99 -ggdb3 -gdwarf-4 -O3)
 add_definitions(-fdebug-types-section -fno-eliminate-unused-debug-types)
 include_directories(.)
 set (CMAKE_SHARED_LINKER_FLAGS "-Wl,-fno-eliminate-unused-debug-types")

@@ -12,3 +12,4 @@ dwarf/myreader
 test/math.so
 test/test.so
 test/testh.so
+obj

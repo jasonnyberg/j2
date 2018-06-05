@@ -671,13 +671,9 @@ extern LTV *vm_eval(LTV *root,LTV *code,LTV *arg) {
     return vm_await(vm_async(vm_continuation(cif_type_info("(LTV)*(*)((LTV)*)"),root,code),arg));
 }
 
-char *vm_interpreter=
-    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
-    "ROOT<repl([bootstrap.edict] [r] file_open!) ARG0 decaps! <> encaps! RETURN @>";
-
-extern int vm_interpret() {
+extern int vm_bootstrap(char *bootstrap) {
     try_depth=0;
-    LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),vm_interpreter,-1,LT_NONE),LTV_NULL);
+    LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
         print_ltv(stdout,"",rval,"\n",0);
     return !rval;

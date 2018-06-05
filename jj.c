@@ -20,4 +20,8 @@
 
 #include "vm.h"
 
-int main(int argc, char *argv[]) { return vm_interpret(); }
+char *bootstrap=
+    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
+    "ROOT<repl([bootstrap.edict] [r] file_open!) ARG0 decaps! <> encaps! RETURN @>";
+
+int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:bootstrap); }

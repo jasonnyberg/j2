@@ -203,6 +203,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
     return status;
 }
 
+
 /////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////
 
@@ -969,6 +970,7 @@ int cif_dump_module(char *ofilename,LTV *module)
     return status;
 }
 
+extern void dump_macros(Dwarf_Debug dbg, Dwarf_Die cu_die);
 
 int _cif_curate_module(LTV *module,int bootstrap)
 {
@@ -1034,10 +1036,11 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 if (sym) {
                     type_info->flags|=TYPEF_SYMBOLIC;
                     attr_set(&type_info->ltv,TYPE_SYMB,sym);
-                    TYPE_INFO_LTV *sym_type_info=(TYPE_INFO_LTV *) LT_get(module,sym,HEAD,KEEP);
                     const char *is;
                     dwarf_get_TAG_name(type_info->tag,&is);
-                    if (sym_type_info) {
+                    LTV *sym_ltv=LT_get(module,sym,HEAD,KEEP); // see if symbol already exists
+                    if (sym_ltv && sym_ltv->flags&LT_TYPE) {
+                        TYPE_INFO_LTV *sym_type_info=(TYPE_INFO_LTV *) sym_ltv;
                         if (tag_category(type_info)==tag_category(sym_type_info))
                             deduped=sym_type_info;
                         else {
@@ -1052,7 +1055,7 @@ int _cif_curate_module(LTV *module,int bootstrap)
 
                 if (!deduped) {
                     DEBUG(printf("installing symbolic type_info %s (%s)\n",sym,type_info->id_str));
-                    LT_put(module,sym,TAIL,&type_info->ltv);
+                    LT_put(module,sym,HEAD,&type_info->ltv);
                 }
 
                 return deduped?deduped:type_info;
@@ -1217,6 +1220,102 @@ int _cif_curate_module(LTV *module,int bootstrap)
             TYPE_INFO_LTV *type_info=NULL;
             TYPE_INFO_LTV *parent_type_info=(TYPE_INFO_LTV *) parent;
 
+            void read_cu_macros() { // inspired by https://github.com/tomhughes/libdwarf/blob/master/libdwarf/checkexamples.c
+                int status=0;
+
+                void macro_define(char *macro) {
+                    int len=strlen(macro);
+                    void advance(int adv) { macro+=adv; len-=adv; }
+                    int namelen=series(macro,len,NULL,WHITESPACE,"()");
+                    if (namelen<len) {
+                        char *name=PRINTA(name,namelen,macro);
+                        advance(namelen);
+                        advance(series(macro,len,WHITESPACE,NULL,NULL));
+                        if (len) {
+                            //printf(name[namelen-1]!=')'?CODE_BLUE:CODE_GREEN);
+                            //printf("%s" CODE_RED " %s" CODE_RESET " (%d) \n",name,macro,len);
+                            if (name[namelen-1]!=')' && !LT_get(module,name,TAIL,KEEP))
+                                LT_put(module,name,TAIL,LTV_init(NEW(LTV),macro,len,LT_DUP));
+                        }
+                    }
+                }
+                void macro_undefine(char *macro) { /* printf("undefine %s\n",macro); */ }
+
+                int lres = 0;
+                Dwarf_Unsigned version = 0;
+                Dwarf_Macro_Context macro_context = 0;
+                Dwarf_Unsigned macro_unit_offset = 0;
+                Dwarf_Unsigned number_of_ops = 0;
+                Dwarf_Unsigned ops_total_byte_len = 0;
+                Dwarf_Bool is_primary = TRUE;
+                unsigned k = 0;
+                Dwarf_Error err = 0;
+
+                for(;;) {
+                    if (is_primary) {
+                        TRY(dwarf_get_macro_context(die,&version,&macro_context,&macro_unit_offset,&number_of_ops,&ops_total_byte_len,&err),"getting primary macro context");
+                        is_primary = FALSE;
+                    } else {
+                        LTV *macro_ltv=LT_get(module,"macro context",HEAD,POP);
+                        if (!macro_ltv)
+                            break;
+                        macro_unit_offset=(Dwarf_Unsigned) macro_ltv->data;
+                        LTV_release(macro_ltv);
+                        TRY(dwarf_get_macro_context_by_offset(die,macro_unit_offset,&version,&macro_context,&number_of_ops,&ops_total_byte_len,&err),"getting macro context by offset");
+                    }
+
+                    CATCH(status==DW_DLV_NO_ENTRY,0,break,"exhausting macro context");
+                    SCATCH("processing macro context");
+
+                    for (k = 0; k < number_of_ops; ++k) {
+                        Dwarf_Unsigned  section_offset = 0;
+                        Dwarf_Half      macro_operator = 0;
+                        Dwarf_Half      forms_count = 0;
+                        const Dwarf_Small *formcode_array = 0;
+                        Dwarf_Unsigned  line_number = 0;
+                        Dwarf_Unsigned  index = 0;
+                        Dwarf_Unsigned  offset =0;
+                        const char    * macro_string =0;
+                        int lres = 0;
+
+                        STRY(DW_DLV_OK!=dwarf_get_macro_op(macro_context,k, &section_offset,&macro_operator,&forms_count, &formcode_array,&err),"calling dwarf_get_macro_op");
+
+                        switch(macro_operator) {
+                            case DW_MACRO_define:
+                            case DW_MACRO_define_strp:
+                            case DW_MACRO_define_strx:
+                            case DW_MACRO_define_sup:
+                                STRY(DW_DLV_OK!=dwarf_get_macro_defundef(macro_context,k,&line_number,&index,&offset,&forms_count,&macro_string,&err),"calling dwarf_get_macro_defundef");
+                                macro_define((char *) macro_string);
+                                break;
+                            case DW_MACRO_undef:
+                            case DW_MACRO_undef_strp:
+                            case DW_MACRO_undef_strx:
+                            case DW_MACRO_undef_sup:
+                                STRY(DW_DLV_OK!=dwarf_get_macro_defundef(macro_context,k,&line_number,&index,&offset,&forms_count,&macro_string,&err),"calling dwarf_get_macro_defundef");
+                                macro_undefine((char *) macro_string);
+                                break;
+                            case DW_MACRO_import:
+                                STRY(DW_DLV_OK!=dwarf_get_macro_import(macro_context,k,&offset,&err),"calling dwarf_get_macro_import");
+                                LT_put(module,"macro context",TAIL,LTV_init(NEW(LTV),(void *) offset,0,LT_IMM));
+                                break;
+                            case DW_MACRO_import_sup:
+                                STRY(DW_DLV_OK!=dwarf_get_macro_import(macro_context,k,&offset,&err),"calling dwarf_get_macro_import");
+                                printf("import_sup(?)\n");
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                done:
+                    if (macro_context)
+                        dwarf_dealloc_macro_context(macro_context);
+                    if (status)
+                        return;
+                    macro_context = 0;
+                }
+            }
+
             //int sib_op(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags)   { return work_op(parent,die,depth); }
             int child_op(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags) { return work_op(&type_info->ltv,die,depth+1); }
 
@@ -1290,6 +1389,9 @@ int _cif_curate_module(LTV *module,int bootstrap)
                         DEBUG(fprintf(stdout,"---aliasing type info %s with %s\n",type_info->id_str,alias));
                     }
                     STRY(traverse_child(dbg,die,child_op,flags),"traversing child and its siblings");
+
+                    if (type_info->tag==DW_TAG_compile_unit)
+                        read_cu_macros();
                 } else
                     goto done; // don't traverse excluded CU's siblings
 

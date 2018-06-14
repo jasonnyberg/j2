@@ -284,28 +284,9 @@ extern void split() {
     return;
 }
 
-extern void dump() {
-    vm_dump_ltv(&vm_env->ltv[VMRES_DICT],res_name[VMRES_DICT]);
-    vm_dump_ltv(&vm_env->ltv[VMRES_STACK],res_name[VMRES_STACK]);
-    return;
-}
-
-extern void locals() {
-    int old_show_ref=show_ref;
-    show_ref=1;
-    vm_dump_ltv(vm_deq(VMRES_DICT,KEEP),res_name[VMRES_DICT]);
-    vm_dump_ltv(vm_deq(VMRES_STACK,KEEP),res_name[VMRES_STACK]);
-    show_ref=old_show_ref;
-    return;
-}
-
-extern void stack() {
-    int old_show_ref=show_ref;
-    show_ref=1;
-    vm_dump_ltv(vm_deq(VMRES_STACK,KEEP),res_name[VMRES_STACK]);
-    show_ref=old_show_ref;
-    return;
-}
+extern void stack() { vm_dump_ltv(vm_deq(VMRES_STACK,KEEP),res_name[VMRES_STACK]); }
+extern void locals() { vm_dump_ltv(vm_deq(VMRES_DICT,KEEP),res_name[VMRES_DICT]); }
+extern void dict() { vm_dump_ltv(&vm_env->ltv[VMRES_DICT],res_name[VMRES_DICT]); }
 
 LTV *encaps_ltv(LTV *ltv) {
     LTV *ltvltv=NULL;

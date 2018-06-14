@@ -37,4 +37,6 @@
 
 [minus(1)]@decrement
 
+[[[repl(get_stdin!)|]! repeat!]@repeat repeat!]/
+
 repl(get_stdin!)

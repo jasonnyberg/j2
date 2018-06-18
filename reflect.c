@@ -962,7 +962,6 @@ int cif_dump_module(char *ofilename,LTV *module)
 
     // simple dump of just typenames linked to their base types
     fprintf(ofile,"digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
-    // STRY(ltv_traverse(LT_get(module,"type",HEAD,KEEP),traverse_types,NULL)!=NULL,"traversing module");
     STRY(ltv_traverse(module,traverse_types,NULL)!=NULL,"traversing module");
     fprintf(ofile,"}\n");
  done:
@@ -1132,26 +1131,27 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 case DW_TAG_subprogram:
                 case DW_TAG_subroutine_type:
                     if (post) {
+                        char signature[1024];
+                        char *bufloc=signature;
+                        int count=0;
+                        int marshaller(char *name,LTV *type) {
+                            count++;
+                            LTV *base=cif_find_symbolic(type);
+                            bufloc+=sprintf(bufloc,"%s,",attr_get(base,TYPE_SYMB));
+                            return 0;
+                        }
+                        bufloc+=sprintf(bufloc,"%s(*)(",base_symb);
+                        STRY(cif_args_marshal(&type_info->ltv,FWD,marshaller),"marshalling ffi args"); // pre-
+                        bufloc+=sprintf(bufloc-(count?1:0),")");
+                        TYPE_INFO_LTV *cvar_type=categorize_symbolic(signature); // GLOBAL!
+
                         if (type_name && !LT_get(module,type_name,HEAD,KEEP)) {
                             void *addr=NULL;
                             if (dlhandle) {
                                 dlerror(); // reset
-                                if ((addr=dlsym(dlhandle,type_name))) {
-                                    char buf[1024];
-                                    char *bufloc=buf;
-                                    int count=0;
-                                    int marshaller(char *name,LTV *type) {
-                                        count++;
-                                        LTV *base=cif_find_symbolic(type);
-                                        bufloc+=sprintf(bufloc,"%s,",attr_get(base,TYPE_SYMB));
-                                        return 0;
-                                    }
-                                    bufloc+=sprintf(bufloc,"%s(*)(",base_symb);
-                                    STRY(cif_args_marshal(&type_info->ltv,FWD,marshaller),"marshalling ffi args"); // pre-
-                                    bufloc+=sprintf(bufloc-(count?1:0),")");
-                                    TYPE_INFO_LTV *cvar_type=categorize_symbolic(buf); // GLOBAL!
+                                if ((addr=dlsym(dlhandle,type_name)))
                                     LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
-                                } else
+                                else
                                     DEBUG(fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror()));
                             } else
                                 fprintf(stderr,"no dlhandle for function %s\n",type_name);
@@ -1316,7 +1316,6 @@ int _cif_curate_module(LTV *module,int bootstrap)
                 }
             }
 
-            //int sib_op(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags)   { return work_op(parent,die,depth); }
             int child_op(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags) { return work_op(&type_info->ltv,die,depth+1); }
 
             int link2parent(char *name) {
@@ -1388,7 +1387,7 @@ int _cif_curate_module(LTV *module,int bootstrap)
                         STRY(!LT_put(aliases,alias,TAIL,&type_info->ltv),"aliasing type info %s with %s",type_info->id_str,alias);
                         DEBUG(fprintf(stdout,"---aliasing type info %s with %s\n",type_info->id_str,alias));
                     }
-                    STRY(traverse_child(dbg,die,child_op,flags),"traversing child and its siblings");
+                    STRY(traverse_child(dbg,die,child_op,flags|RDW_traverse_sibs),"traversing child and its siblings");
 
                     if (type_info->tag==DW_TAG_compile_unit)
                         read_cu_macros();

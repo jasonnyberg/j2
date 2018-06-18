@@ -4,7 +4,7 @@
 [LTV_concat!]@concat
 
 [compile_ltv(@code jit_edict code)]@compile
-[[a b c] compile compile!!! locals!]@test_compile
+[[a b c] compile compile!!! stack!]@test_compile
 
 [try(cif_preview_module!)]@preview
 [try(cif_curate_module(0))]@import

@@ -127,6 +127,7 @@ COMPILER compilers[] = {jit_asm,jit_edict,jit_xml,jit_json,jit_yaml,jit_swagger,
 
 LTV *compile(COMPILER compiler,void *data,int len)
 {
+    TSTART(0,"compile");
     char *buf=NULL;
     size_t flen=0;
     FILE *stream=open_memstream(&buf,&flen);
@@ -154,6 +155,7 @@ LTV *compile(COMPILER compiler,void *data,int len)
         len=strlen((char *) data);
     compiler(emit,data,len);
     fclose(stream);
+    TFINISH(0,"compile");
     return LTV_init(NEW(LTV),buf,flen,LT_BC|LT_OWN|LT_BIN);
 }
 
@@ -170,6 +172,7 @@ char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DE
 
 void disassemble(FILE *ofile,LTV *ltv)
 {
+    TSTART(0,"disassemble");
     unsigned char *data,*code=(unsigned char *) ltv->data;
     int i=0,length=0,flags=0;
     fprintf(ofile,"BYTECODE:");
@@ -192,4 +195,5 @@ void disassemble(FILE *ofile,LTV *ltv)
         }
     }
     fprintf(ofile,"\n");
+    TFINISH(0,"disassemble");
 }

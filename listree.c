@@ -39,47 +39,161 @@ int lti_count=0,ltvr_count=0,ltv_count=0;
 // LisTree
 //////////////////////////////////////////////////
 
-RBR *RBR_init(RBR *rbr)
-{
-    RB_EMPTY_ROOT(rbr);
-    return rbr;
+// homebrew implementation of Arne Adersson's BST
+// http://user.it.uu.se/~arnea/ps/simp.pdf
+
+static LTI aa_sentinel={.lnk={&aa_sentinel,&aa_sentinel},.level=0};
+
+LTI *aa_first(LTI *ltv) { return &aa_sentinel; }
+LTI *aa_last(LTI *ltv) { return &aa_sentinel; }
+LTI *aa_next(LTI *ltv) { return &aa_sentinel; }
+LTI *aa_prev(LTI *ltv) { return &aa_sentinel; }
+
+
+static void aa_rot(LTI **t,int dir) {
+    LTI *temp=(*t);
+    (*t)=(*t)->lnk[!dir];
+    temp->lnk[!dir]=(*t)->lnk[dir];
+    (*t)->lnk[dir]=temp;
 }
 
-void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn))
-{
-    TSTART(0,"");
-    rb_erase(rbn,rbr);
-    if (rbn_release)
-        rbn_release(rbn);
-    TFINISH(0,"");
+static void aa_skew(LTI **t) {
+    if ((*t)->lnk[LEFT]->level==(*t)->level)
+        aa_rot(t,RIGHT);
 }
 
-void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn))
-{
-    TSTART(0,"");
-    RBN *rbn;
-    while (rbn=rbr->rb_node)
-        RBN_release(rbr,rbn,rbn_release);
-    TFINISH(0,"");
+static void aa_split(LTI **t) {
+    if ((*t)->lnk[RIGHT]->lnk[RIGHT]->level==(*t)->level) {
+        aa_rot(t,LEFT);
+        (*t)->level++;
+    }
 }
 
-// return node that owns "name", inserting if desired AND required
-LTI *RBR_find(RBR *rbr,char *name,int len,int insert)
-{
+static LTI *aa_find(LTI **t,char *name,int len,int *insert) { // find/insert node into t
     LTI *lti=NULL;
-    if (rbr && name) {
-        RBN *parent=NULL,**rbn = &rbr->rb_node;
-        while (*rbn) {
-            int result = strnncmp(name,len,((LTI *) *rbn)->name,-1);
-            if (!result) return (LTI *) *rbn; // found it!
-            else (parent=*rbn),(rbn=(result<0)? &(*rbn)->rb_left:&(*rbn)->rb_right);
-        }
-        if (insert && (lti=LTI_init(NEW(LTI),name,len))) {
-            rb_link_node(&lti->rbn,parent,rbn); // add
-            rb_insert_color(&lti->rbn,rbr); // rebalance
-        }
+    if ((*t)==&aa_sentinel)
+        lti=(*insert)?(*t)=LTI_init(NEW(LTI),name,len):NULL;
+    else {
+        int delta=0;
+        for (int i=0;delta==0 && i<len && i<(*t)->len;i++)
+            delta=name[i]-(*t)->preview[i];
+        if (!delta) // preview matched, compare full strings
+            delta=strnncmp(name,len,(*t)->name,(*t)->len);
+        if (delta<0)
+            lti=aa_find(&(*t)->lnk[LEFT],name,len,insert);
+        else if (delta>0)
+            lti=aa_find(&(*t)->lnk[RIGHT],name,len,insert);
+        else
+            lti=(*t),(*insert)=0;
+    }
+    if (*insert) { // rebalance if necessary
+        aa_skew(t);
+        aa_split(t);
     }
     return lti;
+}
+
+
+static LTI *aa_remove(LTI **t,char *name,int len,LTI **todelete,LTI **tokeep) { // must be called with todelete/tokeep=&aa_sentinel
+    int status=0;
+    LTI *remove=NULL;
+
+    TRYCATCH(LTI_invalid(*t),0,done,"checking for no such node");
+
+    inline LTI **save(LTI **dest,LTI *src) { (*dest)=src; return dest; }
+
+    // descend tree, finding matching node ("todelete") and then "next-greater" leaf ("tokeep")
+    int delta=0;
+    for (int i=0;delta==0 && i<len && i<(*t)->len;i++)
+        delta=name[i]-(*t)->preview[i];
+    if (!delta) // preview matched, compare full strings
+        delta=strnncmp(name,len,(*t)->name,(*t)->len);
+    if (delta<0)
+        remove=aa_remove(&(*t)->lnk[LEFT],name,len,save(tokeep,*t),todelete);
+    else
+        remove=aa_remove(&(*t)->lnk[RIGHT],name,len,save(tokeep,*t),save(todelete,*t));
+
+    // perform deletetion
+    if (t==tokeep && !LTI_invalid(*todelete) && !strnncmp(name,len,(*todelete)->name,(*todelete)->len)) {
+        remove=(*todelete);
+        if (todelete!=tokeep) {
+            (*tokeep)->lnk[LEFT] =(*todelete)->lnk[LEFT];
+            (*tokeep)->lnk[RIGHT]=(*todelete)->lnk[RIGHT];
+            (*todelete)=(*tokeep);
+        }
+        (*tokeep)=&aa_sentinel;
+        LTI_release(remove);
+    }
+
+ cleanup:
+    // on the way back, re rebalance
+    if (((*t)->lnk[LEFT]->level < ((*t)->level-1)) || ((*t)->lnk[RIGHT]->level < ((*t)->level-1))) {
+        (*t)->level--;
+        if ((*t)->lnk[RIGHT]->level > (*t)->level)
+            (*t)->lnk[RIGHT]->level = (*t)->level;
+        aa_skew(t);
+        aa_skew(&(*t)->lnk[RIGHT]);
+        aa_skew(&(*t)->lnk[RIGHT]->lnk[RIGHT]);
+        aa_split(t);
+        aa_split(&(*t)->lnk[RIGHT]);
+    }
+
+ done:
+    return remove;
+}
+
+static void *aa_metamap(LTI **lti,LTI_METAOP op,int dir) {
+    int status=0;
+    int order=dir&1;
+    void *rval=NULL;
+    if (!LTI_invalid(*lti)) {
+        switch(dir&TREEDIR) {
+            case PREFIX:
+                STRY(NULL!=(rval=op(lti)),"operating on lti");
+                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[ order],op,dir)),"operating on subtree");
+                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[!order],op,dir)),"operating on subtree");
+                break;
+            case INFIX:
+                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[ order],op,dir)),"operating on subtree");
+                STRY(NULL!=(rval=op(lti)),"operating on lti");
+                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[!order],op,dir)),"operating on subtree");
+                break;
+            case POSTFIX:
+                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[ order],op,dir)),"operating on subtree");
+                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[!order],op,dir)),"operating on subtree");
+                STRY(NULL!=(rval=op(lti)),"operating on lti");
+                break;
+        }
+    }
+ done:
+    return rval;
+}
+
+static void *aa_map(LTI *lti,LTI_OP op,int dir)
+{
+    void *metaop(LTI **lti) { op(*lti); }
+    return aa_metamap(&lti,metaop,dir);
+}
+
+int LTI_invalid(LTI *lti)
+{
+    return lti!=NULL && lti!=&aa_sentinel;
+}
+
+LTI *LTV_find(LTV *ltv,char *name,int len,int insert)
+{
+    int status;
+    LTI *lti=NULL;
+    STRY(!ltv || !name || (ltv->flags&LT_LIST),"validating LTV_find parameters");
+    lti=aa_find(&ltv->sub.ltis,name,len,&insert);
+ done:
+    return lti;
+}
+
+LTI *LTV_remove(LTV *ltv,char *name,int len)
+{
+    LTI *todelete=NULL,*tokeep=NULL;
+    return ltv->flags&LT_LIST?NULL:aa_remove(&ltv->sub.ltis,name,len,&todelete,&tokeep);
 }
 
 // release old data if present and configure with new data if present
@@ -102,14 +216,19 @@ LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags)
     if (ltv && ((flags&LT_NAP) || data)) { // null ptr is error
         ltv_count++;
         ZERO(*ltv);
-        if (flags&LT_LIST) CLL_init(&ltv->sub.ltvs);
+        if (flags&LT_LIST)
+            CLL_init(&ltv->sub.ltvs);
+        else
+            ltv->sub.ltis=&aa_sentinel;
         LTV_renew(ltv,data,len,flags);
     }
+    TALLOC(ltv,sizeof(LTV),"LTV");
     return ltv;
 }
 
 void LTV_free(LTV *ltv)
 {
+    TDEALLOC(ltv,"LTV");
     if (ltv) {
         LTV_renew(ltv,NULL,0,0);
         RELEASE(ltv);
@@ -117,22 +236,14 @@ void LTV_free(LTV *ltv)
     }
 }
 
-int LTV_is_empty(LTV *ltv)
+void *LTV_map(LTV *ltv,int dir,LTI_OP lti_op,CLL_OP cll_op)
 {
-    return ltv->flags&LT_LIST? CLL_EMPTY(&ltv->sub.ltvs):RB_EMPTY_ROOT(&ltv->sub.ltis);
-}
-
-void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op)
-{
-    RBN *rbn=NULL,*next;
     void *result=NULL;
     if (ltv) {
-        if (ltv->flags&LT_LIST && cll_op) result=CLL_map(&ltv->sub.ltvs,FWD,cll_op);
-        else if (rb_op) {
-            RBR *rbr=&ltv->sub.ltis;
-            if (reverse) for (rbn=rb_last(rbr); rbn && (next=rb_prev(rbn),!(result=rb_op(rbn)));rbn=next);
-            else         for (rbn=rb_first(rbr);rbn && (next=rb_next(rbn),!(result=rb_op(rbn)));rbn=next);
-        }
+        if (ltv->flags&LT_LIST && cll_op)
+            result=CLL_map(&ltv->sub.ltvs,dir,cll_op);
+        else if (lti_op)
+            result=aa_map(ltv->sub.ltis,lti_op,dir|INFIX);
     }
     return result;
 }
@@ -148,12 +259,14 @@ LTVR *LTVR_init(LTVR *ltvr,LTV *ltv)
         ltvr->ltv=ltv;
         ltv->refs++;
     }
+    TALLOC(ltvr,sizeof(LTVR),"LTVR");
     return ltvr;
 }
 
 LTV *LTVR_free(LTVR *ltvr)
 {
     LTV *ltv=NULL;
+    TDEALLOC(ltvr,"LTVR");
     if (ltvr) {
         if (!CLL_EMPTY(&ltvr->lnk)) { CLL_cut(&ltvr->lnk); }
         if ((ltv=ltvr->ltv))
@@ -168,17 +281,27 @@ LTV *LTVR_free(LTVR *ltvr)
 // get a new LTI and prepare for insertion
 LTI *LTI_init(LTI *lti,char *name,int len)
 {
+    if (lti==NULL)
+        lti=NEW(LTI);
     if (lti && name) {
         lti_count++;
         ZERO(*lti);
+        lti->lnk[LEFT]=lti->lnk[RIGHT]=&aa_sentinel;
+        lti->level=1;
+        lti->len=len;
         lti->name=bufdup(name,len);
+        for (int i=0;i<PREVIEWLEN;i++)
+            lti->preview[i]=len>i?name[i]:0;
+        strncpy(lti->preview,name,PREVIEWLEN);
         CLL_init(&lti->ltvs);
     }
+    TALLOC(lti,sizeof(LTI),"LTI");
     return lti;
 }
 
 void LTI_free(LTI *lti)
 {
+    TDEALLOC(lti,"LTI");
     if (lti) {
         RELEASE(lti->name);
         RELEASE(lti);
@@ -193,18 +316,19 @@ void LTI_free(LTI *lti)
 
 void LTV_release(LTV *ltv)
 {
+    void *op(LTI *lti) { LTI_release(lti); return NULL; }
+    if (ltv) TALLOC(ltv,ltv->refs,"LTV_release (ptr/refs)");
     if (ltv && !(ltv->refs) && !(ltv->flags&LT_RO)) {
         if (ltv->flags&LT_REFS)      REF_delete(ltv); // cleans out REFS
         else if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvs,LTVR_release);
-        else                         RBR_release(&ltv->sub.ltis,LTI_release);
+        else                         aa_map(ltv->sub.ltis,op,POSTFIX);
         LTV_free(ltv);
     }
 }
 
 void LTVR_release(CLL *lnk) { LTV_release(LTVR_free((LTVR *) lnk)); }
 
-void LTI_release(RBN *rbn) {
-    LTI *lti=(LTI *) rbn;
+void LTI_release(LTI *lti) {
     if (lti) {
         CLL_release(&lti->ltvs,LTVR_release);
         LTI_free(lti);
@@ -229,9 +353,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
     void *rval=NULL;
 
     void *descend_ltv(LTI *parent_lti,LTVR *parent_ltvr,LTV *ltv) {
-        void *descend_lti(RBN *rbn) {
-            LTI *lti=(LTI *) rbn;
-
+        void *descend_lti(LTI *lti) {
             void *descend_ltvr(CLL *lnk) { // for normal-form (ltv->lti->ltvr) form ltv
                 LTVR *ltvr=(LTVR *) lnk;
                 return descend_ltv(lti,ltvr,ltvr->ltv);
@@ -264,7 +386,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
             if ((flags&LT_TRAVERSE_HALT) || (ltv->flags&LT_REFS)) goto done;
             ltv->flags|=LT_RVIS;
             depth++;
-            rval=(child!=parent_lti)?descend_lti(&child->rbn):LTV_map(ltv,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,descend_lti,descend_ltvr);
+            rval=(child!=parent_lti)?descend_lti(child):LTV_map(ltv,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,descend_lti,descend_ltvr);
             depth--;
             ltv->flags&=~LT_RVIS;
             if (rval) goto done;
@@ -278,11 +400,13 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
         return rval;
     }
 
+    TSTART(0,"listree_traverse");
     void *traverse(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; return descend_ltv(NULL,ltvr,ltvr->ltv); }
     rval=CLL_map(ltvs,FWD,traverse);
     cleanup=1;
     preop=postop=NULL;
     CLL_map(ltvs,FWD,traverse); // clean up "visited" flags
+    TFINISH(rval!=0,"listree_traverse");
     return rval;
 }
 
@@ -300,19 +424,20 @@ void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-extern LTI *LTI_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_first(&ltv->sub.ltis); }
-extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:(LTI *) rb_last(&ltv->sub.ltis); }
+extern LTI *LTI_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:aa_first(ltv->sub.ltis); }
+extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:aa_last(ltv->sub.ltis); }
 
-extern LTI *LTI_next(LTI *lti) { return lti? (LTI *) rb_next((RBN *) lti):NULL; }
-extern LTI *LTI_prev(LTI *lti) { return lti? (LTI *) rb_prev((RBN *) lti):NULL; }
+extern LTI *LTI_next(LTI *lti) { return lti? aa_next(lti):NULL; }
+extern LTI *LTI_prev(LTI *lti) { return lti? aa_prev(lti):NULL; }
 
 LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
 {
     LTI *lti=NULL;
+    TLOOKUP(ltv,name->data,name->len,insert);
     if (LTV_wildcard(name))
-        for (lti=LTI_first(ltv); lti && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti));
+        for (lti=LTI_first(ltv); !LTI_invalid(lti) && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti));
     else
-        lti=RBR_find(&ltv->sub.ltis,name->data,name->len,insert);
+        lti=LTV_find(ltv,name->data,name->len,insert);
     done:
     return lti;
 }
@@ -332,7 +457,7 @@ int LTV_empty(LTV *ltv)
 {
     if (!ltv) return true;
     else if (ltv->flags&LT_LIST) return CLL_EMPTY(&ltv->sub.ltvs);
-    else return LTI_first(ltv)==NULL;
+    else return !LTI_invalid(ltv->sub.ltis);
 }
 
 LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
@@ -375,7 +500,7 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
 }
 
 // delete an lti from an ltv
-void LTV_erase(LTV *ltv,LTI *lti) { if (ltv && lti) RBN_release(&ltv->sub.ltis,&lti->rbn,LTI_release); }
+void LTV_erase(LTV *ltv,LTI *lti) { if (ltv && lti) LTV_remove(ltv,lti->name,lti->len); }
 
 LTV *LTV_dup(LTV *ltv)
 {
@@ -423,8 +548,7 @@ LTV *LTV_copy(LTV *ltv,unsigned maxdepth)
         return ((rval=LT_get(dupes,buf,HEAD,KEEP)))?rval:ltv;
     }
 
-    void *descend_lti(RBN *rbn) {
-        LTI *lti=(LTI *) rbn;
+    void *descend_lti(LTI *lti) {
         LTV *orig=LTV_peek(&lti->ltvs,HEAD);
         LTV *dupe=LT_get(dupes,lti->name,HEAD,KEEP);
 
@@ -557,9 +681,9 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     }
 
     void lti2dot(LTV *ltv,LTI *lti) {
-        fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse]\n",&lti->rbn,lti->name);
-        if (rb_parent(&lti->rbn)) fprintf(ofile,"\"LTI%x\" -> \"LTI%x\" [color=blue]\n",rb_parent(&lti->rbn),&lti->rbn);
-        fprintf(ofile,"\"LTI%x\" -> \"%x\"\n",&lti->rbn,&lti->ltvs);
+        fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
+        fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,lti);
+        fprintf(ofile,"\"LTI%x\" -> \"%x\"\n",lti,&lti->ltvs);
         cll2dot(&lti->ltvs,NULL);
     }
 
@@ -573,12 +697,12 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             fprintf(ofile,"\"LTV%x\" -> \"%x\" [color=blue]\n",ltv,&ltv->sub.ltvs);
             //  cll2dot(&ltv->sub.ltvs,NULL);
         }
-        else if (ltv->sub.ltis.rb_node) {
+        else if (!LTI_invalid(ltv->sub.ltis)) {
             fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
             for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
-                fprintf(ofile,"\"LTI%x\"\n",&lti->rbn);
+                fprintf(ofile,"\"LTI%x\"\n",lti);
             fprintf(ofile,"}}\n");
-            fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,ltv->sub.ltis.rb_node);
+            fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,ltv->sub.ltis);
         }
     }
 
@@ -644,10 +768,10 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { fprintf(ofile,"\"LTV%x\" -> \"LTV%x\" [color=red]\n",ltv,ltvr->ltv); }
 
     void ltv_descend(LTV *ltv) {
-        if (!(ltv->flags&LT_LIST) && ltv->sub.ltis.rb_node) {
+        if (!LTV_empty(ltv)) {
             fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
             for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
-                fprintf(ofile,"\"LTI%x\"\n",&lti->rbn);
+                fprintf(ofile,"\"LTI%x\"\n",lti);
             fprintf(ofile,"}}\n");
         }
     }
@@ -778,7 +902,7 @@ REF *REF_init(REF *ref,char *data,int len)
         CLL_init(&ref->keys);
         LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+rev,len-rev,LT_DUP|(quote?LT_NOWC:LT_ESC)),HEAD);
         CLL_init(&ref->root);
-        ref->lti=NULL;
+        ref->lti=&aa_sentinel;
         ref->ltvr=NULL;
         ref->cvar=NULL;
         ref->reverse=rev;
@@ -796,14 +920,14 @@ LTV *REF_reset(REF *ref,LTV *newroot)
     if (root && ref->lti) {
         void *prune_placeholders(CLL *lnk) {
             LTVR *ltvr=(LTVR *) lnk;
-            if (ltvr->ltv->flags==LT_NULL && LTV_empty(ltvr->ltv))
+            if (ltvr->ltv->flags==LT_NULL && LTV_empty(ltvr->ltv)) //////// no flags at all?????
                 LTVR_release(lnk);
         }
         CLL_map(&ref->lti->ltvs,FWD,prune_placeholders);
         if (CLL_EMPTY(&ref->lti->ltvs)) // if LTI is pruneable
-            RBN_release(&root->sub.ltis,&ref->lti->rbn,LTI_release); // prune it
+            LTV_erase(root,ref->lti); // prune it
     }
-    ref->lti=NULL;
+    ref->lti=&aa_sentinel;
     ref->ltvr=NULL;
     LTV_release(ref->cvar);
     CLL_release(&ref->root,LTVR_release);
@@ -831,7 +955,7 @@ LTV *REF_create(LTV *refs)
     int status=0;
     STRY(!refs,"validating params");
     if (!(refs->flags&LT_REFS)) { // promote an ltv to a ref
-        STRY(!LTV_is_empty(refs),"promoting non-empty ltv to ref");
+        STRY(!LTV_empty(refs),"promoting non-empty ltv to ref");
         STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_REFL),"promoting incomptible ltv to ref");
         refs->flags|=(LT_REFS|LT_LIST);
         CLL_init(&refs->sub.ltvs);
@@ -908,7 +1032,7 @@ int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
             root=ref->cvar;
         else {
             if (!ref->lti) { // resolve lti
-                if ((status=!(ref->lti=LTI_lookup(root,name,insert))))
+                if ((status=LTI_invalid(ref->lti=LTI_lookup(root,name,insert))))
                     goto done; // return failure, but don't log it
             }
             if (!ref->ltvr) { // resolve ltv(r)
@@ -968,7 +1092,7 @@ int REF_iterate(LTV *refs,int pop)
                 LTI *lti=ref->lti;
                 for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti)); // find next lti
                 if (CLL_EMPTY(&lti->ltvs)) // if LTI is pruneable
-                    RBN_release(&root->sub.ltis,&lti->rbn,LTI_release); // prune it
+                    LTV_erase(root,lti); // prune it
                 if (ref->lti!=NULL)
                     return ref;
             }

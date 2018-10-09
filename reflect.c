@@ -56,7 +56,7 @@ static void init(void)
 
     //LTI *lti=LTI_resolve(cif_module,"/home/jnyberg/j2/listree.c",false);
     //LTV_erase(cif_module,lti);
-    LTV_erase(cif_module,LTI_find(cif_module,"*/rbtree.c",false,LT_DUP));
+    //LTV_erase(cif_module,LTI_find(cif_module,"*/rbtree.c",false,LT_NONE));
 
     print_ltv(stderr,CODE_RED,cif_module,CODE_RESET "\n",0);
     cif_curate_module(cif_module,true);

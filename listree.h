@@ -28,12 +28,8 @@
 
 #include <stdio.h>
 #include "cll.h"
-#include "rbtree.h"
 
 extern int show_ref;
-
-#define RBR struct rb_root
-#define RBN struct rb_node
 
 typedef enum {
     LT_NONE =0,
@@ -65,10 +61,13 @@ typedef enum {
     LT_NDUP =LT_FREE|LT_REFS|LT_CVAR|LT_REFL|LT_LIST, // need to be excised during LTV_dup
 } LTV_FLAGS;
 
+struct LTI;
+typedef struct LTI LTI;
+
 typedef struct {
     union {
         CLL ltvs;
-        RBR ltis;
+        LTI *ltis;
     } sub;
     LTV_FLAGS flags;
     void *data;
@@ -79,40 +78,45 @@ typedef struct {
 typedef struct {
     CLL lnk;
     LTV *ltv;
-    LTV_FLAGS flags;
+    // LTV_FLAGS flags;
 } LTVR; // LisTree Value Reference
 
-typedef struct {
-    RBN rbn;
-    CLL ltvs;
+enum { LEFT=0,RIGHT=1,PREVIEWLEN=2 };
+
+// FWD/REV define whether Left is processed before right or vice/versa for each of INFIX/PREFIX/POSTFIX
+enum { /*FWD=0,REV=1,*/ INFIX=1<<1,PREFIX=2<<1,POSTFIX=3<<1,TREEDIR=INFIX|PREFIX|POSTFIX };
+
+struct LTI {
+    LTI *lnk[2]; // LEFT/RIGHT
     char *name;
-} LTI; // LisTree Item
+    CLL ltvs;
+    char level,len,preview[PREVIEWLEN];
+};
 
-typedef void *(*RB_OP)(RBN *rbn);
-
-extern RBR *RBR_init(RBR *rbr);
-extern void RBN_release(RBR *rbr,RBN *rbn,void (*rbn_release)(RBN *rbn));
-extern void RBR_release(RBR *rbr,void (*rbn_release)(RBN *rbn));
-extern LTI *RBR_find(RBR *rbr,char *name,int len,int insert);
+typedef void *(*LTI_METAOP)(LTI **lti);
+typedef void *(*LTI_OP)(LTI *lti);
 
 extern LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern void LTV_free(LTV *ltv);
 extern int  LTV_is_empty(LTV *ltv);
-extern void *LTV_map(LTV *ltv,int reverse,RB_OP rb_op,CLL_OP cll_op);
+extern void *LTV_map(LTV *ltv,int reverse,LTI_OP lti_op,CLL_OP cll_op);
+extern LTI *LTV_find(LTV *ltv,char *name,int len,int insert);
+extern LTI *LTV_remove(LTV *ltv,char *name,int len);
 
 extern LTVR *LTVR_init(LTVR *ltvr,LTV *ltv);
 extern LTV *LTVR_free(LTVR *ltvr);
 
 extern LTI *LTI_init(LTI *lti,char *name,int len);
 extern void LTI_free(LTI *lti);
+extern int LTI_invalid(LTI *lti);
 
 //////////////////////////////////////////////////
 // Tag Team of release methods for LT elements
 //////////////////////////////////////////////////
 extern void LTV_release(LTV *ltv);
 extern void LTVR_release(CLL *cll);
-extern void LTI_release(RBN *rbn);
+extern void LTI_release(LTI *lti);
 
 //////////////////////////////////////////////////
 // Combined pre-, in-, and post-fix LT traversal

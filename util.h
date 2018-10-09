@@ -24,6 +24,8 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h> // uintptr_t
+#include "trace.h"
 
 //#define mymalloc(len) mymalloc2((len),(__FILE__),(__LINE__))
 //#define myfree(p) myfree2((p),(__FILE__),(__LINE__))
@@ -81,6 +83,7 @@ typedef unsigned long long ull;
 #define MAX(a,b) ((a)>(b)?(a):(b))
 
 #define NON_NULL (NULL-1)
+#define PTR_OP(x,op,y) ((typeof(x)) (((uintptr_t) (x)) op ((uintptr_t) (y))))
 
 extern int Gmymalloc;
 

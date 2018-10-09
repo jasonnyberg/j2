@@ -6,8 +6,8 @@
 #undef TRACEPOINT_INCLUDE
 #define TRACEPOINT_INCLUDE "./trace.h"
 
-#if !defined(PSD_TP_H) || defined(TRACEPOINT_HEADER_MULTI_READ)
-#define EDICT_TP_H
+#if !defined(TRACE_H) || defined(TRACEPOINT_HEADER_MULTI_READ)
+#define TRACE_H
 
 #include <lttng/tracepoint.h>
 
@@ -76,6 +76,30 @@ TRACEPOINT_EVENT(edict,
                            ctf_string(msg,msg)
                            ctf_integer_hex(void *,ptr,ptr)))
 
+TRACEPOINT_EVENT(edict,
+                 lookup,
+                 TP_ARGS(char *,file,char *,func,void *,ltv,char *,name,int,len,int,insert),
+                 TP_FIELDS(ctf_string(file,file)
+                           ctf_string(func,func)
+                           ctf_integer_hex(void *,ltv,ltv)
+                           ctf_sequence_text(char,name,name,size_t,len)
+                           ctf_integer(int,insert,insert)))
+
+TRACEPOINT_EVENT(edict,
+                 opcode,
+                 TP_ARGS(char *,file,char *,func,int,state),
+                 TP_FIELDS(ctf_string(file,file)
+                           ctf_string(func,func)
+                           ctf_integer(int,state,state)))
+TRACEPOINT_EVENT(edict,
+                 opext,
+                 TP_ARGS(char *,file,char *,func,char *,opcode,int,len,int,flags,int,state),
+                 TP_FIELDS(ctf_string(file,file)
+                           ctf_string(func,func)
+                           ctf_sequence_text(char,opcode,opcode,size_t,len)
+                           ctf_integer(int,flags,flags)
+                           ctf_integer(int,state,state)))
+
 
 TRACEPOINT_LOGLEVEL(edict,start,    TRACE_DEBUG)
 TRACEPOINT_LOGLEVEL(edict,finish,   TRACE_DEBUG)
@@ -85,18 +109,24 @@ TRACEPOINT_LOGLEVEL(edict,event_hex,TRACE_DEBUG_LINE)
 TRACEPOINT_LOGLEVEL(edict,error,    TRACE_ERR)
 TRACEPOINT_LOGLEVEL(edict,alloc,    TRACE_DEBUG_LINE)
 TRACEPOINT_LOGLEVEL(edict,dealloc,  TRACE_DEBUG)
+TRACEPOINT_LOGLEVEL(edict,lookup,   TRACE_DEBUG_LINE)
+TRACEPOINT_LOGLEVEL(edict,opcode,   TRACE_DEBUG_LINE)
+TRACEPOINT_LOGLEVEL(edict,opext,    TRACE_DEBUG_LINE)
 
-#endif /* EDICT_TP_H */
+#endif /* TRACE_H */
 
 #include <lttng/tracepoint-event.h>
-#define TSTART(status,msg)        tracepoint(edict,start,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)
-#define TFINISH(status,msg)       tracepoint(edict,finish,    (char *) __FILE__,(char *) __FUNCTION__,msg,status)
-#define TEVENT(status,msg)        tracepoint(edict,event,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)
-#define TEVLEN(status,msg,msglen) tracepoint(edict,event_len, (char *) __FILE__,(char *) __FUNCTION__,msg,msglen,status)
-#define TEVHEX(status,data,len)   tracepoint(edict,event_hex, (char *) __FILE__,(char *) __FUNCTION__,(unsigned char *) data,len,status)
-#define TERROR(status,msg)        tracepoint(edict,error,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)
-#define TALLOC(ptr,size,msg)      tracepoint(edict,alloc,     (char *) __FILE__,(char *) __FUNCTION__,msg,ptr,size)
-#define TDEALLOC(ptr,msg)         tracepoint(edict,dealloc,   (char *) __FILE__,(char *) __FUNCTION__,msg,ptr)
+#define TSTART(status,msg)           tracepoint(edict,start,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)
+#define TFINISH(status,msg)          tracepoint(edict,finish,    (char *) __FILE__,(char *) __FUNCTION__,msg,status)
+#define TEVENT(status,msg)           tracepoint(edict,event,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)
+#define TEVLEN(status,msg,msglen)    tracepoint(edict,event_len, (char *) __FILE__,(char *) __FUNCTION__,msg,msglen,status)
+#define TEVHEX(status,data,len)      tracepoint(edict,event_hex, (char *) __FILE__,(char *) __FUNCTION__,(unsigned char *) data,len,status)
+#define TERROR(status,msg)           tracepoint(edict,error,     (char *) __FILE__,(char *) __FUNCTION__,msg,status)
+#define TALLOC(ptr,size,msg)         tracepoint(edict,alloc,     (char *) __FILE__,(char *) __FUNCTION__,msg,ptr,size)
+#define TDEALLOC(ptr,msg)            tracepoint(edict,dealloc,   (char *) __FILE__,(char *) __FUNCTION__,msg,ptr)
+#define TLOOKUP(ltv,name,len,insert) tracepoint(edict,lookup,    (char *) __FILE__,(char *) __FUNCTION__,(void *) ltv,(char *) name,len,insert)
+#define TOPCODE(state)               tracepoint(edict,opcode,    (char *) __FILE__,(char *) __FUNCTION__,state)
+#define TOPEXT(ext,len,flags,state)  tracepoint(edict,opext,     (char *) __FILE__,(char *) __FUNCTION__,(char *) ext,len,flags,state)
 
 #else /* LTTNG */
 #define TSTART(status,msg)
@@ -107,5 +137,7 @@ TRACEPOINT_LOGLEVEL(edict,dealloc,  TRACE_DEBUG)
 #define TERROR(status,msg)
 #define TALLOC(ptr,size,msg)
 #define TDEALLOC(ptr,msg)
+#define TLOOKUP(ltv,name,len,insert)
+#define TOPCODE(opcode,state)
+#define TOPEXT(ext,len,flags,state)
 #endif /* LTTNG */
-

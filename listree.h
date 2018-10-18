@@ -81,7 +81,7 @@ typedef struct {
     // LTV_FLAGS flags;
 } LTVR; // LisTree Value Reference
 
-enum { LEFT=0,RIGHT=1,PREVIEWLEN=2 };
+enum { RIGHT=0,LEFT=1,PREVIEWLEN=2,INSERT=4,ITER=8 }; // RIGHT==FWD, LEFT==REV
 
 // FWD/REV define whether Left is processed before right or vice/versa for each of INFIX/PREFIX/POSTFIX
 enum { /*FWD=0,REV=1,*/ INFIX=1<<1,PREFIX=2<<1,POSTFIX=3<<1,TREEDIR=INFIX|PREFIX|POSTFIX };
@@ -144,8 +144,7 @@ extern void *listree_acyclic(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERS
 
 extern LTI *LTI_first(LTV *ltv);
 extern LTI *LTI_last(LTV *ltv);
-extern LTI *LTI_next(LTI *lti);
-extern LTI *LTI_prev(LTI *lti);
+extern LTI *LTI_iter(LTV *ltv,LTI *lti,int dir);
 extern LTI *LTI_lookup(LTV *ltv,LTV *name,int insert); // find (or insert) lti matching "name" in ltv
 extern LTI *LTI_find(LTV *ltv,char *name,int insert,int flags); // wraps name with LTV/flags
 extern LTI *LTI_resolve(LTV *ltv,char *name,int insert); // lookup, via string name no wildcards

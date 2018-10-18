@@ -44,11 +44,7 @@ int lti_count=0,ltvr_count=0,ltv_count=0;
 
 static LTI aa_sentinel={.lnk={&aa_sentinel,&aa_sentinel},.level=0};
 
-LTI *aa_first(LTI *ltv) { return &aa_sentinel; }
-LTI *aa_last(LTI *ltv) { return &aa_sentinel; }
-LTI *aa_next(LTI *ltv) { return &aa_sentinel; }
-LTI *aa_prev(LTI *ltv) { return &aa_sentinel; }
-
+int LTI_invalid(LTI *lti) { return lti==NULL || lti==&aa_sentinel; }
 
 static void aa_rot(LTI **t,int dir) {
     LTI *temp=(*t);
@@ -69,24 +65,36 @@ static void aa_split(LTI **t) {
     }
 }
 
+static LTI *aa_most(LTI *t,int dir) {
+    if (t==&aa_sentinel)
+        return t;
+    LTI *lti=aa_most(t->lnk[dir],dir);
+    return lti==&aa_sentinel?t:lti;
+}
+
 static LTI *aa_find(LTI **t,char *name,int len,int *insert) { // find/insert node into t
     LTI *lti=NULL;
+    int iter=(*insert)&ITER;
+    int dir=(*insert)&1;
     if ((*t)==&aa_sentinel)
-        lti=(*insert)?(*t)=LTI_init(NEW(LTI),name,len):NULL;
+        lti=((*insert)&INSERT)?(*t)=LTI_init(NEW(LTI),name,len):NULL;
     else {
         int delta=0;
-        for (int i=0;delta==0 && i<len && i<(*t)->len;i++)
+        for (int i=0;delta==0 && i<PREVIEWLEN && i<len && i<(*t)->len;i++)
             delta=name[i]-(*t)->preview[i];
         if (!delta) // preview matched, compare full strings
             delta=strnncmp(name,len,(*t)->name,(*t)->len);
-        if (delta<0)
-            lti=aa_find(&(*t)->lnk[LEFT],name,len,insert);
-        else if (delta>0)
-            lti=aa_find(&(*t)->lnk[RIGHT],name,len,insert);
-        else
+        int deltadir=delta<0?LEFT:RIGHT; // turn LTZ/Z/GTZ into left/right/right
+        if (delta) {
+            if (LTI_invalid(lti=aa_find(&(*t)->lnk[deltadir],name,len,insert)) && iter && dir!=deltadir)
+                lti=*t;
+        }
+        else if (iter) // matches, but find next smaller/larger
+            lti=aa_most((*t)->lnk[dir],!dir);
+        else // return match
             lti=(*t),(*insert)=0;
     }
-    if (*insert) { // rebalance if necessary
+    if ((*insert)&INSERT) { // rebalance if necessary
         aa_skew(t);
         aa_split(t);
     }
@@ -104,7 +112,7 @@ static LTI *aa_remove(LTI **t,char *name,int len,LTI **todelete,LTI **tokeep) { 
 
     // descend tree, finding matching node ("todelete") and then "next-greater" leaf ("tokeep")
     int delta=0;
-    for (int i=0;delta==0 && i<len && i<(*t)->len;i++)
+    for (int i=0;delta==0 && i<PREVIEWLEN && i<len && i<(*t)->len;i++)
         delta=name[i]-(*t)->preview[i];
     if (!delta) // preview matched, compare full strings
         delta=strnncmp(name,len,(*t)->name,(*t)->len);
@@ -144,26 +152,14 @@ static LTI *aa_remove(LTI **t,char *name,int len,LTI **todelete,LTI **tokeep) { 
 
 static void *aa_metamap(LTI **lti,LTI_METAOP op,int dir) {
     int status=0;
-    int order=dir&1;
     void *rval=NULL;
-    if (!LTI_invalid(*lti)) {
-        switch(dir&TREEDIR) {
-            case PREFIX:
-                STRY(NULL!=(rval=op(lti)),"operating on lti");
-                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[ order],op,dir)),"operating on subtree");
-                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[!order],op,dir)),"operating on subtree");
-                break;
-            case INFIX:
-                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[ order],op,dir)),"operating on subtree");
-                STRY(NULL!=(rval=op(lti)),"operating on lti");
-                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[!order],op,dir)),"operating on subtree");
-                break;
-            case POSTFIX:
-                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[ order],op,dir)),"operating on subtree");
-                STRY(NULL!=(rval=aa_metamap(&(*lti)->lnk[!order],op,dir)),"operating on subtree");
-                STRY(NULL!=(rval=op(lti)),"operating on lti");
-                break;
-        }
+    if (LTI_invalid(*lti))
+        goto done;
+    int order=dir&1;
+    switch(dir&TREEDIR) {
+        case PREFIX:  if ((rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))); break;
+        case INFIX:   if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))); break;
+        case POSTFIX: if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir)) || (rval=op(lti))); break;
     }
  done:
     return rval;
@@ -175,19 +171,17 @@ static void *aa_map(LTI *lti,LTI_OP op,int dir)
     return aa_metamap(&lti,metaop,dir);
 }
 
-int LTI_invalid(LTI *lti)
-{
-    return lti!=NULL && lti!=&aa_sentinel;
-}
-
 LTI *LTV_find(LTV *ltv,char *name,int len,int insert)
 {
     int status;
     LTI *lti=NULL;
     STRY(!ltv || !name || (ltv->flags&LT_LIST),"validating LTV_find parameters");
+    if (len==-1)
+        len=strlen(name);
+    insert=insert?INSERT:0; // true/false -> INSERT/0
     lti=aa_find(&ltv->sub.ltis,name,len,&insert);
  done:
-    return lti;
+    return LTI_invalid(lti)?NULL:lti;
 }
 
 LTI *LTV_remove(LTV *ltv,char *name,int len)
@@ -424,18 +418,16 @@ void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop)
 // Basic LT insert/remove
 //////////////////////////////////////////////////
 
-extern LTI *LTI_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:aa_first(ltv->sub.ltis); }
-extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:aa_last(ltv->sub.ltis); }
-
-extern LTI *LTI_next(LTI *lti) { return lti? aa_next(lti):NULL; }
-extern LTI *LTI_prev(LTI *lti) { return lti? aa_prev(lti):NULL; }
+extern LTI *LTI_first(LTV *ltv) { return (!ltv || (ltv->flags&LT_LIST))?NULL:aa_most(ltv->sub.ltis,LEFT);  }
+extern LTI *LTI_last(LTV *ltv)  { return (!ltv || (ltv->flags&LT_LIST))?NULL:aa_most(ltv->sub.ltis,RIGHT); }
+extern LTI *LTI_iter(LTV *ltv,LTI *lti,int dir) { dir|=ITER; return ltv&&!LTI_invalid(lti)? aa_find(&ltv->sub.ltis,lti->name,lti->len,&dir):NULL; }
 
 LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
 {
     LTI *lti=NULL;
     TLOOKUP(ltv,name->data,name->len,insert);
     if (LTV_wildcard(name))
-        for (lti=LTI_first(ltv); !LTI_invalid(lti) && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_next(lti));
+        for (lti=LTI_first(ltv); !LTI_invalid(lti) && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_iter(ltv,lti,FWD));
     else
         lti=LTV_find(ltv,name->data,name->len,insert);
     done:
@@ -450,14 +442,14 @@ LTI *LTI_find(LTV *ltv,char *name,int insert,int flags)
     return lti;
 }
 
-LTI *LTI_resolve(LTV *ltv,char *name,int insert) { return LTI_find(ltv,name,insert,LT_NOWC); }
+LTI *LTI_resolve(LTV *ltv,char *name,int insert) { return LTV_find(ltv,name,-1,insert); }
 
 
 int LTV_empty(LTV *ltv)
 {
     if (!ltv) return true;
     else if (ltv->flags&LT_LIST) return CLL_EMPTY(&ltv->sub.ltvs);
-    else return !LTI_invalid(ltv->sub.ltis);
+    else return LTI_invalid(ltv->sub.ltis);
 }
 
 LTV *LTV_put(CLL *ltvs,LTV *ltv,int end,LTVR **ltvr_ret)
@@ -691,18 +683,19 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { ltvr2dot(&ltvr->lnk); }
 
     void ltv_descend(LTV *ltv) {
-        if (ltv->flags&LT_LIST) {
-            if (ltv->flags&LT_REFS)
-                REF_dot(ofile,ltv,"REFS");
-            fprintf(ofile,"\"LTV%x\" -> \"%x\" [color=blue]\n",ltv,&ltv->sub.ltvs);
-            //  cll2dot(&ltv->sub.ltvs,NULL);
-        }
-        else if (!LTI_invalid(ltv->sub.ltis)) {
-            fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
-            for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
-                fprintf(ofile,"\"LTI%x\"\n",lti);
-            fprintf(ofile,"}}\n");
-            fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,ltv->sub.ltis);
+        if (!LTV_empty(ltv)) {
+            if (ltv->flags&LT_LIST) {
+                if (ltv->flags&LT_REFS)
+                    REF_dot(ofile,ltv,"REFS");
+                fprintf(ofile,"\"LTV%x\" -> \"%x\" [color=blue]\n",ltv,&ltv->sub.ltvs);
+                //  cll2dot(&ltv->sub.ltvs,NULL);
+            } else {
+                fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
+                for (LTI *lti=LTI_first(ltv);!LTI_invalid(lti);lti=LTI_iter(ltv,lti,FWD))
+                    fprintf(ofile,"\"LTI%x\"\n",lti);
+                fprintf(ofile,"}}\n");
+                fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,ltv->sub.ltis);
+            }
         }
     }
 
@@ -768,9 +761,9 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     void ltv_ltvr2dot(LTV *ltv,LTVR *ltvr) { fprintf(ofile,"\"LTV%x\" -> \"LTV%x\" [color=red]\n",ltv,ltvr->ltv); }
 
     void ltv_descend(LTV *ltv) {
-        if (!LTV_empty(ltv)) {
+        if (!LTV_empty(ltv) && !(ltv->flags&LT_LIST)) {
             fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
-            for (LTI *lti=LTI_first(ltv);lti;lti=LTI_next(lti))
+            for (LTI *lti=LTI_first(ltv);!LTI_invalid(lti);lti=LTI_iter(ltv,lti,FWD))
                 fprintf(ofile,"\"LTI%x\"\n",lti);
             fprintf(ofile,"}}\n");
         }
@@ -902,7 +895,7 @@ REF *REF_init(REF *ref,char *data,int len)
         CLL_init(&ref->keys);
         LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+rev,len-rev,LT_DUP|(quote?LT_NOWC:LT_ESC)),HEAD);
         CLL_init(&ref->root);
-        ref->lti=&aa_sentinel;
+        ref->lti=NULL;
         ref->ltvr=NULL;
         ref->cvar=NULL;
         ref->reverse=rev;
@@ -927,7 +920,7 @@ LTV *REF_reset(REF *ref,LTV *newroot)
         if (CLL_EMPTY(&ref->lti->ltvs)) // if LTI is pruneable
             LTV_erase(root,ref->lti); // prune it
     }
-    ref->lti=&aa_sentinel;
+    ref->lti=NULL;
     ref->ltvr=NULL;
     LTV_release(ref->cvar);
     CLL_release(&ref->root,LTVR_release);
@@ -1090,7 +1083,7 @@ int REF_iterate(LTV *refs,int pop)
             if (LTV_wildcard(name)) {
                 LTV *root=REF_root(ref);
                 LTI *lti=ref->lti;
-                for (ref->lti=LTI_next(ref->lti); ref->lti && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_next(ref->lti)); // find next lti
+                for (ref->lti=LTI_iter(root,ref->lti,FWD); !LTI_invalid(ref->lti) && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_iter(root,ref->lti,FWD)); // find next lti
                 if (CLL_EMPTY(&lti->ltvs)) // if LTI is pruneable
                     LTV_erase(root,lti); // prune it
                 if (ref->lti!=NULL)

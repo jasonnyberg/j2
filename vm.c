@@ -151,7 +151,7 @@ static void vm_code_push(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
     LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
     THROW(!opcode_ltv,LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",opcode_ltv->data));
+    DEBUG(fprintf(stderr,CODE_RED "  vm_code_push %x" CODE_RESET "\n",opcode_ltv->data));
     THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),LTV_NULL); // encaps code ltv within tracking ltv
     THROW(!vm_enq(VMRES_CODE,opcode_ltv),LTV_NULL);
  done:
@@ -163,13 +163,13 @@ static void vm_code_peek() {
     TSTART(vm_env->state,"");
     vm_env->code_ltvr=NULL;
     THROW(!(vm_env->code_ltv=LTV_get(ENV_LIST(VMRES_CODE),KEEP,HEAD,NULL,&vm_env->code_ltvr)),LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  GET CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
+    DEBUG(fprintf(stderr,CODE_RED "  vm_code_peek %x" CODE_RESET "\n",vm_env->code_ltv->data));
  done:
     TFINISH(vm_env->state,"");
     return;
 }
 
-static void vm_code_pop() { DEBUG(fprintf(stderr,CODE_RED "  CODE %x" CODE_RESET "\n",vm_env->code_ltv->data));
+static void vm_code_pop() { DEBUG(fprintf(stderr,CODE_RED "  vm_code_pop %x" CODE_RESET "\n",vm_env->code_ltv->data));
     TSTART(vm_env->state,"");
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);

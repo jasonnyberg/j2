@@ -512,7 +512,7 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                 case DW_TAG_union_type:
                 case DW_TAG_structure_type: {
                     LTI *children=NULL;
-                    if ((children=LTI_resolve(type,TYPE_LIST,0)))
+                    if ((children=LTI_resolve(type,TYPE_LIST,false)))
                         CLL_map(&children->ltvs,FWD,type_info_op);
                     break;
                 }
@@ -1771,7 +1771,7 @@ int cif_ffi_prep(LTV *type)
         int largest=0;
         char *name=attr_get(ltv,TYPE_SYMB);
         DEBUG(printf("ffi_prep child for %s\n",name));
-        LTI *children=LTI_resolve(ltv,TYPE_LIST,0);
+        LTI *children=LTI_resolve(ltv,TYPE_LIST,false);
         if (tag==DW_TAG_union_type)
             *count=1;
         else
@@ -1928,7 +1928,7 @@ int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type)
         return status?NON_NULL:NULL;
     }
     LTI *children=NULL;
-    TRYCATCH(!(children=LTI_resolve(lambda,TYPE_LIST,0)),0,done,"retrieving ffi args");;
+    TRYCATCH(!(children=LTI_resolve(lambda,TYPE_LIST,false)),0,done,"retrieving ffi args");;
     STRY(CLL_map(&children->ltvs,dir,marshal_arg)!=NULL,"marshalling ffi args");
  done:
     return status;

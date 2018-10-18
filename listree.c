@@ -39,7 +39,7 @@ int lti_count=0,ltvr_count=0,ltv_count=0;
 // LisTree
 //////////////////////////////////////////////////
 
-// homebrew implementation of Arne Adersson's BST
+// homebrew implementation of Arne Andersson's BST
 // http://user.it.uu.se/~arnea/ps/simp.pdf
 
 static LTI aa_sentinel={.lnk={&aa_sentinel,&aa_sentinel},.level=0};

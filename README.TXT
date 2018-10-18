@@ -1,12 +1,13 @@
 J2 is a minimalist programming language that makes up for its simplicity
 by having the built-in ability to understand and dynamically bind with C
-binaries/libraries via DWARF metadata..
+binaries/libraries via DWARF metadata...
 
-I.e. no wrappers necessary.
+I.e. Complex type/function signature awareness accessible via simple native
+syntax, WITHOUT WRAPPERS.
 
 The language is built upon the foundation of its data stack, its
 eval stack, and its hierarchical dictionary. These are built
-on top of a "listree" structure (which can be thought of as a
+on top of a core "listree" structure (which can be thought of as a
 hierarchical dictionary of double-ended queues ("deques"), which
 is in turn built on top of what I think is an elegant implementation
 of a bidirectional linked list (where all list modifications are
@@ -15,8 +16,11 @@ performed by the application of a single function, "splice").
 The evolution of the language has been influenced by Forth, Lisp,
 Joy, Factor, Tcl, Mathematica, and other languages.
 
-This project is licensed under the GPLv3, including the conveniently
-included linux rbtree sources.
+This project is currently licensed under the GPLv3, but now that it uses
+a homegrown AA BST implementation based on Arne Andersson's "simple" rbtree
+variation (http://user.it.uu.se/~arnea/ps/simp.pdf) rather than the ancient
+version of Linux's rbtree that I had been using, I plan on re-releasing it
+under the LGPL v3.0.
 
 #######################
 
@@ -26,9 +30,10 @@ has these:
 * gcc, cmake
 * libdwarf, libdw, libelf (to read elf/dwarf debug section)
 * libdl (for dlopen, dlsym...)
-* libffi (to make dynamic function calls to/from C libraries)
-* libpthread (the VM will support multithreading)
-* libreadline, rlwrap (REPL conveniences; not strictly required)
+* libffi (foreign function calls to/from C libs)
+* libpthread (multithreading)
+* Optional: rlwrap/libreadline (REPL convenience)
+* Optional: liblttng*/liburcu* (Linux Tracing Toolkit Next Gen)
 
 To run: Assuming gcc, cmake, and libraries are not too ancient, simply
 run "make" to get into the REPL.
@@ -69,7 +74,7 @@ stack!            [show stack, post-evaluation]/
 The interpreter component of this system has recently been changed
 from an AST-traversing implementation to a bytecode compiler/VM implementation,
 so I can use the same VM backend to support various front-end "hieraricical data"
-interpreters (XML, JSON, etc.).
+interpreters (XML, JSON, etc.) and even other languages, theoretically (LISP).
 
 TODO:
 
@@ -83,4 +88,5 @@ TODO:
 * caller/callee hooks (insert shims between operators and operands i.e. "comma" operator)
 * graph-preserving save/restore of listrees
 * xml, json, yaml, swagger, lisp, mathematica-map bytecode compilers
+* term-rewriting/symbolic-evaluation engine
 * core libraries...

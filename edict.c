@@ -3,21 +3,34 @@
  *      the structure of and dynamically link with compatible C binaries.
  *
  * Copyright (C) 2011 Jason Nyberg <jasonnyberg@gmail.com>
+ * Copyright (C) 2018 Jason Nyberg <jasonnyberg@gmail.com> (dual-licensed)
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
+ * This file is part of j2.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * This file is free software; you can redistribute it and/or modify
+ * it under the terms of either
  *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *   * the GNU Lesser General Public License as published by the Free
+ *     Software Foundation; either version 3 of the License, or (at
+ *     your option) any later version
+ *
+ * or
+ *
+ *   * the GNU General Public License as published by the Free
+ *     Software Foundation; either version 3 of the License, or (at
+ *     your option) any later version
+ *
+ * or both in parallel, as here.
+ *
+ * j2 is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+ *
+ * You should have received copies of the GNU General Public License and
+ * the GNU Lesser General Public License along with this program.  If
+ * not, see <http://www.gnu.org/licenses/>.
  */
-
 
 #define _GNU_SOURCE
 #define _C99

@@ -111,6 +111,7 @@ typedef struct {
     Dwarf_Bool     is_info;
     Dwarf_Sig8     sig8;
     Dwarf_Unsigned offset;
+    char           *dwo_name;
 } CU_DATA;
 
 typedef enum {

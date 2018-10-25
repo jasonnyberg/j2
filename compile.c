@@ -156,7 +156,7 @@ LTV *compile(COMPILER compiler,void *data,int len)
     compiler(emit,data,len);
     fclose(stream);
     TFINISH(0,"compile");
-    return LTV_init(NEW(LTV),buf,flen,LT_BC|LT_OWN|LT_BIN);
+    return LTV_init(NEW(LTV),buf,flen,LT_BC|LT_OWN|LT_BIN|LT_LIST);
 }
 
 LTV *compile_ltv(COMPILER compiler,LTV *ltv)

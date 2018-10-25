@@ -32,8 +32,8 @@ has these:
 * libdl (for dlopen, dlsym...)
 * libffi (foreign function calls to/from C libs)
 * libpthread (multithreading)
-* Optional: rlwrap/libreadline (REPL convenience)
 * Optional: liblttng*/liburcu* (Linux Tracing Toolkit Next Gen)
+* Optional: rlwrap/libreadline (REPL convenience)
 
 To run: Assuming gcc, cmake, and libraries are not too ancient, simply
 run "make" to get into the REPL.

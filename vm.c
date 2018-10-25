@@ -45,15 +45,15 @@
 pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 enum {
-    VMRES_DICT,
-    VMRES_STACK,
-    VMRES_FUNC,
-    VMRES_CTXT, // bypass/throw
+    VMRES_DICT,  // stack of dictionary frames
+    VMRES_STACK, // stack of data stacks
+    VMRES_FUNC,  // stack of
+    VMRES_EXCP,  // exception for bypass/throw
     VMRES_CODE,
     VMRES_COUNT,
 } VM_LISTRES;
 
-static char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_CTXT","VMRES_CODE" };
+static char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_EXCP","VMRES_CODE" };
 
 enum {
     VM_YIELD    = 0x01,
@@ -120,7 +120,7 @@ static void vm_reset_ext() {
 
 void vm_throw(LTV *ltv) {
     vm_env->state|=VM_THROWING;
-    vm_enq(VMRES_CTXT,(ltv));
+    vm_enq(VMRES_EXCP,(ltv));
     vm_reset_ext();
 }
 
@@ -237,15 +237,15 @@ static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     return;
 }
 
-static void vm_eval_type(LTV *type) {
+static void vm_eval_cvar(LTV *cvar) {
     TSTART(vm_env->state,"");
     vm_reset_ext(); // sanitize
-    if (type->flags&LT_TYPE) {
-        LTV *cvar;
-        THROW(!(cvar=cif_create_cvar(type,NULL,NULL)),LTV_NULL);
-        THROW(!vm_stack_enq(cvar),LTV_NULL);
+    if (cvar->flags&LT_TYPE) {
+        LTV *type;
+        THROW(!(type=cif_create_cvar(cvar,NULL,NULL)),LTV_NULL);
+        THROW(!vm_stack_enq(type),LTV_NULL);
     } else
-        vm_ffi(type); // if not a type, it could be a function
+        vm_ffi(cvar); // if not a type, it could be a function
     vm_reset_ext(); // sanitize again
  done:
     TFINISH(vm_env->state,"");
@@ -255,7 +255,7 @@ static void vm_eval_type(LTV *type) {
 void vm_eval_ltv(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
     if (ltv->flags&LT_CVAR) // type, ffi, ...
-        vm_eval_type(ltv);
+        vm_eval_cvar(ltv);
     else
         vm_code_push(compile_ltv(compilers[FORMAT_edict],ltv));
     vm_env->state|=VM_YIELD;
@@ -275,7 +275,7 @@ extern void is_lit() {
     return;
 }
 
-extern void split() {
+extern void split() { // mini parser that pops a lit and pushes its CAR & CDR
     TSTART(vm_env->state,"");
     LTV *ltv=NULL;
     char *tdata=NULL;
@@ -387,19 +387,19 @@ static void vmop_CATCH() { VMOP_DEBUG();
         vm_env->state|=VM_BYPASS;
     else if (vm_env->state|VM_THROWING && (!vm_env->skipdepth)) {
         LTV *exception=NULL;
-        STRY(!(exception=vm_deq(VMRES_CTXT,KEEP)),"peeking at exception stack");
+        STRY(!(exception=vm_deq(VMRES_EXCP,KEEP)),"peeking at exception stack");
         if (vm_use_ext()) {
             vm_env->ext=REF_create(vm_env->ext);
             vm_resolve(vm_env->ext);
             THROW(!vm_stack_enq(REF_ltv(REF_HEAD(vm_env->ext))),LTV_NULL);
             if (exception==REF_ltv(REF_HEAD(vm_env->ext))) {
-                LTV_release(vm_deq(VMRES_CTXT,POP));
-                if (!vm_deq(VMRES_CTXT,KEEP)) // if no remaining exceptions
+                LTV_release(vm_deq(VMRES_EXCP,POP));
+                if (!vm_deq(VMRES_EXCP,KEEP)) // if no remaining exceptions
                     vm_env->state&=~VM_THROWING;
             }
         }
         else { // catch all
-            while (exception=vm_deq(VMRES_CTXT,POP)) // empty remaining exceptions
+            while (exception=vm_deq(VMRES_EXCP,POP)) // empty remaining exceptions
                 LTV_release(exception);
             vm_env->state&=~VM_THROWING;
         }

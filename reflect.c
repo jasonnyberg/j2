@@ -221,6 +221,7 @@ int print_cu_data(FILE *ofile,CU_DATA *cu_data)
     output_cu_field("%x",address_size);
     output_cu_field("%x",length_size);
     output_cu_field("%x",extension_size);
+    output_cu_field("%s",dwo_name);
  done:
     return status;
 }

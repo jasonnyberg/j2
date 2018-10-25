@@ -19,8 +19,7 @@ Joy, Factor, Tcl, Mathematica, and other languages.
 This project is currently licensed under the GPLv3, but now that it uses
 a homegrown AA BST implementation based on Arne Andersson's "simple" rbtree
 variation (http://user.it.uu.se/~arnea/ps/simp.pdf) rather than the ancient
-version of Linux's rbtree that I had been using, I plan on re-releasing it
-under the LGPL v3.0.
+version of Linux's rbtree that I had been using.
 
 #######################
 
@@ -40,7 +39,7 @@ run "make" to get into the REPL.
 
 #######################
 
-A simple reflective edict program:
+A simple reflective program:
 
 int! @a [3]@a a square! stack!
 

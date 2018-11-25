@@ -94,6 +94,7 @@ typedef unsigned long long ull;
 
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#define ABS(x) ((x)<0?(-x):(x))
 
 #define NON_NULL (NULL-1)
 #define PTR_OP(x,op,y) ((typeof(x)) (((uintptr_t) x) op ((uintptr_t) y)))

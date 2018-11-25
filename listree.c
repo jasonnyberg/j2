@@ -45,7 +45,7 @@
 
 #include "trace.h" // lttng
 
-int show_ref=0;
+int show_ref=1;
 int lti_count=0,ltvr_count=0,ltv_count=0;
 
 //////////////////////////////////////////////////
@@ -114,53 +114,56 @@ static LTI *aa_find(LTI **t,char *name,int len,int *insert) { // find/insert nod
     return lti;
 }
 
+// remove is non-aa-canonical...
+// a: traverse down to leaf, looking for matches along the way
+// b: if there's a match, clip leaf and return thru to matching node
+// c: matching node swaps, and then returns matching node to caller
+static LTI *aa_remove(LTI **t,char *name,int len,int match) {
+    LTI *result=NULL;
 
-static LTI *aa_remove(LTI **t,char *name,int len,LTI **todelete,LTI **tokeep) { // must be called with todelete/tokeep=&aa_sentinel
-    int status=0;
-    LTI *remove=NULL;
+    if (LTI_invalid(*t))
+        return &aa_sentinel;
 
-    TRYCATCH(LTI_invalid(*t),0,done,"checking for no such node");
-
-    inline LTI **save(LTI **dest,LTI *src) { (*dest)=src; return dest; }
-
-    // descend tree, finding matching node ("todelete") and then "next-greater" leaf ("tokeep")
+    // descend tree, finding matching node ("toremove") and then "next-greater" leaf ("tokeep")
     int delta=0;
     for (int i=0;delta==0 && i<PREVIEWLEN && i<len && i<(*t)->len;i++)
         delta=name[i]-(*t)->preview[i];
     if (!delta) // preview matched, compare full strings
         delta=strnncmp(name,len,(*t)->name,(*t)->len);
-    if (delta<0)
-        remove=aa_remove(&(*t)->lnk[LEFT],name,len,save(tokeep,*t),todelete);
-    else
-        remove=aa_remove(&(*t)->lnk[RIGHT],name,len,save(tokeep,*t),save(todelete,*t));
+    result=aa_remove(&(*t)->lnk[delta<0?LEFT:RIGHT],name,len,match|!delta);
 
-    // perform deletetion
-    if (t==tokeep && !LTI_invalid(*todelete) && !strnncmp(name,len,(*todelete)->name,(*todelete)->len)) {
-        remove=(*todelete);
-        if (todelete!=tokeep) {
-            (*tokeep)->lnk[LEFT] =(*todelete)->lnk[LEFT];
-            (*tokeep)->lnk[RIGHT]=(*todelete)->lnk[RIGHT];
-            (*todelete)=(*tokeep);
+    if (!delta) { // matching node
+        if (result!=&aa_sentinel) { // swap with leaf...
+            result->lnk[LEFT]=(*t)->lnk[LEFT];
+            result->lnk[RIGHT]=(*t)->lnk[RIGHT];
+            (*t)->lnk[LEFT]=&aa_sentinel;
+            (*t)->lnk[RIGHT]=&aa_sentinel;
         }
-        (*tokeep)=&aa_sentinel;
-        LTI_release(remove);
+        LTI *newresult=(*t);
+        (*t)=result;
+        result=newresult;
+    } else if (match && result==&aa_sentinel) {
+        result=*t;
+        *t=&aa_sentinel;
     }
 
  cleanup:
     // on the way back, re rebalance
-    if (((*t)->lnk[LEFT]->level < ((*t)->level-1)) || ((*t)->lnk[RIGHT]->level < ((*t)->level-1))) {
-        (*t)->level--;
-        if ((*t)->lnk[RIGHT]->level > (*t)->level)
-            (*t)->lnk[RIGHT]->level = (*t)->level;
-        aa_skew(t);
-        aa_skew(&(*t)->lnk[RIGHT]);
-        aa_skew(&(*t)->lnk[RIGHT]->lnk[RIGHT]);
-        aa_split(t);
-        aa_split(&(*t)->lnk[RIGHT]);
+    if (!LTI_invalid(*t)) {
+        if (((*t)->lnk[LEFT]->level < ((*t)->level-1)) || ((*t)->lnk[RIGHT]->level < ((*t)->level-1))) {
+            (*t)->level--;
+            if ((*t)->lnk[RIGHT]->level > (*t)->level)
+                (*t)->lnk[RIGHT]->level = (*t)->level;
+            aa_skew(t);
+            aa_skew(&(*t)->lnk[RIGHT]);
+            aa_skew(&(*t)->lnk[RIGHT]->lnk[RIGHT]);
+            aa_split(t);
+            aa_split(&(*t)->lnk[RIGHT]);
+        }
     }
 
  done:
-    return remove;
+    return result;
 }
 
 static void *aa_metamap(LTI **lti,LTI_METAOP op,int dir) {
@@ -199,8 +202,8 @@ LTI *LTV_find(LTV *ltv,char *name,int len,int insert)
 
 LTI *LTV_remove(LTV *ltv,char *name,int len)
 {
-    LTI *todelete=NULL,*tokeep=NULL;
-    return ltv->flags&LT_LIST?NULL:aa_remove(&ltv->sub.ltis,name,len,&todelete,&tokeep);
+    LTI *result=ltv->flags&LT_LIST?NULL:aa_remove(&ltv->sub.ltis,name,len,false);
+    return result;
 }
 
 // release old data if present and configure with new data if present
@@ -504,8 +507,8 @@ LTV *LTV_get(CLL *ltvs,int pop,int dir,LTV *match,LTVR **ltvr_ret)
     return ltv;
 }
 
-// delete an lti from an ltv
-void LTV_erase(LTV *ltv,LTI *lti) { if (ltv && lti) LTV_remove(ltv,lti->name,lti->len); }
+// extract and release an lti from an ltv
+void LTV_erase(LTV *ltv,LTI *lti) { if (ltv && lti) LTI_release(LTV_remove(ltv,lti->name,lti->len)); }
 
 LTV *LTV_dup(LTV *ltv)
 {

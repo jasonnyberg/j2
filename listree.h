@@ -39,6 +39,8 @@
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////
 
+#include "options.h"
+
 #include <stdio.h>
 #include "cll.h"
 
@@ -86,12 +88,14 @@ typedef struct {
     void *data;
     int len;
     int refs;
+#ifdef VIZ
+    fvec pos,vel;
+#endif
 } LTV; // LisTree Value
 
 typedef struct {
     CLL lnk;
     LTV *ltv;
-    // LTV_FLAGS flags;
 } LTVR; // LisTree Value Reference
 
 enum { RIGHT=0,LEFT=1,PREVIEWLEN=2,INSERT=4,ITER=8 }; // RIGHT==FWD, LEFT==REV
@@ -100,10 +104,13 @@ enum { RIGHT=0,LEFT=1,PREVIEWLEN=2,INSERT=4,ITER=8 }; // RIGHT==FWD, LEFT==REV
 enum { /*FWD=0,REV=1,*/ INFIX=1<<1,PREFIX=2<<1,POSTFIX=3<<1,TREEDIR=INFIX|PREFIX|POSTFIX };
 
 struct LTI {
-    LTI *lnk[2]; // LEFT/RIGHT
+    LTI *lnk[2]; // AA TREE LEFT/RIGHT
     char *name;
     CLL ltvs;
     char level,len,preview[PREVIEWLEN];
+#ifdef VIZ
+    fvec pos,vel;
+#endif
 };
 
 typedef void *(*LTI_METAOP)(LTI **lti);

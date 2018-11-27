@@ -45,7 +45,7 @@
 
 #include "trace.h" // lttng
 
-int show_ref=1;
+int show_ref=0;
 int lti_count=0,ltvr_count=0,ltv_count=0;
 
 //////////////////////////////////////////////////
@@ -965,7 +965,7 @@ LTV *REF_create(LTV *refs)
     STRY(!refs,"validating params");
     if (!(refs->flags&LT_REFS)) { // promote an ltv to a ref
         STRY(!LTV_empty(refs),"promoting non-empty ltv to ref");
-        STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_REFL),"promoting incomptible ltv to ref");
+        STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_REFL),"promoting incompatible ltv to ref");
         refs->flags|=(LT_REFS|LT_LIST);
         CLL_init(&refs->sub.ltvs);
     }

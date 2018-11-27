@@ -18,17 +18,17 @@
 [bench [dup! ! loop!]@loop loop! | locals!]@midbench
 
 [a b int_add! /@a a limit int_nequal! slowloop!]@slowloop
-[int! @@limit 0 int! @@a 1 int! @@b slowloop! | locals!]@slowbench
+[int! @limit @limit int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
 
-[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>] [square(3)])]@async_test1
+[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [square(3)]) stack!]@async_test1
 
 [[]<@thunk @root @sig encaps(vm_continuation(encaps(sig) root thunk))>/]@continuation
 [[]<@continuation @arg vm_async(continuation arg)@thread>]@async
 [<vm_await(thread)>/]@await
 
-[await(async([square(3)] continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>])))]@async_test6
+[await(async([square(3)] continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>]))) stack!]@async_test6
 
-[continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! RETURN @>])@C
+[continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>])@C
  [square(2)] async(C) @T1
  [square(3)] async(C) @T2
  minus(await(T2) await(T1))

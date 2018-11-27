@@ -443,7 +443,8 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
                     errno=0;
                     char *end;
                     int index=strtol(member,&end,0);
-                    STRY(errno || end==member,"validating index");
+                    if (errno || (end==member))
+                        return NULL; // failed to find member, but we don't need to STRY/report it so just return right here
                     STRY(!(basic_type=cif_find_concrete(LT_get(basic_type,TYPE_BASE,HEAD,KEEP))),"dereferencing pointer type");
                     basic_type_info=(TYPE_INFO_LTV *) basic_type->data;
                     int offset=index*basic_type_info->bytesize;
@@ -1193,6 +1194,9 @@ int _cif_curate_module(LTV *module,int bootstrap)
                         categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
                     break;
                 case DW_TAG_member:
+                    if (type_name && post)
+                        attr_set(&type_info->ltv,TYPE_SYMB,type_name); // let the member have it's own name, even if it's not a "symbolic" type
+                    break;
                 case DW_TAG_formal_parameter:
                 case DW_TAG_unspecified_parameters: // varargs
                 case DW_TAG_compile_unit:
@@ -1216,8 +1220,7 @@ int _cif_curate_module(LTV *module,int bootstrap)
 
         char *f=bootstrap?NULL:filename;
         if (!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
-            printf("dlopen error: handle %x %s\n",dlhandle,dlerror());
-
+            printf("failed while dlopen'ing %s; continuing without resolving global functions/variables\n",dlerror());
 
         STRY(ltv_traverse(index,resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
         if (dlhandle)

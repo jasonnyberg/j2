@@ -36,6 +36,6 @@
 
 char *bootstrap=
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
-    "ROOT<repl(file_open([bootstrap.edict] [r])) RETURN @>";
+    "ROOT<repl([bootstrap.edict] [r] file_open!)> RETURN ARG0 @";
 
 int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:bootstrap); }

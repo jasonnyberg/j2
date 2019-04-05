@@ -197,7 +197,8 @@ Note that "code" does not evaluate automatically; Evaluation is invoked _explici
 
 ## Factorial
 
-[@x x 1 x equal! | x decrement! multiply!]@factorial
+    [@n int_iszero(n) 1 | int_mul(n fact(int_dec(n)))]@fact
+
 
 
 ## Listree

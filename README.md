@@ -1,3 +1,5 @@
+(This doc is a work in progress…)
+
 J2 is a system that combines its three main components into something that can be viewed as
 
 
@@ -102,11 +104,7 @@ Names/DictionaryAPI
 
 A simple reflective program:
 
-
-```
-int! [3]@ square! stack!
-```
-
+    int! [3]@ square! stack!
 
 Breakdown:
 
@@ -167,11 +165,7 @@ You'll see int 0x9, i.e. 3 squared.
 
 The explicit creation and assignment of a C integer is shown only for the example; a simpler version would be:
 
-
-```
-[3] square! stack!
-```
-
+    [3] square! stack!
 
 The same coercion would have been performed automatically during the marshalling of FFI arguments.
 
@@ -194,11 +188,9 @@ Note that "code" does not evaluate automatically; Evaluation is invoked _explici
 </table>
 
 
+Factorial:
 
-## Factorial
-
-    [@n int_iszero(n) 1 | int_mul(n fact(int_dec(n)))]@fact
-
+    [@n int_iszero(n) 1 | int_mul(fact(int_dec(n)) n)]@fact
 
 
 ## Listree
@@ -269,19 +261,25 @@ The VM is very simple; It evaluates bytecodes, each of which is an index into an
   <tr>
    <td>CTX_POP
    </td>
-   <td>Fuse top to layers of data stack, pop head of dictionary stack and push it to data stack
+   <td>Fuse top two layers of data stack, pop head of dictionary stack and push it to data stack
    </td>
   </tr>
   <tr>
    <td>FUN_PUSH
    </td>
-   <td>Pop top of data stack and push onto func stack, add void layer to dict, add layer to data stack
+   <td>Pop top of data stack and push onto func stack, add layer to data stack, add a null layer to dictionary
+   </td>
+  </tr>
+  <tr>
+   <td>FUN_EVAL
+   </td>
+   <td>Push {FUN_POP} to code stack, pop top of func stack and do "EVAL"
    </td>
   </tr>
   <tr>
    <td>FUN_POP
    </td>
-   <td>Push {RESET,CTX_POP,REMOVE} to code stack, pop top of func stack and do "EVAL"
+   <td>Fuse top two stack layers, discard null dictionary layer
    </td>
   </tr>
   <tr>

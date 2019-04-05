@@ -63,6 +63,7 @@ enum {
     VMOP_CTX_POP,
     VMOP_FUN_PUSH,
     VMOP_FUN_EVAL,
+    VMOP_FUN_POP,
 } VM_OPCODES;
 
 enum {

@@ -479,12 +479,15 @@ static void vmop_ASSIGN() { VMOP_DEBUG();
         THROW(!(var=vm_stack_deq(POP)),LTV_NULL);
         if (var->flags&LT_CVAR) { // if TOS is a cvar
             THROW(!vm_stack_enq(cif_assign_cvar(var,val)),LTV_NULL); // assign directly to it.
-            goto done;
+        } else {
+            vm_env->ext=REF_create(var); // otherwise treat TOS as a reference
+            REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
+            THROW(REF_replace(REF_HEAD(vm_env->ext),val),LTV_NULL);
         }
-        vm_env->ext=REF_create(var); // otherwise treat TOS as a reference
+    } else {
+        REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
+        THROW(REF_assign(REF_HEAD(vm_env->ext),val),LTV_NULL);
     }
-    REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
-    THROW(REF_assign(REF_HEAD(vm_env->ext),val),LTV_NULL);
  done: return;
 }
 

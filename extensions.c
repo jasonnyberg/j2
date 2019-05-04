@@ -75,6 +75,7 @@ extern void pinglib(char *filename)
         dlclose(dlhandle);
 }
 
+// compiled separately because of it's use of libdwelf, which conflicts with libdwarf IIRC
 LTV *get_separated_debug_filename(char *filename)
 {
     LTV *debug_filename=NULL;

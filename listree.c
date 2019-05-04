@@ -635,7 +635,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 if (post) fprintf(ofile,"%s",post);
                 else fprintf(ofile,"]\n");
 
-                if ((*flags)&LT_TRAVERSE_HALT) // already visited
+                if (((*flags)&LT_TRAVERSE_HALT)) // already visited
                     fprintf(ofile,"%*c (subtree omitted...)\n",MAX(0,depth*4-2),' ');
 
                 if (LTV_hide(*ltv))
@@ -1124,24 +1124,25 @@ int REF_iterate(LTV *refs,int pop)
 int REF_assign(REF *ref,LTV *ltv)
 {
     int status=0;
-    LTV *ref_ltv=REF_ltv(ref);
-    if (ref_ltv && (ref_ltv->flags&LT_CVAR)) {
-        LTV *addr_type=cif_isaddr(ref_ltv);
-        if (addr_type) {
-            LTV *newltv=NULL;
-            STRY(!(newltv=cif_coerce_i2c(ltv,addr_type)),"coercing ltv");
-            LTVR_release(&ref->ltvr->lnk);
-            STRY(!LTV_put(&ref->lti->ltvs,newltv,ref->reverse,&ref->ltvr),"adding coerced ltv to ref");
-        } else {
-            STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
-        }
-    } else {
-        STRY(!ref->lti,"validating ref lti");
-        STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
-    }
+    STRY(!ref->lti,"validating ref lti");
+    STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
     done:
     return status;
 }
+
+
+int REF_replace(REF *ref,LTV *ltv)
+{
+    int status=0;
+    LTVR *ref_ltvr=REF_ltvr(ref);
+    STRY(!REF_lti(ref),"validating ref lti");
+    STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"replacing/adding rev ltv");
+    if (ref_ltvr) // remove old ref if it existed
+        LTVR_release(&ref_ltvr->lnk);
+    done:
+    return status;
+}
+
 
 int REF_remove(REF *ref)
 {

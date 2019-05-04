@@ -182,7 +182,7 @@ LTV *compile_ltv(COMPILER compiler,LTV *ltv)
     return bc;
 }
 
-char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL" };
+char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP" };
 
 void disassemble(FILE *ofile,LTV *ltv)
 {

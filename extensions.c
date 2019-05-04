@@ -121,6 +121,8 @@ extern void int_isneq(int a,int b) { if (a==b) throw(LTV_NULL); }
 
 extern int int_add(int a,int b) { return a+b; }
 extern int int_mul(int a,int b) { return a*b; }
+extern int int_inc(int a) { return ++a; }
+extern int int_dec(int a) { return --a; }
 
 
 int benchint=0;

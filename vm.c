@@ -480,13 +480,16 @@ static void vmop_ASSIGN() { VMOP_DEBUG();
         if (var->flags&LT_CVAR) { // if TOS is a cvar
             THROW(!vm_stack_enq(cif_assign_cvar(var,val)),LTV_NULL); // assign directly to it.
         } else {
-            vm_env->ext=REF_create(var); // otherwise treat TOS as a reference
+            vm_env->ext=REF_create(var); // otherwise treat TOS as a reference...
             REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
-            THROW(REF_replace(REF_HEAD(vm_env->ext),val),LTV_NULL);
+            if (REF_ltv(REF_HEAD(vm_env->ext))) // ...and it already exists...
+                THROW(REF_replace(vm_env->ext,val),LTV_NULL); // ...REPLACE its value
+            else
+                THROW(REF_assign(vm_env->ext,val),LTV_NULL); // ...else install it
         }
     } else {
         REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
-        THROW(REF_assign(REF_HEAD(vm_env->ext),val),LTV_NULL);
+        THROW(REF_assign(vm_env->ext,val),LTV_NULL);
     }
  done: return;
 }
@@ -495,7 +498,7 @@ static void vmop_REMOVE() { VMOP_DEBUG();
     SKIP_IF_STATE();
     if (vm_use_ext()) {
         vm_resolve(vm_env->ext);
-        REF_remove(REF_HEAD(vm_env->ext));
+        REF_remove(vm_env->ext);
     } else {
         LTV_release(vm_stack_deq(POP));
     }

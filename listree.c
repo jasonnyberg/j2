@@ -887,8 +887,10 @@ LTV *LT_get(LTV *parent,char *name,int end,int pop) {
 
 int ref_count=0;
 
-REF *REF_HEAD(LTV *ltv) { return ((REF *) CLL_HEAD(&(ltv)->sub.ltvs)); }
-REF *REF_TAIL(LTV *ltv) { return ((REF *) CLL_TAIL(&(ltv)->sub.ltvs)); }
+REF *REF_HEAD(LTV *ltv) { return ((REF *) CLL_HEAD(&ltv->sub.ltvs)); }
+REF *REF_TAIL(LTV *ltv) { return ((REF *) CLL_TAIL(&ltv->sub.ltvs)); }
+
+REF *REF_next(LTV *ltv,REF *ref) { return ((REF *) CLL_next(&ltv->sub.ltvs,&ref->lnk,HEAD)); }
 
 REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
 REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
@@ -1121,19 +1123,32 @@ int REF_iterate(LTV *refs,int pop)
     return status;
 }
 
-int REF_assign(REF *ref,LTV *ltv)
+int REF_assign(LTV *refs,LTV *ltv)
 {
     int status=0;
-    STRY(!ref->lti,"validating ref lti");
-    STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
+
+    LTV *ref_cvar(REF *ref) { LTV *ltv; return ref && (ltv=REF_ltv(ref)) && (ltv->flags&LT_CVAR)?ltv:NULL; }
+
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    REF *ref=REF_HEAD(refs);
+    LTV *ref_ltv=ref_cvar(ref);
+    if (ref_ltv) {
+        STRY(!ref_cvar(REF_next(refs,ref)),"testing if CVAR assignment target is assignable"); // allow "@x" style assignment to "nested" CVARs (use REF_replace for top-level assignment)
+        STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
+    } else {
+        STRY(!ref->lti,"validating ref lti");
+        STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
+    }
     done:
     return status;
 }
 
 
-int REF_replace(REF *ref,LTV *ltv)
+int REF_replace(LTV *refs,LTV *ltv)
 {
     int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    REF *ref=REF_HEAD(refs);
     LTVR *ref_ltvr=REF_ltvr(ref);
     STRY(!REF_lti(ref),"validating ref lti");
     STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"replacing/adding rev ltv");
@@ -1144,9 +1159,11 @@ int REF_replace(REF *ref,LTV *ltv)
 }
 
 
-int REF_remove(REF *ref)
+int REF_remove(LTV *refs)
 {
     int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    REF *ref=REF_HEAD(refs);
     STRY(!ref->lti || !ref->ltvr,"validating ref lti, ltvr");
     LTVR_release(&ref->ltvr->lnk);
     ref->ltvr=NULL;

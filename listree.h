@@ -226,9 +226,9 @@ extern LTV *REF_reset(REF *ref,LTV *newroot);
 extern int REF_resolve(LTV *root_ltv,LTV *refs,int insert);
 extern int REF_iterate(LTV *refs,int pop);
 
-extern int REF_assign(REF *ref,LTV *ltv);
-extern int REF_replace(REF *ref,LTV *ltv);
-extern int REF_remove(REF *ref);
+extern int REF_assign(LTV *refs,LTV *ltv);
+extern int REF_replace(LTV *refs,LTV *ltv);
+extern int REF_remove(LTV *refs);
 
 extern LTI *REF_lti(REF *ref);
 extern LTVR *REF_ltvr(REF *ref);

@@ -1127,15 +1127,15 @@ int REF_assign(LTV *refs,LTV *ltv)
 {
     int status=0;
 
-    LTV *ref_cvar(REF *ref) { LTV *ltv; return ref && (ltv=REF_ltv(ref)) && (ltv->flags&LT_CVAR)?ltv:NULL; }
+    LTV *ref_cvar(LTV *ref_ltv) { return ref_ltv && (ref_ltv->flags&LT_CVAR)?ref_ltv:NULL; }
 
-    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    STRY(!refs || !(refs->flags&LT_REFS),"validating refs in assign");
     REF *ref=REF_HEAD(refs);
-    LTV *ref_ltv=ref_cvar(ref);
-    if (ref_ltv) {
-        STRY(!ref_cvar(REF_next(refs,ref)),"testing if CVAR assignment target is assignable"); // allow "@x" style assignment to "nested" CVARs (use REF_replace for top-level assignment)
+    STRY(!ref,"validating ref in assign");
+    LTV *ref_ltv=ref_cvar(REF_ltv(ref));
+    if (ref_ltv && ref_cvar(REF_root(ref)))
         STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
-    } else {
+    else {
         STRY(!ref->lti,"validating ref lti");
         STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
     }

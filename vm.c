@@ -60,7 +60,7 @@ pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 enum {
     VMRES_DICT,  // stack of dictionary frames
     VMRES_STACK, // stack of data stacks
-    VMRES_FUNC,  // stack of
+    VMRES_FUNC,  // stack of pending f() calls
     VMRES_EXCP,  // exception for bypass/throw
     VMRES_CODE,
     VMRES_COUNT,
@@ -553,6 +553,24 @@ static void vmop_FUN_POP() { VMOP_DEBUG();
  done: return;
 }
 
+static void vmop_S2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_stack_deq(KEEP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_D2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_deq(VMRES_DICT,KEEP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_C2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_deq(VMRES_CODE,KEEP)),LTV_NULL);
+ done: return;
+}
+
 //////////////////////////////////////////////////
 
 typedef void (*VMOP_CALL)();
@@ -592,7 +610,10 @@ VMOP_CALL vmop_call[] = {
     vmop_CTX_POP,
     vmop_FUN_PUSH,
     vmop_FUN_EVAL,
-    vmop_FUN_POP
+    vmop_FUN_POP,
+    vmop_S2S,
+    vmop_D2S,
+    vmop_C2S
 };
 
 //////////////////////////////////////////////////

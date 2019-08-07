@@ -96,8 +96,12 @@ int _jit_edict(EMITTER emit,void *data,int len)
             if (!ops_len && ref_len==2 && tdata[0]=='$') { // possible keyword
                 switch (tdata[1]) {
                     case 's': EMIT(S2S); advance(ref_len); goto done; // dup
-                    case 'd': EMIT(D2S); advance(ref_len); goto done; // TOS[dict] dup
-                    case 'c': EMIT(C2S); advance(ref_len); goto done; // TOS[code] dup
+                    case 'd': EMIT(D2S); advance(ref_len); goto done; // TOS[dict] -> stack
+                    case 'e': EMIT(E2S); advance(ref_len); goto done; // TOS[excp] -> stack
+                    case 'f': EMIT(F2S); advance(ref_len); goto done; // TOS[func] -> stack
+                    case 'D': EMIT(S2D); advance(ref_len); goto done; // stack -> TOS[dict]
+                    case 'E': EMIT(S2E); advance(ref_len); goto done; // stack -> TOS[excp]
+                    case 'F': EMIT(S2F); advance(ref_len); goto done; // stack -> TOS[func]
                     default: break;
                 }
             }
@@ -191,7 +195,8 @@ LTV *compile_ltv(COMPILER compiler,LTV *ltv)
     return bc;
 }
 
-char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP","S2S","D2S","C2S" };
+char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP",
+                        "S2S","D2S","E2S","F2S","S2D","S2E","S2F" };
 
 void disassemble(FILE *ofile,LTV *ltv)
 {

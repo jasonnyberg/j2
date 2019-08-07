@@ -852,6 +852,88 @@ void graph_ltv_to_file(char *filename,LTV *ltv,int maxdepth,char *label) {
     LTV_deq(&ltvs,HEAD);
 }
 
+
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+int pickle_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
+{
+    void *write_data(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        switch ((*flags)&LT_TRAVERSE_TYPE) {
+            case LT_TRAVERSE_LTI:
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                    (*flags)|=LT_TRAVERSE_HALT;
+                else
+                    fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
+                break;
+            case LT_TRAVERSE_LTV:
+                if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
+                else fprintf(ofile,"%*c[",depth*4,' ');
+                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
+                else if ((*ltv)->flags&LT_BC)   disassemble(ofile,(*ltv));
+                else if ((*ltv)->flags&LT_CVAR) cif_print_cvar(ofile,(*ltv),depth);
+                else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
+                else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
+                else if ((*ltv)->flags&LT_BIN)  hexdump(ofile,(*ltv)->data,(*ltv)->len);
+                else                            fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
+                if (post) fprintf(ofile,"%s",post);
+                else fprintf(ofile,"]\n");
+
+                if (LTV_hide(*ltv))
+                    (*flags)|=LT_TRAVERSE_HALT;
+                break;
+            default:
+                break;
+        }
+    done:
+        return NULL;
+    }
+
+    void *write_links(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        switch ((*flags)&LT_TRAVERSE_TYPE) {
+            case LT_TRAVERSE_LTI:
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                    (*flags)|=LT_TRAVERSE_HALT;
+                else
+                    fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
+                break;
+            case LT_TRAVERSE_LTV:
+                if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
+                else fprintf(ofile,"%*c[",depth*4,' ');
+                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
+                else if ((*ltv)->flags&LT_BC)   disassemble(ofile,(*ltv));
+                else if ((*ltv)->flags&LT_CVAR) cif_print_cvar(ofile,(*ltv),depth);
+                else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
+                else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
+                else if ((*ltv)->flags&LT_BIN)  hexdump(ofile,(*ltv)->data,(*ltv)->len);
+                else                            fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
+                if (post) fprintf(ofile,"%s",post);
+                else fprintf(ofile,"]\n");
+                break;
+            default:
+                break;
+        }
+    done:
+        return NULL;
+    }
+
+    listree_traverse(ltvs,write_data,NULL);
+    listree_traverse(ltvs,write_links,NULL);
+
+    fflush(ofile);
+}
+
+int pickle_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
+{
+    CLL ltvs;
+    CLL_init(&ltvs);
+    LTV_enq(&ltvs,ltv,HEAD);
+    pickle_ltvs(ofile,pre,&ltvs,post,maxdepth);
+    LTV_deq(&ltvs,HEAD);
+}
+
 //////////////////////////////////////////////////
 //////////////////////////////////////////////////
 

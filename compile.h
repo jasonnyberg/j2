@@ -66,7 +66,11 @@ enum {
     VMOP_FUN_POP,
     VMOP_S2S,
     VMOP_D2S,
-    VMOP_C2S
+    VMOP_E2S,
+    VMOP_F2S,
+    VMOP_S2D,
+    VMOP_S2E,
+    VMOP_S2F,
 } VM_OPCODES;
 
 enum {

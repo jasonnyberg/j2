@@ -61,7 +61,7 @@ typedef enum {
     LT_IMM  =0x00000400, // immediate value, not a pointer
     LT_NOWC =0x00000800, // do not do wildcard matching
     LT_BC   =0x00001000, // VM bytecode
-
+    LT_DERV =0x00002000, // Derived from another LTV (cannot be an LT_LIST)
 
 
     LT_RO   =0x00010000, // META: disallow release

@@ -87,9 +87,9 @@ void try_loginfo(const char *func,const char *cond)
     memset(logstr,' ',TRY_STRLEN);
     switch (try_infolev)
     {
-        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr); break;
-        case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr); break;
+        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "Finished %s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "Finished %s",func,try_context.msgstr); break;
+        case 1: snprintf(logstr+indent,TRY_STRLEN,"Finished %s",try_context.msgstr); break;
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 

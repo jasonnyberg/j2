@@ -1,4 +1,4 @@
-all: compilerun
+all: compile
 
 build:; mkdir build
 cmake: build; cd build && cmake ..

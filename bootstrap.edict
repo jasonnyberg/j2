@@ -17,8 +17,8 @@
 [bench encaps! vm_while! | locals!]@fastbench
 [bench [dup! ! loop!]@loop loop! | locals!]@midbench
 
-[a b int_add! /@a a limit int_nequal! slowloop!]@slowloop
-[int! @limit @limit int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
+[a b int_add! a@ limit int_nequal! slowloop!]@slowloop
+[int! @limit limit@ int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
 
 [vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [square(3)]) stack!]@async_test1
 

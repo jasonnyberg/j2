@@ -75,6 +75,7 @@ extern void pinglib(char *filename)
         dlclose(dlhandle);
 }
 
+// compiled separately because of it's use of libdwelf, which conflicts with libdwarf IIRC
 LTV *get_separated_debug_filename(char *filename)
 {
     LTV *debug_filename=NULL;
@@ -114,18 +115,24 @@ LTV *get_separated_debug_filename(char *filename)
 extern LTV *null() { return LTV_NULL; }
 extern void is_null(LTV *tos) { if (!(tos->flags&LT_NULL)) throw(LTV_NULL); }
 
-extern void int_iszero(int a)      { if (a) throw(LTV_NULL);    }
-extern void int_iseq(int a,int b)  { if (a!=b) throw(LTV_NULL); }
-extern void int_isneq(int a,int b) { if (a==b) throw(LTV_NULL); }
+extern void int_iszero(int a)       { if (a) throw(LTV_NULL);    }
+extern void int_iseq(int a,int b)   { if (a!=b) throw(LTV_NULL); }
+extern void int_isneq(int a,int b)  { if (a==b) throw(LTV_NULL); }
+extern void int_islt(int a,int b)   { if (!(a<b)) throw(LTV_NULL); }
+extern void int_isgt(int a,int b)   { if (!(a>b)) throw(LTV_NULL); }
+extern void int_islteq(int a,int b) { if (a>b) throw(LTV_NULL); }
+extern void int_isgteq(int a,int b) { if (a<b) throw(LTV_NULL); }
 
 extern int int_add(int a,int b) { return a+b; }
 extern int int_mul(int a,int b) { return a*b; }
+extern int int_inc(int a) { return ++a; }
+extern int int_dec(int a) { return --a; }
 
 extern int int_to_ascii(int i) { printf("%c\n",i); }
 
 int benchint=0;
 extern void bench() {
-    if (++benchint==100000) {
+    if (--benchint<0) {
         printf("                                          done!\n");
         benchint=0;
         throw(LTV_NULL);

@@ -60,7 +60,7 @@ pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 enum {
     VMRES_DICT,  // stack of dictionary frames
     VMRES_STACK, // stack of data stacks
-    VMRES_FUNC,  // stack of
+    VMRES_FUNC,  // stack of pending f() calls
     VMRES_EXCP,  // exception for bypass/throw
     VMRES_CODE,
     VMRES_COUNT,
@@ -92,15 +92,15 @@ __thread LTV *vm_env_stack=NULL; // every thread can have a stack of vm_environm
 __thread VM_ENV *vm_env=NULL; // every thread can have an active vm environment
 
 static LTV *vm_ltv_container=NULL; // holds LTVs we don't want garbage-collected
-static LTV *unstack_bc=NULL;
+static LTV *fun_pop_bc=NULL;
 
 __attribute__((constructor))
 static void init(void)
 {
-    VM_CMD unstack_asm[] = {{VMOP_RESET},{VMOP_CTX_POP},{VMOP_REMOVE}};
+    VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
     vm_ltv_container=LTV_NULL_LIST;
-    unstack_bc=compile(compilers[FORMAT_asm],unstack_asm,3);
-    LTV_put(LTV_list(vm_ltv_container),unstack_bc,HEAD,NULL);
+    fun_pop_bc=compile(compilers[FORMAT_asm],fun_pop_asm,1);
+    LTV_put(LTV_list(vm_ltv_container),fun_pop_bc,HEAD,NULL);
 }
 
 
@@ -398,7 +398,7 @@ static void vmop_CATCH() { VMOP_DEBUG();
     int status=0;
     if (!vm_env->state)
         vm_env->state|=VM_BYPASS;
-    else if (vm_env->state|VM_THROWING && (!vm_env->skipdepth)) {
+    else if ((vm_env->state|VM_THROWING) && (!vm_env->skipdepth)) {
         LTV *exception=NULL;
         STRY(!(exception=vm_deq(VMRES_EXCP,KEEP)),"peeking at exception stack");
         if (vm_use_ext()) {
@@ -430,10 +430,10 @@ static void vmop_PUSHEXT() { VMOP_DEBUG();
         LTV *stack;
         THROW(!(stack=vm_deq(VMRES_STACK,KEEP)),LTV_NULL);
         LTV *dest=NULL;
-        if ((dest=vm_stack_deq(KEEP)) && (dest->flags&LT_REFS) && (dest=vm_stack_deq(POP))) {
+        if ((dest=vm_stack_deq(KEEP)) && (dest->flags&LT_REFS) && (dest=vm_stack_deq(POP))) { // merge stack into ref
             if (!REF_lti(REF_HEAD(dest))) // create LTI if it's not already resolved
                 REF_resolve(vm_deq(VMRES_DICT,KEEP),dest,TRUE);
-            CLL_MERGE(&(REF_lti(REF_HEAD(dest))->ltvs),LTV_list(stack),HEAD);
+            CLL_MERGE(&(REF_lti(REF_HEAD(dest))->ltvs),LTV_list(stack),REF_HEAD(dest)->reverse);
             vm_stack_enq(dest);
         }
     }
@@ -478,12 +478,18 @@ static void vmop_ASSIGN() { VMOP_DEBUG();
         THROW(!(var=vm_stack_deq(POP)),LTV_NULL);
         if (var->flags&LT_CVAR) { // if TOS is a cvar
             THROW(!vm_stack_enq(cif_assign_cvar(var,val)),LTV_NULL); // assign directly to it.
-            goto done;
+        } else {
+            vm_env->ext=REF_create(var); // otherwise treat TOS as a reference...
+            REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
+            if (REF_ltv(REF_HEAD(vm_env->ext))) // ...and it already exists...
+                THROW(REF_replace(vm_env->ext,val),LTV_NULL); // ...REPLACE its value
+            else
+                THROW(REF_assign(vm_env->ext,val),LTV_NULL); // ...else install it
         }
-        vm_env->ext=REF_create(var); // otherwise treat TOS as a reference
+    } else {
+        REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
+        THROW(REF_assign(vm_env->ext,val),LTV_NULL);
     }
-    REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
-    THROW(REF_assign(REF_HEAD(vm_env->ext),val),LTV_NULL);
  done: return;
 }
 
@@ -491,19 +497,16 @@ static void vmop_REMOVE() { VMOP_DEBUG();
     SKIP_IF_STATE();
     if (vm_use_ext()) {
         vm_resolve(vm_env->ext);
-        REF_remove(REF_HEAD(vm_env->ext));
+        REF_remove(vm_env->ext);
     } else {
         LTV_release(vm_stack_deq(POP));
     }
  done: return;
 }
 
-#define SKIP vm_env->skipdepth++
-#define DESKIP do { if (vm_env->skipdepth>0) vm_env->skipdepth--; } while (0)
-
 static void vmop_CTX_PUSH() { VMOP_DEBUG();
     if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
-        SKIP;
+        vm_env->skipdepth++;
     } else {
         THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),LTV_NULL);
         THROW(!vm_enq(VMRES_STACK,LTV_NULL_LIST),LTV_NULL);
@@ -512,8 +515,8 @@ static void vmop_CTX_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_CTX_POP() { VMOP_DEBUG();
-    if (vm_env->state && vm_env->skipdepth) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
-        DESKIP;
+    if (vm_env->skipdepth>0) { DEBUG(fprintf(stderr,"  (deskipping %s)\n",__func__));
+        vm_env->skipdepth--;
     } else {
         vm_listcat(VMRES_STACK);
         THROW(!vm_stack_enq(vm_deq(VMRES_DICT,POP)),LTV_NULL);
@@ -523,22 +526,71 @@ static void vmop_CTX_POP() { VMOP_DEBUG();
 
 static void vmop_FUN_PUSH() { VMOP_DEBUG();
     if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
-        SKIP;
+        vm_env->skipdepth++;
     } else {
-        THROW(!vm_enq(VMRES_DICT,LTV_NULL),LTV_NULL);
-        THROW(!vm_enq(VMRES_STACK,LTV_NULL_LIST),LTV_NULL);
         THROW(!vm_enq(VMRES_FUNC,vm_stack_deq(POP)),LTV_NULL);
+        THROW(!vm_enq(VMRES_STACK,LTV_NULL_LIST),LTV_NULL);
+        THROW(!vm_enq(VMRES_DICT,LTV_NULL),LTV_NULL);
     }
  done: return;
 }
 
 static void vmop_FUN_EVAL() { VMOP_DEBUG();
-    if (vm_env->state && vm_env->skipdepth) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
-        DESKIP;
+    if (vm_env->skipdepth>0) { DEBUG(fprintf(stderr,"  (deskipping %s)\n",__func__));
+        vm_env->skipdepth--;
     } else {
-        vm_code_push(unstack_bc); // stack signal to CTX_POP and REMOVE after eval
+        vm_code_push(fun_pop_bc); // stack signal to CTX_POP and REMOVE after eval
         vm_eval_ltv(vm_deq(VMRES_FUNC,POP));
     }
+ done: return;
+}
+
+// never skip fun_pop_bc
+static void vmop_FUN_POP() { VMOP_DEBUG();
+    vm_listcat(VMRES_STACK);
+    LTV_release(vm_deq(VMRES_DICT,POP));
+ done: return;
+}
+
+static void vmop_S2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_stack_deq(KEEP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_D2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_deq(VMRES_DICT,KEEP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_E2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_deq(VMRES_EXCP,KEEP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_F2S() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+    THROW(!vm_stack_enq(vm_deq(VMRES_FUNC,KEEP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_S2D() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+        THROW(!vm_stack_enq(vm_deq(VMRES_DICT,POP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_S2E() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+        THROW(!vm_stack_enq(vm_deq(VMRES_EXCP,POP)),LTV_NULL);
+ done: return;
+}
+
+static void vmop_S2F() { VMOP_DEBUG();
+    SKIP_IF_STATE();
+        THROW(!vm_stack_enq(vm_deq(VMRES_FUNC,POP)),LTV_NULL);
  done: return;
 }
 
@@ -563,7 +615,7 @@ static void vmop_EXT() { VMOP_DEBUG();
           fstrnprint(stderr,vm_env->ext_data,vm_env->ext_length);
           fprintf(stderr,CODE_RESET "\n"));
  done: return;
-}
+}	
 //////////////////////////////////////////////////
 
 VMOP_CALL vmop_call[] = {
@@ -580,7 +632,15 @@ VMOP_CALL vmop_call[] = {
     vmop_CTX_PUSH,
     vmop_CTX_POP,
     vmop_FUN_PUSH,
-    vmop_FUN_EVAL
+    vmop_FUN_EVAL,
+    vmop_FUN_POP,
+    vmop_S2S,
+    vmop_D2S,
+    vmop_E2S,
+    vmop_F2S,
+    vmop_S2D,
+    vmop_S2E,
+    vmop_S2F,
 };
 
 //////////////////////////////////////////////////

@@ -635,7 +635,7 @@ void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
                 if (post) fprintf(ofile,"%s",post);
                 else fprintf(ofile,"]\n");
 
-                if ((*flags)&LT_TRAVERSE_HALT) // already visited
+                if (((*flags)&LT_TRAVERSE_HALT)) // already visited
                     fprintf(ofile,"%*c (subtree omitted...)\n",MAX(0,depth*4-2),' ');
 
                 if (LTV_hide(*ltv))
@@ -852,6 +852,88 @@ void graph_ltv_to_file(char *filename,LTV *ltv,int maxdepth,char *label) {
     LTV_deq(&ltvs,HEAD);
 }
 
+
+//////////////////////////////////////////////////
+//////////////////////////////////////////////////
+
+int pickle_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
+{
+    void *write_data(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        switch ((*flags)&LT_TRAVERSE_TYPE) {
+            case LT_TRAVERSE_LTI:
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                    (*flags)|=LT_TRAVERSE_HALT;
+                else
+                    fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
+                break;
+            case LT_TRAVERSE_LTV:
+                if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
+                else fprintf(ofile,"%*c[",depth*4,' ');
+                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
+                else if ((*ltv)->flags&LT_BC)   disassemble(ofile,(*ltv));
+                else if ((*ltv)->flags&LT_CVAR) cif_print_cvar(ofile,(*ltv),depth);
+                else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
+                else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
+                else if ((*ltv)->flags&LT_BIN)  hexdump(ofile,(*ltv)->data,(*ltv)->len);
+                else                            fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
+                if (post) fprintf(ofile,"%s",post);
+                else fprintf(ofile,"]\n");
+
+                if (LTV_hide(*ltv))
+                    (*flags)|=LT_TRAVERSE_HALT;
+                break;
+            default:
+                break;
+        }
+    done:
+        return NULL;
+    }
+
+    void *write_links(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+        listree_acyclic(lti,ltvr,ltv,depth,flags);
+        switch ((*flags)&LT_TRAVERSE_TYPE) {
+            case LT_TRAVERSE_LTI:
+                if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
+                    (*flags)|=LT_TRAVERSE_HALT;
+                else
+                    fprintf(ofile,"%*c\"%s\"\n",MAX(0,depth*4-2),' ',(*lti)->name);
+                break;
+            case LT_TRAVERSE_LTV:
+                if (pre) fprintf(ofile,"%*c%s",depth*4,' ',pre);
+                else fprintf(ofile,"%*c[",depth*4,' ');
+                if      ((*ltv)->flags&LT_REFS) { REF_printall(ofile,(*ltv),"REFS:\n"); fstrnprint(ofile,(*ltv)->data,(*ltv)->len); }
+                else if ((*ltv)->flags&LT_BC)   disassemble(ofile,(*ltv));
+                else if ((*ltv)->flags&LT_CVAR) cif_print_cvar(ofile,(*ltv),depth);
+                else if ((*ltv)->flags&LT_IMM)  fprintf(ofile,"IMM 0x%x",(*ltv)->data);
+                else if ((*ltv)->flags&LT_NULL) fprintf(ofile,"<null>");
+                else if ((*ltv)->flags&LT_BIN)  hexdump(ofile,(*ltv)->data,(*ltv)->len);
+                else                            fstrnprint(ofile,(*ltv)->data,(*ltv)->len);
+                if (post) fprintf(ofile,"%s",post);
+                else fprintf(ofile,"]\n");
+                break;
+            default:
+                break;
+        }
+    done:
+        return NULL;
+    }
+
+    listree_traverse(ltvs,write_data,NULL);
+    listree_traverse(ltvs,write_links,NULL);
+
+    fflush(ofile);
+}
+
+int pickle_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
+{
+    CLL ltvs;
+    CLL_init(&ltvs);
+    LTV_enq(&ltvs,ltv,HEAD);
+    pickle_ltvs(ofile,pre,&ltvs,post,maxdepth);
+    LTV_deq(&ltvs,HEAD);
+}
+
 //////////////////////////////////////////////////
 //////////////////////////////////////////////////
 
@@ -887,8 +969,10 @@ LTV *LT_get(LTV *parent,char *name,int end,int pop) {
 
 int ref_count=0;
 
-REF *REF_HEAD(LTV *ltv) { return ((REF *) CLL_HEAD(&(ltv)->sub.ltvs)); }
-REF *REF_TAIL(LTV *ltv) { return ((REF *) CLL_TAIL(&(ltv)->sub.ltvs)); }
+REF *REF_HEAD(LTV *ltv) { return ((REF *) CLL_HEAD(&ltv->sub.ltvs)); }
+REF *REF_TAIL(LTV *ltv) { return ((REF *) CLL_TAIL(&ltv->sub.ltvs)); }
+
+REF *REF_next(LTV *ltv,REF *ref) { return ((REF *) CLL_next(&ltv->sub.ltvs,&ref->lnk,HEAD)); }
 
 REF *refpush(CLL *cll,REF *ref) { return (REF *) CLL_put(cll,&ref->lnk,HEAD); }
 REF *refpop(CLL *cll)           { return (REF *) CLL_get(cll,POP,HEAD); }
@@ -1121,21 +1205,19 @@ int REF_iterate(LTV *refs,int pop)
     return status;
 }
 
-int REF_assign(REF *ref,LTV *ltv)
+int REF_assign(LTV *refs,LTV *ltv)
 {
     int status=0;
-    LTV *ref_ltv=REF_ltv(ref);
-    if (ref_ltv && (ref_ltv->flags&LT_CVAR)) {
-        LTV *addr_type=cif_isaddr(ref_ltv);
-        if (addr_type) {
-            LTV *newltv=NULL;
-            STRY(!(newltv=cif_coerce_i2c(ltv,addr_type)),"coercing ltv");
-            LTVR_release(&ref->ltvr->lnk);
-            STRY(!LTV_put(&ref->lti->ltvs,newltv,ref->reverse,&ref->ltvr),"adding coerced ltv to ref");
-        } else {
-            STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
-        }
-    } else {
+
+    LTV *ref_cvar(LTV *ref_ltv) { return ref_ltv && (ref_ltv->flags&LT_CVAR)?ref_ltv:NULL; }
+
+    STRY(!refs || !(refs->flags&LT_REFS),"validating refs in assign");
+    REF *ref=REF_HEAD(refs);
+    STRY(!ref,"validating ref in assign");
+    LTV *ref_ltv=ref_cvar(REF_ltv(ref));
+    if (ref_ltv && ref_cvar(REF_root(ref)))
+        STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
+    else {
         STRY(!ref->lti,"validating ref lti");
         STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
     }
@@ -1143,9 +1225,27 @@ int REF_assign(REF *ref,LTV *ltv)
     return status;
 }
 
-int REF_remove(REF *ref)
+
+int REF_replace(LTV *refs,LTV *ltv)
 {
     int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    REF *ref=REF_HEAD(refs);
+    LTVR *ref_ltvr=REF_ltvr(ref);
+    STRY(!REF_lti(ref),"validating ref lti");
+    STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"replacing/adding rev ltv");
+    if (ref_ltvr) // remove old ref if it existed
+        LTVR_release(&ref_ltvr->lnk);
+    done:
+    return status;
+}
+
+
+int REF_remove(LTV *refs)
+{
+    int status=0;
+    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    REF *ref=REF_HEAD(refs);
     STRY(!ref->lti || !ref->ltvr,"validating ref lti, ltvr");
     LTVR_release(&ref->ltvr->lnk);
     ref->ltvr=NULL;

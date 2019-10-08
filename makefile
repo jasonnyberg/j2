@@ -5,7 +5,7 @@ cmake: build; cd build && cmake ..
 compile: cmake; make -C build
 dwarf: cd build && dwp -e jj; find . -name "*.dwo" -exec rm {} +
 clean: cmake; make -C build clean
-run:; MALLOC_CHECK=1 ./jj.sh
+run: compile; MALLOC_CHECK=1 ./jj.sh
 #compilerun: compile dwarf run
 compilerun: compile run
 install: cmake; sudo make -C build install

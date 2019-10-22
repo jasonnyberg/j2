@@ -4,6 +4,7 @@
  *
  * Copyright (C) 2011 Jason Nyberg <jasonnyberg@gmail.com>
  * Copyright (C) 2018 Jason Nyberg <jasonnyberg@gmail.com> (dual-licensed)
+ * (C) Copyright 2019 Hewlett Packard Enterprise Development LP.
  *
  * This file is part of j2.
  *

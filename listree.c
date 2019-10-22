@@ -173,9 +173,9 @@ static void *aa_metamap(LTI **lti,LTI_METAOP op,int dir) {
         goto done;
     int order=dir&1;
     switch(dir&TREEDIR) {
-        case PREFIX:  if ((rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))); break;
-        case INFIX:   if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))); break;
-        case POSTFIX: if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir)) || (rval=op(lti))); break;
+        case PREFIX:  if ((rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))) {} break;
+        case INFIX:   if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))) {} break;
+        case POSTFIX: if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir)) || (rval=op(lti))) {} break;
     }
  done:
     return rval;
@@ -212,7 +212,7 @@ LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags)
     flags|=ltv->flags&LT_META; // need to preserve the original metaflags
     if (ltv->data && (ltv->flags&LT_FREE) && !(ltv->flags&LT_NAP))
         RELEASE(ltv->data);
-    ltv->len=(len<0 && !(flags&LT_NSTR))?strlen((char *) data):len;
+    ltv->len=(len<0 && !(flags&LT_NSTR))?(int) strlen((char *) data):len;
     ltv->data=data;
     if (flags&LT_DUP) ltv->data=bufdup(ltv->data,ltv->len);
     if (flags&LT_ESC) strstrip(ltv->data,&ltv->len);
@@ -520,7 +520,7 @@ LTV *LTV_dup(LTV *ltv)
     return LTV_init(NEW(LTV),ltv->data,ltv->len,flags);
 }
 
-LTV *LTV_copy(LTV *ltv,unsigned maxdepth)
+LTV *LTV_copy(LTV *ltv,int maxdepth)
 {
     LTV *index=LTV_NULL,*dupes=LTV_NULL;
     char buf[32];

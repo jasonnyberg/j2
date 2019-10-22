@@ -51,10 +51,10 @@ char *STRTOLL_TAIL;
 
 int Gmymalloc=0;
 
-unsigned try_depth=-1;
-unsigned try_loglev=2;
-unsigned try_infolev=1;
-unsigned try_edepth=2;
+int try_depth=-1;
+int try_loglev=2;
+int try_infolev=1;
+int try_edepth=2;
 
 __thread TRY_CONTEXT try_context;
 
@@ -219,8 +219,8 @@ int strton(char *str,int len,long double *val)
 int strnncmp(char *a,int alen,char *b,int blen)
 {
     int mismatch;
-    alen=(alen<0)?strlen(a):alen;
-    blen=(blen<0)?strlen(b):blen;
+    alen=(alen<0)?(int) strlen(a):alen;
+    blen=(blen<0)?(int) strlen(b):blen;
     mismatch=strncmp(a,b,MIN(alen,blen));
 
     return mismatch?mismatch:alen-blen;

@@ -1796,7 +1796,8 @@ int cif_ffi_prep(LTV *type)
             *count=children?CLL_len(&children->ltvs):0;
         (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
         if (*count) {
-            int size=0,largest=0,index=0,lastloc=-1;
+            int size=0,largest=0,index=0;
+            unsigned lastloc=0xffffffff;
             void *get_child_ffi_type(CLL *lnk) {
                 int status=0;
                 LTV *child_type=((LTVR *) lnk)->ltv;
@@ -1968,14 +1969,14 @@ int cif_iszero(LTV *cvar)
 {
     TYPE_UVALUE uval={};
     switch (Type_getUVAL(cvar,&uval)) {
-        case TYPE_INT1S:   return uval.int1u.val == 0;
-        case TYPE_INT2S:   return uval.int2u.val == 0;
-        case TYPE_INT4S:   return uval.int4u.val == 0;
-        case TYPE_INT8S:   return uval.int8u.val == 0;
-        case TYPE_INT1U:   return uval.int1s.val == 0;
-        case TYPE_INT2U:   return uval.int2s.val == 0;
-        case TYPE_INT4U:   return uval.int4s.val == 0;
-        case TYPE_INT8U:   return uval.int8s.val == 0;
+        case TYPE_INT1S:   return uval.int1s.val == 0;
+        case TYPE_INT2S:   return uval.int2s.val == 0;
+        case TYPE_INT4S:   return uval.int4s.val == 0;
+        case TYPE_INT8S:   return uval.int8s.val == 0;
+        case TYPE_INT1U:   return uval.int1u.val == 0;
+        case TYPE_INT2U:   return uval.int2u.val == 0;
+        case TYPE_INT4U:   return uval.int4u.val == 0;
+        case TYPE_INT8U:   return uval.int8u.val == 0;
         case TYPE_FLOAT4:  return uval.float4.val == 0;
         case TYPE_FLOAT8:  return uval.float8.val == 0;
         case TYPE_FLOAT16: return uval.float16.val == 0;
@@ -1988,18 +1989,18 @@ int cif_ispos(LTV *cvar)
 {
     TYPE_UVALUE uval={};
     switch (Type_getUVAL(cvar,&uval)) {
-        case TYPE_INT1S:   return uval.int1u.val > 0;
-        case TYPE_INT2S:   return uval.int2u.val > 0;
-        case TYPE_INT4S:   return uval.int4u.val > 0;
-        case TYPE_INT8S:   return uval.int8u.val > 0;
-        case TYPE_INT1U:   return uval.int1s.val > 0;
-        case TYPE_INT2U:   return uval.int2s.val > 0;
-        case TYPE_INT4U:   return uval.int4s.val > 0;
-        case TYPE_INT8U:   return uval.int8s.val > 0;
+        case TYPE_INT1S:   return uval.int1s.val > 0;
+        case TYPE_INT2S:   return uval.int2s.val > 0;
+        case TYPE_INT4S:   return uval.int4s.val > 0;
+        case TYPE_INT8S:   return uval.int8s.val > 0;
+        case TYPE_INT1U:   return 1;
+        case TYPE_INT2U:   return 1;
+        case TYPE_INT4U:   return 1;
+        case TYPE_INT8U:   return 1;
         case TYPE_FLOAT4:  return uval.float4.val > 0;
         case TYPE_FLOAT8:  return uval.float8.val > 0;
         case TYPE_FLOAT16: return uval.float16.val > 0;
-        case TYPE_ADDR:    return uval.addr.val > NULL;
+        case TYPE_ADDR:    return uval.addr.val > (void *) 0;
         default: return -1;
     }
 }
@@ -2008,18 +2009,18 @@ int cif_isneg(LTV *cvar)
 {
     TYPE_UVALUE uval={};
     switch (Type_getUVAL(cvar,&uval)) {
-        case TYPE_INT1S:   return uval.int1u.val < 0;
-        case TYPE_INT2S:   return uval.int2u.val < 0;
-        case TYPE_INT4S:   return uval.int4u.val < 0;
-        case TYPE_INT8S:   return uval.int8u.val < 0;
-        case TYPE_INT1U:   return uval.int1s.val < 0;
-        case TYPE_INT2U:   return uval.int2s.val < 0;
-        case TYPE_INT4U:   return uval.int4s.val < 0;
-        case TYPE_INT8U:   return uval.int8s.val < 0;
+        case TYPE_INT1S:   return uval.int1s.val < 0;
+        case TYPE_INT2S:   return uval.int2s.val < 0;
+        case TYPE_INT4S:   return uval.int4s.val < 0;
+        case TYPE_INT8S:   return uval.int8s.val < 0;
+        case TYPE_INT1U:   return 0;
+        case TYPE_INT2U:   return 0;
+        case TYPE_INT4U:   return 0;
+        case TYPE_INT8U:   return 0;
         case TYPE_FLOAT4:  return uval.float4.val < 0;
         case TYPE_FLOAT8:  return uval.float8.val < 0;
         case TYPE_FLOAT16: return uval.float16.val < 0;
-        case TYPE_ADDR:    return uval.addr.val < NULL;
+        case TYPE_ADDR:    return uval.addr.val < (void *) 0;
         default: return -1;
     }
 }

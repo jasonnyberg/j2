@@ -163,15 +163,16 @@ TRACEPOINT_LOGLEVEL(edict,opext,    TRACE_DEBUG_LINE)
 #define TOPEXT(ext,len,flags,state)  tracepoint(edict,opext,     (char *) __FILE__,(char *) __FUNCTION__,(char *) ext,len,flags,state)
 
 #else /* LTTNG */
-#define TSTART(status,msg)
-#define TFINISH(status,msg)
-#define TEVENT(status,msg)
-#define TEVLEN(status,msg,msglen)
-#define TEVHEX(status,data,len)
-#define TERROR(status,msg)
-#define TALLOC(ptr,size,msg)
-#define TDEALLOC(ptr,msg)
-#define TLOOKUP(ltv,name,len,insert)
-#define TOPCODE(opcode,state)
-#define TOPEXT(ext,len,flags,state)
+#define NOTHING_TO_DO while(0) {}
+#define TSTART(status,msg)           NOTHING_TO_DO
+#define TFINISH(status,msg)          NOTHING_TO_DO
+#define TEVENT(status,msg)           NOTHING_TO_DO
+#define TEVLEN(status,msg,msglen)    NOTHING_TO_DO
+#define TEVHEX(status,data,len)      NOTHING_TO_DO
+#define TERROR(status,msg)           NOTHING_TO_DO
+#define TALLOC(ptr,size,msg)         NOTHING_TO_DO
+#define TDEALLOC(ptr,msg)            NOTHING_TO_DO
+#define TLOOKUP(ltv,name,len,insert) NOTHING_TO_DO
+#define TOPCODE(state)               NOTHING_TO_DO
+#define TOPEXT(ext,len,flags,state)  NOTHING_TO_DO
 #endif /* LTTNG */

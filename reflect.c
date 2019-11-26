@@ -412,6 +412,7 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
     basic_type=member?cif_find_indexable(type):cif_find_concrete(type);
     int size=0;
+    int is_array=0;
     if (!basic_type) {
         switch(type_info->tag) {
             case DW_TAG_subprogram:
@@ -423,7 +424,6 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
         }
     } else {
         TYPE_INFO_LTV *basic_type_info=(TYPE_INFO_LTV *) basic_type->data;
-        int is_pointer=false;
 
         switch(basic_type_info->tag) {
             case DW_TAG_structure_type:
@@ -436,10 +436,10 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
                     goto done;
                 }
                 break;
-            case DW_TAG_pointer_type:
-                is_pointer=true;
-                // fall thru
             case DW_TAG_array_type:
+                is_array=LT_ARR; // when arranging ffi args, use address of data (i.e. pointer to array location)
+                // fall thru
+            case DW_TAG_pointer_type:
                 if (member) {
                     errno=0;
                     char *end;
@@ -449,7 +449,7 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
                     STRY(!(basic_type=cif_find_concrete(LT_get(basic_type,TYPE_BASE,HEAD,KEEP))),"dereferencing pointer type");
                     basic_type_info=(TYPE_INFO_LTV *) basic_type->data;
                     int offset=index*basic_type_info->bytesize;
-                    if (is_pointer) // data points to location of a pointer
+                    if (!is_array) // data points to location of a pointer
                         data=*(void **) data;
                     // else data points to location of first element of array
                     cvar=cif_create_cvar(basic_type,data+offset,NULL);
@@ -466,9 +466,9 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
     }
 
     if (data)
-        STRY(!(cvar=LTV_init(NEW(LTV),data,size,LT_BIN|LT_CVAR)),"creating reference cvar");
+        STRY(!(cvar=LTV_init(NEW(LTV),data,size,LT_BIN|LT_CVAR|is_array)),"creating reference cvar");
     else
-        STRY(!(cvar=LTV_init(NEW(LTV),(void *) mymalloc(size),size,LT_OWN|LT_BIN|LT_CVAR)),"creating allocated cvar");
+        STRY(!(cvar=LTV_init(NEW(LTV),(void *) mymalloc(size),size,LT_OWN|LT_BIN|LT_CVAR|is_array)),"creating allocated cvar");
     LT_put(cvar,TYPE_BASE,HEAD,type);
  done:
     return status?NULL:cvar;
@@ -561,6 +561,7 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                         LTV *subrange_ltv=LT_get(&type_info->ltv,"subrange type",HEAD,KEEP);
                         TYPE_INFO_LTV *subrange=subrange_ltv?(TYPE_INFO_LTV *) subrange_ltv->data:NULL;
                         if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
+                            fprintf(ofile,"\n");
                             LTV *tcvar=cif_create_cvar(&base_info->ltv,cvar->data,NULL);
                             traverse_array(tcvar,subrange->upper_bound+1);
                             LTV_release(tcvar);
@@ -2100,17 +2101,6 @@ extern void print_type(LTV *ltv,char *prefix)
     show_ref=old_show_ref;
 }
 
-// look for explicit indication of type compatibility
-int cif_is_compatible(LTV *a,LTV *b)
-{
-    if (!a || !b)
-        return false;
-    if (a==b)
-        return true;
-    if (basic_ffi_ltv(a)==basic_ffi_ltv(b))
-        return true;
-    return false;
-}
 // (encaps LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
 LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 {
@@ -2150,7 +2140,9 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 
     LTV *cvar_base=LT_get(ltv,TYPE_BASE,HEAD,KEEP);
     if (type_base && cvar_base) {
-        if (cif_is_compatible(type_base,cvar_base))
+        if (type_base==cvar_base)
+            result=ltv;
+        else if (basic_ffi_ltv(type_base)==basic_ffi_ltv(cvar_base))
             result=ltv;
         else {
             LTV *meta=cif_get_meta(cvar_base);
@@ -2203,7 +2195,14 @@ int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_args)
     int arity=CLL_len(coerced_args);
     args=calloc(sizeof(void *),arity);
 
-    void *index_arg(CLL *lnk) { args[index++]=((LTVR *) lnk)->ltv->data; return NULL; }
+    void *index_arg(CLL *lnk) {
+        LTV *ltv=((LTVR *) lnk)->ltv;
+        if  (ltv->flags&LT_ARR)
+            args[index++]=&ltv->data;
+        else
+            args[index++]=ltv->data;
+        return NULL;
+    }
     CLL_map(coerced_args,FWD,index_arg);
 
     ffi_call((ffi_cif *) cif_ltv->data,loc,rval->data,args); // no return value

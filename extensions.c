@@ -148,25 +148,3 @@ extern void bench() {
     }
  done: return;
 }
-
-extern unsigned short crc16(unsigned char *buf, unsigned short len)
-{
-    unsigned short crc = 0xffff;
-    unsigned int i, j;
-
-    for (i = 0; i < len; i++)
-    {
-        crc = crc ^ buf[i];
-        for (j = 0; j < 8; j++)
-        {
-            if (crc & 1)
-                crc = (crc >> 1) ^ 0xa001;
-            else
-                crc >>= 1;
-        }
-    }
-    return crc;
-}
-
-extern unsigned short icrc16(unsigned int x) { return crc16((unsigned char *) &x,sizeof(x)); }
-

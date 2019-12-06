@@ -165,7 +165,7 @@ static void vm_code_push(LTV *ltv) {
     THROW(!ltv,LTV_NULL);
     LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
     THROW(!opcode_ltv,LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  vm_code_push %x" CODE_RESET "\n",opcode_ltv->data));
+    DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_push %x" CODE_RESET "\n",opcode_ltv->data));
     THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),LTV_NULL); // encaps code ltv within tracking ltv
     THROW(!vm_enq(VMRES_CODE,opcode_ltv),LTV_NULL);
  done:
@@ -177,13 +177,13 @@ static void vm_code_peek() {
     TSTART(vm_env->state,"");
     vm_env->code_ltvr=NULL;
     THROW(!(vm_env->code_ltv=LTV_get(ENV_LIST(VMRES_CODE),KEEP,HEAD,NULL,&vm_env->code_ltvr)),LTV_NULL);
-    DEBUG(fprintf(stderr,CODE_RED "  vm_code_peek %x" CODE_RESET "\n",vm_env->code_ltv->data));
+    DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_peek %x" CODE_RESET "\n",vm_env->code_ltv->data));
  done:
     TFINISH(vm_env->state,"");
     return;
 }
 
-static void vm_code_pop() { DEBUG(fprintf(stderr,CODE_RED "  vm_code_pop %x" CODE_RESET "\n",vm_env->code_ltv->data));
+static void vm_code_pop() { DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_pop %x" CODE_RESET "\n",vm_env->code_ltv->data));
     TSTART(vm_env->state,"");
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);
@@ -211,8 +211,8 @@ LTV *vm_resolve(LTV *ref) {
 void vm_dump_ltv(LTV *ltv,char *label) {
     TSTART(vm_env->state,"");
     char *filename;
-    printf("%s\n",label);
-    print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0);
+    fprintf(OUTFILE,"%s\n",label);
+    print_ltv(OUTFILE,CODE_RED,ltv,CODE_RESET "\n",0);
     graph_ltv_to_file(FORMATA(filename,32,"/tmp/%s.dot",label),ltv,0,label);
  done:
     TFINISH(vm_env->state,"");
@@ -377,8 +377,8 @@ extern void dup() {
 // Opcode Handlers
 //////////////////////////////////////////////////
 
-#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(stderr,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
-#define SKIP_IF_STATE() do { if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__)); goto done; }} while(0);
+#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(ERRFILE,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
+#define SKIP_IF_STATE() do { if (vm_env->state) { DEBUG(fprintf(ERRFILE,"  (skipping %s)\n",__func__)); goto done; }} while(0);
 
 static void vmop_RESET() { VMOP_DEBUG();
     SKIP_IF_STATE();
@@ -506,7 +506,7 @@ static void vmop_REMOVE() { VMOP_DEBUG();
 }
 
 static void vmop_CTX_PUSH() { VMOP_DEBUG();
-    if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
+    if (vm_env->state) { DEBUG(fprintf(ERRFILE,"  (skipping %s)\n",__func__));
         vm_env->skipdepth++;
     } else {
         THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),LTV_NULL);
@@ -516,7 +516,7 @@ static void vmop_CTX_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_CTX_POP() { VMOP_DEBUG();
-    if (vm_env->skipdepth>0) { DEBUG(fprintf(stderr,"  (deskipping %s)\n",__func__));
+    if (vm_env->skipdepth>0) { DEBUG(fprintf(ERRFILE,"  (deskipping %s)\n",__func__));
         vm_env->skipdepth--;
     } else {
         vm_listcat(VMRES_STACK);
@@ -526,7 +526,7 @@ static void vmop_CTX_POP() { VMOP_DEBUG();
 }
 
 static void vmop_FUN_PUSH() { VMOP_DEBUG();
-    if (vm_env->state) { DEBUG(fprintf(stderr,"  (skipping %s)\n",__func__));
+    if (vm_env->state) { DEBUG(fprintf(ERRFILE,"  (skipping %s)\n",__func__));
         vm_env->skipdepth++;
     } else {
         THROW(!vm_enq(VMRES_FUNC,vm_stack_deq(POP)),LTV_NULL);
@@ -537,7 +537,7 @@ static void vmop_FUN_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_FUN_EVAL() { VMOP_DEBUG();
-    if (vm_env->skipdepth>0) { DEBUG(fprintf(stderr,"  (deskipping %s)\n",__func__));
+    if (vm_env->skipdepth>0) { DEBUG(fprintf(ERRFILE,"  (deskipping %s)\n",__func__));
         vm_env->skipdepth--;
     } else {
         vm_code_push(fun_pop_bc); // stack signal to CTX_POP and REMOVE after eval
@@ -611,12 +611,13 @@ static void vmop_EXT() { VMOP_DEBUG();
     vm_env->ext_flags=ntohl(*(unsigned *)  vm_env->code_ltv->data); ADVANCE(sizeof(unsigned));
     vm_env->ext_data=vm_env->code_ltv->data;                        ADVANCE(vm_env->ext_length);
     TOPEXT(vm_env->ext_data,vm_env->ext_length,vm_env->ext_flags,vm_env->state);
-    DEBUG(fprintf(stderr,CODE_BLUE " ");
-          fprintf(stderr,"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
-          fstrnprint(stderr,vm_env->ext_data,vm_env->ext_length);
-          fprintf(stderr,CODE_RESET "\n"));
+    DEBUG(fprintf(ERRFILE,CODE_BLUE " ");
+          fprintf(ERRFILE,"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
+          fstrnprint(ERRFILE,vm_env->ext_data,vm_env->ext_length);
+          fprintf(ERRFILE,CODE_RESET "\n"));
  done: return;
-}	
+}
+
 //////////////////////////////////////////////////
 
 VMOP_CALL vmop_call[] = {
@@ -766,6 +767,6 @@ extern int vm_bootstrap(char *bootstrap) {
     try_depth=0;
     LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
-        print_ltv(stdout,"",rval,"\n",0);
+        print_ltv(OUTFILE,"",rval,"\n",0);
     return !rval;
 }

@@ -45,10 +45,10 @@ typedef struct {
 CLL *dumpnode(CLL *lnk,void *data)
 {
     if (!lnk) return NULL;
-    if (!(NODE(lnk)->i%10)) printf("%s%d [color=red]\n",(char *) data,NODE(lnk)->i);
-    else printf("%s%d\n",(char *) data,NODE(lnk)->i);
-    printf("%s%d -> %s%d [color=red]\n",(char *) data,NODE(lnk)->i,(char *) data,NODE(CLL_SIB(lnk,FWD))->i);
-    printf("%s%d -> %s%d\n",(char *) data,NODE(lnk)->i,(char *) data,NODE(CLL_SIB(lnk,REV))->i);
+    if (!(NODE(lnk)->i%10)) OUT_PRINTF("%s%d [color=red]\n",(char *) data,NODE(lnk)->i);
+    else OUT_PRINTF("%s%d\n",(char *) data,NODE(lnk)->i);
+    OUT_PRINTF("%s%d -> %s%d [color=red]\n",(char *) data,NODE(lnk)->i,(char *) data,NODE(CLL_SIB(lnk,FWD))->i);
+    OUT_PRINTF("%s%d -> %s%d\n",(char *) data,NODE(lnk)->i,(char *) data,NODE(CLL_SIB(lnk,REV))->i);
     return NULL;
 }
 

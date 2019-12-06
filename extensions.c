@@ -51,12 +51,20 @@
 
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
-extern int string(char *s) { printf("%s\n",s); }
+extern int string(char *s) { fprintf(OUTFILE,"%s\n",s); }
 extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
 
 extern FILE *get_stdin() { return stdin; }
+
 extern FILE *get_stdout() { return stdout; }
 extern FILE *get_stderr() { return stderr; }
+
+extern FILE *get_OUTFILE() { return OUTFILE; }
+extern FILE *get_ERRFILE() { return ERRFILE; }
+
+extern void set_OUTFILE(FILE *fp) { OUTFILE_VAR=fp; }
+extern void set_ERRFILE(FILE *fp) { ERRFILE_VAR=fp; }
+
 extern LTV *brl(FILE *fp) {
     int len; char *data=NULL;
     return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
@@ -71,7 +79,7 @@ extern void pinglib(char *filename)
 {
     void *dlhandle=dlopen(filename,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND);
     if (!dlhandle)
-        printf("dlopen error: handle %x %s\n",dlhandle,dlerror());
+        fprintf(OUTFILE,"dlopen error: handle %x %s\n",dlhandle,dlerror());
     else
         dlclose(dlhandle);
 }
@@ -129,12 +137,12 @@ extern int int_mul(int a,int b) { return a*b; }
 extern int int_inc(int a) { return ++a; }
 extern int int_dec(int a) { return --a; }
 
-extern int int_to_ascii(int i) { printf("%c\n",i); }
+extern int int_to_ascii(int i) { fprintf(OUTFILE,"%c\n",i); }
 
 int benchint=0;
 extern void bench() {
     if (--benchint<0) {
-        printf("                                          done!\n");
+        fprintf(OUTFILE,"                                          done!\n");
         benchint=0;
         throw(LTV_NULL);
     }

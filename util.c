@@ -43,12 +43,8 @@
 
 #include "trace.h" // lttng
 
-unsigned myid=1;
-ull *STRTOULL_PTR;
-char *STRTOULL_TAIL;
-
-long long *STRTOLL_PTR;
-char *STRTOLL_TAIL;
+__thread FILE *OUTFILE_VAR=NULL;
+__thread FILE *ERRFILE_VAR=NULL;
 
 int Gmymalloc=0;
 
@@ -94,8 +90,8 @@ void try_loginfo(const char *func,const char *cond)
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 
-    fprintf(stderr,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr);
-    fflush(stderr);
+    fprintf(ERRFILE,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr);
+    fflush(ERRFILE);
 }
 
 void try_logerror(const char *func,const char *cond,int status)
@@ -109,8 +105,8 @@ void try_logerror(const char *func,const char *cond,int status)
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 
-    fprintf(stderr,CODE_RED "%s" CODE_RESET NEWLINE,errstr);
-    fflush(stderr);
+    fprintf(ERRFILE,CODE_RED "%s" CODE_RESET NEWLINE,errstr);
+    fflush(ERRFILE);
 }
 
 void try_reset()
@@ -344,7 +340,7 @@ char *balanced_readline(FILE *ifile,int *length) {
                         if (depth) {
                             if (c==delimiter[depth]) depth--;
                             else {
-                                fprintf(stderr,"ERROR: Sequence unbalanced at \"%c\", offset %d\n",c,*length);
+                                fprintf(ERRFILE,"ERROR: Sequence unbalanced at \"%c\", offset %d\n",c,*length);
                                 free(expr); expr=NULL;
                                 *length=depth=0;
                                 goto done;
@@ -357,7 +353,7 @@ char *balanced_readline(FILE *ifile,int *length) {
         }
         if (!depth)
             break;
-        //else fprintf(stderr,CODE_RED),fstrnprint(stdout,delimiter+1,depth),fprintf(stderr,CODE_RESET),fflush(stderr);
+        //else fprintf(ERRFILE,CODE_RED),fstrnprint(ERRFILE,delimiter+1,depth),fprintf(ERRFILE,CODE_RESET),fflush(ERRFILE);
     }
 
 done:

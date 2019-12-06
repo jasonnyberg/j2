@@ -143,12 +143,12 @@ int _jit_edict(EMITTER emit,void *data,int len)
 }
 
 int jit_edict(EMITTER emit,void *data,int len) { return _jit_edict(emit,data,len); } // wrap, dwarf fucks up param list
-int jit_xml(EMITTER emit,void *data,int len)     { printf("unsupported\n"); }
-int jit_json(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
-int jit_yaml(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
-int jit_swagger(EMITTER emit,void *data,int len) { printf("unsupported\n"); }
-int jit_lisp(EMITTER emit,void *data,int len)    { printf("unsupported\n"); }
-int jit_massoc(EMITTER emit,void *data,int len)  { printf("unsupported\n"); }
+int jit_xml(EMITTER emit,void *data,int len)     { fprintf(OUTFILE,"unsupported\n"); }
+int jit_json(EMITTER emit,void *data,int len)    { fprintf(OUTFILE,"unsupported\n"); }
+int jit_yaml(EMITTER emit,void *data,int len)    { fprintf(OUTFILE,"unsupported\n"); }
+int jit_swagger(EMITTER emit,void *data,int len) { fprintf(OUTFILE,"unsupported\n"); }
+int jit_lisp(EMITTER emit,void *data,int len)    { fprintf(OUTFILE,"unsupported\n"); }
+int jit_massoc(EMITTER emit,void *data,int len)  { fprintf(OUTFILE,"unsupported\n"); }
 
 
 COMPILER compilers[] = {jit_asm,jit_edict,jit_xml,jit_json,jit_yaml,jit_swagger,jit_lisp,jit_massoc};

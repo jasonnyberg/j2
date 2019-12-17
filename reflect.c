@@ -790,6 +790,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                 break;
             case DW_AT_sibling:
             case DW_AT_high_pc:
+            case DW_AT_decl_column:
             case DW_AT_decl_line:
             case DW_AT_decl_file:
             case DW_AT_call_line:

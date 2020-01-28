@@ -36,7 +36,29 @@ These three elements assemble themselves at runtime into a multi-purpose program
 
 The evolution of the language has been influenced by Forth, Lisp, Joy, Factor, Tcl, Mathematica, and others.
 
-Literals
+Key Points:
+
+*   The language runs within a simple virtual machine which evaluates bytecode.
+*   The VM is stackless, it's bytecode evaluator does not recurse.
+*   The VM manages storage for bytecode streams, it's data stack, the hierarchical dictionary, nested function calls, and exceptions.
+*   All work is performed by implicitly pushing and pulling information on and off of the VM's data stack.
+*   The fundamental unit of information in Edict is a "literal". Literals are just text, delineated by square brackets:
+
+[This is a literal]
+
+*   The Edict interpreter keeps track of nested square brackets, so:
+
+[This is a [nested] literal]
+
+is interpreted as a literal with the value "This is a [nested] literal".
+
+*   A "\" character appearing in the definition of a literal "escapes" the next character, allowing the interpreter to create literals with (for instance) unbalanced square brackets:
+
+[This is a literal containing a \[]
+
+*   Literals are placed on the stack when declared.
+
+
 
 Names/DictionaryAPI
 

@@ -33,7 +33,7 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 #define __USE_GNU // strndupa, stpcpy
 
 #include <stdio.h>

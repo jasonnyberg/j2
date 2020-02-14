@@ -193,7 +193,7 @@ extern LTV *cif_coerce_i2c(LTV *arg,LTV *type);
 extern LTV *cif_coerce_c2i(LTV *arg);
 extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);
 
-extern LTV *cif_type_info(char *typename);
+extern LTV *cif_type_info(char *type_name);
 extern LTV *cif_find_base(LTV *type,int tag);
 extern LTV *cif_find_concrete(LTV *type);
 extern LTV *cif_find_indexable(LTV *type);

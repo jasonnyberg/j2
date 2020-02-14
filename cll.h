@@ -40,6 +40,8 @@
 #ifndef CLL_H
 #define CLL_H
 
+#include <functional>
+
 // head=lnk[0],tail=lnk[1]
 struct CLL;
 typedef struct CLL CLL;
@@ -57,7 +59,7 @@ extern CLL *CLL_put(CLL *lst,CLL *lnk,int end);  // add lnk to lst's head or tai
 extern CLL *CLL_next(CLL *lst,CLL *lnk,int end); // return next (or prev) lnk in list, or NULL if none.
 
 // calls op(lnk,data) for each lnk in lst until op returns non-zero; returns what last op returns
-typedef void *(*CLL_OP)(CLL *lnk);
+typedef std::function<void * (CLL *)> CLL_OP;
 extern void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,CLL_OP op); // map with fast-forward
 extern void *CLL_map(CLL *sentinel,int dir,CLL_OP op);
 extern int CLL_len(CLL *sentinel);

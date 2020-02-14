@@ -1,8 +1,9 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(j2 LANGUAGES C)
+project(j2 LANGUAGES CXX)
 
-add_definitions(-std=gnu99)
+#add_definitions(-std=gnu99)
+add_definitions(-fpermissive)
 add_definitions(-ggdb3)
 add_definitions(-fdebug-types-section)
 add_definitions(-fno-eliminate-unused-debug-types)
@@ -14,8 +15,8 @@ include_directories(.)
 add_definitions(-fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=)
 #set (CMAKE_SHARED_LINKER_FLAGS "-Wl,-fno-eliminate-unused-debug-types")
 
-add_library(reflect SHARED trace.c util.c cll.c listree.c reflect.c compile.c vm.c extensions.c)
-add_executable(jj jj.c)
+add_library(reflect SHARED trace.cc util.cc cll.cc listree.cc reflect.cc compile.cc vm.cc extensions.cc)
+add_executable(jj jj.cc)
 target_link_libraries(jj reflect dwarf elf dw dl ffi pthread urcu urcu-bp urcu-common lttng-ust lttng-ctl lttng-ust-tracepoint)
 
 set_property(TARGET reflect jj PROPERTY POSITION_INDEPENDENT_CODE ON)

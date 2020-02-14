@@ -53,11 +53,12 @@ CLL *CLL_get(CLL *sentinel,int pop,int end) { CLL *lnk=NULL; return sentinel && 
 CLL *CLL_put(CLL *sentinel,CLL *lnk,int end) { return CLL_splice(sentinel,CLL_init(lnk),end); }
 CLL *CLL_next(CLL *sentinel,CLL *lnk,int dir) { CLL *rlnk=lnk?CLL_SIB(lnk,dir):CLL_get(sentinel,KEEP,dir); return rlnk==sentinel?NULL:rlnk; }
 void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,CLL_OP op) { // map with fast-forward
-    CLL *rval=NULL,*sib=NULL,*next=NULL;
+    void *rval=NULL;
+    CLL *sib=NULL,*next=NULL;
     for(rval=NULL,sib=CLL_SIB(ff?ff:sentinel,dir); // init
         sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib)); // next saved, op can cut
         sib=next);
     return rval;
 }
 void *CLL_map(CLL *sentinel,int dir,CLL_OP op) { return CLL_mapfrom(sentinel,NULL,dir,op); }
-int CLL_len(CLL *sentinel) { int acc=0; void *f(CLL *lnk) { acc++; return NULL; } return sentinel?(CLL_map(sentinel,FWD,f),acc):0; }
+int CLL_len(CLL *sentinel) { int acc=0; return sentinel?(CLL_map(sentinel,FWD,[&](CLL *lnk) { acc++; return (CLL *) NULL; }),acc):0; }

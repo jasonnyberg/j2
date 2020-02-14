@@ -33,7 +33,7 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _GNU_SOURCE // strndupa, stpcpy
+//#define _GNU_SOURCE // strndupa, stpcpy
 #define __USE_GNU // strndupa, stpcpy
 #include <stdio.h>
 #include <stdlib.h>
@@ -128,7 +128,7 @@ void *mymalloc(int size)
 
 void *myrealloc(void *buf, int newsize)
 {
-    char *r=realloc(buf,newsize);
+    void *r=realloc(buf,newsize);
     if (r) Gmymalloc+=1;
     TDEALLOC(buf,"");
     TALLOC(r,newsize,"");
@@ -260,12 +260,13 @@ int fnmatch_len(char *pat,int plen,char *str,int slen)
 int shexdump(FILE *ofile,char *buf,int size,int width,int opts)
 {
     int i=0;
-    int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
+    //int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
+    auto o = [&](int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; }; // reversible offset
     int pad=!(opts&SHEXDUMP_OPT_UNPADDED);
     char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
-    int shexbyte(int c) { return fprintf(ofile,pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); }
-    void readable(int j) { for (;j && o(i-j)<size;j--) fprintf(ofile,"%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); }
-    void hex(int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):fprintf(ofile,"  %s",sep); }
+    auto shexbyte = [&](int c) { return fprintf(ofile,pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); };
+    auto readable = [&](int j) { for (;j && o(i-j)<size;j--) fprintf(ofile,"%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); };
+    auto hex = [&](int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):fprintf(ofile,"  %s",sep); };
 
     while (i<size) fprintf(ofile,"%8d: ",i),hex(width),readable(width),fprintf(ofile,"\n");
     return size;
@@ -279,15 +280,16 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int exclen=exclude?strlen(exclude):0;
     int ballen=balance?strlen(balance)/2:0;
     int i=0,depth=0;
-    int checkbal(int match) {
-        if (balance) {
-            int minlen=MIN(len-i,ballen);
-            if (depth && !strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen; // prefer close over open for bal[0]==bal[1]
-            else if     (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
-            else if     (depth || !match)                       i++;
-        } else if (!match) i++;
-        return !depth && match;
-    }
+    auto checkbal = [&](int match) {
+                        if (balance) {
+                            int minlen=MIN(len-i,ballen);
+                            if (depth && !strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen; // prefer close over open for bal[0]==bal[1]
+                            else if     (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
+                            else if     (depth || !match)                       i++;
+                        } else if (!match) i++;
+                        return !depth && match;
+                    };
+    
     if (include) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(!memchr(include,buf[i],inclen)?1:0)) break;
     if (exclude) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(memchr(exclude,buf[i],exclen)?1:0))  break;
     if (balance) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(1)) break;
@@ -296,17 +298,17 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
 
 char *balanced_readline(FILE *ifile,int *length) {
     char *expr=NULL;
-    char *nextline(int *linelen) {
-        static char *line=NULL;
-        static size_t buflen=0;
+    auto nextline = [&](int *linelen) {
+                        static char *line=NULL;
+                        static size_t buflen=0;
 
-        if ((*linelen=getline(&line,&buflen,ifile))>0) {
-            if ((expr=realloc(expr,(*length)+(*linelen)+1)))
-                memmove(expr+(*length),line,(*linelen)+1);
-            return expr;
-        }
-        return NULL;
-    }
+                        if ((*linelen=getline(&line,&buflen,ifile))>0) {
+                            if ((expr=realloc(expr,(*length)+(*linelen)+1)))
+                                memmove(expr+(*length),line,(*linelen)+1);
+                            return expr;
+                        }
+                        return (char *) NULL;
+                    };
 
     int depth=0;
     char delimiter[1024]; // balancing stack
@@ -357,5 +359,5 @@ char *balanced_readline(FILE *ifile,int *length) {
     }
 
 done:
-    return (*length && !depth)?expr:(free(expr),NULL);
+    return (*length && !depth)?expr:(free(expr),(char *) NULL);
 }

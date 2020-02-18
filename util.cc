@@ -181,7 +181,7 @@ int fstrnprint(FILE *ofile,char *str,int len)
     return len;
 }
 
-void *bufdup(const void *buf,int len)
+char *bufdup(const char *buf,int len)
 {
     // always null terminate whether string or not
     void *newbuf;
@@ -189,7 +189,7 @@ void *bufdup(const void *buf,int len)
     newbuf=mymalloc(len+1);
     memcpy(newbuf,buf,len);
     ((char *) newbuf)[len]=0;
-    return newbuf;
+    return (char *) newbuf;
 }
 
 char *stripdup(char *buf,int *len)
@@ -263,7 +263,7 @@ int shexdump(FILE *ofile,char *buf,int size,int width,int opts)
     //int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
     auto o = [&](int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; }; // reversible offset
     int pad=!(opts&SHEXDUMP_OPT_UNPADDED);
-    char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
+    const char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
     auto shexbyte = [&](int c) { return fprintf(ofile,pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); };
     auto readable = [&](int j) { for (;j && o(i-j)<size;j--) fprintf(ofile,"%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); };
     auto hex = [&](int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):fprintf(ofile,"  %s",sep); };

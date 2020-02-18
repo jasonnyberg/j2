@@ -35,7 +35,7 @@
 
 #include "vm.h"
 
-char *bootstrap=
+const char *bootstrap=
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
     "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
 

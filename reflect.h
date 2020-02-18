@@ -59,6 +59,7 @@
 
 #define TYPE_NAME "die name" // a die's type name
 #define TYPE_SYMB "die symb" // a die's symbolic type name
+#define TYPE_LINK "die link" // a cu's mangled linkage name
 #define TYPE_BASE "die base" // a die's base's ltv
 #define TYPE_LIST "die list" // type's children, in die order
 #define TYPE_CAST "die cast" // a casted cvar's original data (lifespan protection)
@@ -126,7 +127,8 @@ typedef struct {
     Dwarf_Bool     is_info;
     Dwarf_Sig8     sig8;
     Dwarf_Unsigned offset;
-    char           *dwo_name;
+    char *         dwo_name;
+    char *         linkage_name;
 } CU_DATA;
 
 typedef enum {
@@ -147,6 +149,7 @@ typedef enum {
     TYPEF_SIGNATURE  = 1<<0x0e, // new for dwarf v4
     TYPEF_IS_INFO    = 1<<0x0f, // new for dwarf v4
     TYPEF_OFFSET     = 1<<0x10, // new for dwarf v4
+    TYPEF_LINKAGE    = 1<<0x11,
 } TYPE_FLAGS;
 
 
@@ -186,12 +189,14 @@ extern int cif_preview_module(LTV *mod_ltv);
 extern int cif_ffi_prep(LTV *type);
 
 extern LTV *cif_rval_create(LTV *lambda,void *data);
-extern int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type));
 extern LTV *cif_get_meta(LTV *ltv);
 extern LTV *cif_put_meta(LTV *ltv,LTV *meta);
 extern LTV *cif_coerce_i2c(LTV *arg,LTV *type);
 extern LTV *cif_coerce_c2i(LTV *arg);
 extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);
+
+typedef std::function<int(char *argname,LTV *type)> CIF_MARSHAL_OP;
+extern int cif_args_marshal(LTV *lambda,int dir,CIF_MARSHAL_OP marshal);
 
 extern LTV *cif_type_info(char *type_name);
 extern LTV *cif_find_base(LTV *type,int tag);

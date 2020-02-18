@@ -33,7 +33,7 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 #define _C99
 #include <libelf.h>
 #include <elfutils/libdwelf.h>
@@ -70,8 +70,7 @@ extern LTV *brl(FILE *fp) {
     return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
 }
 
-extern void throw(LTV *ltv) { vm_throw(ltv); }
-extern void try(int exp) { if (exp) vm_throw(LTV_NULL); }
+extern void vm_try(int exp) { if (exp) vm_throw(LTV_NULL); }
 
 extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
 extern void file_close(FILE *fp) { fclose(fp); }
@@ -111,7 +110,7 @@ LTV *get_separated_debug_filename(char *filename)
                     while (--idlen)
                         buf+=sprintf(buf,"%02x",*((unsigned char *) buildid++));
                     buf+=sprintf(buf,".debug");
-                    debug_filename->len=((void *) buf)-debug_filename->data;
+                    debug_filename->len=buf-(char *) (debug_filename->data);
                 }
                 elf_end(elf);
             }

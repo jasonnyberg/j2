@@ -36,6 +36,8 @@
 #ifndef COMPILE_H
 #define COMPILE_H
 
+#include <functional>
+
 #include <stdio.h>
 #include "listree.h"
 
@@ -46,8 +48,8 @@ typedef struct {
     char *data;       // extended
 } VM_CMD; // exploded bytecode template
 
-typedef int (*EMITTER)(VM_CMD *cmd);
-typedef int (*COMPILER)(EMITTER emit,void *data,int len);
+typedef std::function<void(VM_CMD *cmd)> EMITTER;
+typedef std::function<int(EMITTER emit,void *data,int len)> COMPILER;
 
 enum {
     VMOP_RESET,

@@ -33,7 +33,7 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 #define _C99
 #include <stddef.h>
 #include <stdio.h>
@@ -67,7 +67,7 @@ enum {
     VMRES_COUNT,
 } VM_LISTRES;
 
-static char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_EXCP","VMRES_CODE" };
+static const char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_EXCP","VMRES_CODE" };
 
 enum {
     VM_YIELD    = 0x01,
@@ -119,7 +119,7 @@ static LTV *vm_deq(int res,int pop)  { return LTV_get(ENV_LIST(res),pop,HEAD,NUL
 
 LTV *vm_stack_enq(LTV *ltv) { return LTV_enq(LTV_list(vm_deq(VMRES_STACK,KEEP)),ltv,HEAD); }
 LTV *vm_stack_deq(int pop) {
-    void *op(CLL *lnk) { return LTV_get(LTV_list(((LTVR *) lnk)->ltv),pop,HEAD,NULL,NULL); }
+    auto op = [&](CLL *lnk) { return LTV_get(LTV_list(((LTVR *) lnk)->ltv),pop,HEAD,NULL,NULL); };
     LTV *rval=CLL_map(ENV_LIST(VMRES_STACK),FWD,op);
     return rval;
 }
@@ -195,8 +195,8 @@ static void vm_code_pop() { DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_pop %x" CO
 static void vm_resolve_at(CLL *cll,LTV *ref) {
     TSTART(vm_env->state,"");
     int status=0;
-    LTV *resolve_ltv(LTV *dict) { return REF_resolve(dict,ref,FALSE)?NULL:REF_ltv(REF_HEAD(ref)); }
-    void *op(CLL *lnk) { return resolve_ltv(((LTVR *) lnk)->ltv); }
+    auto resolve_ltv = [&](LTV *dict) { return REF_resolve(dict,ref,FALSE)?NULL:REF_ltv(REF_HEAD(ref)); };
+    auto op = [&](CLL *lnk) { return resolve_ltv(((LTVR *) lnk)->ltv); };
     CLL_map(cll,FWD,op);
  done:
     TFINISH(vm_env->state,"");
@@ -227,17 +227,18 @@ static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     rval=cif_rval_create(ftype,NULL);
     if ((void_func=!rval))
         rval=LTV_NULL;
-    int marshaller(char *name,LTV *type) {
-        int status=0;
-        LTV *arg=NULL, *coerced=NULL;
-        STRY(!(arg=vm_stack_deq(POP)),"popping ffi arg (%s) from stack",name); // FIXME: attempt to resolve by name first
-        STRY(!(coerced=cif_coerce_i2c(arg,type)),"coercing ffi arg (%s)",name);
-        LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
-        LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
-        LTV_release(arg);
+    CIF_MARSHAL_OP marshaller =
+        [&](char *name,LTV *type) {
+            int status=0;
+            LTV *arg=NULL, *coerced=NULL;
+            STRY(!(arg=vm_stack_deq(POP)),"popping ffi arg (%s) from stack",name); // FIXME: attempt to resolve by name first
+            STRY(!(coerced=cif_coerce_i2c(arg,type)),"coercing ffi arg (%s)",name);
+            LTV_enq(&args,coerced,HEAD); // enq coerced arg onto args CLL
+            LT_put(rval,name,HEAD,coerced); // coerced args are installed as childen of rval
+            LTV_release(arg);
     done:
-        return status;
-    }
+            return status;
+        };
     TSTART(vm_env->state,"");
     THROW(cif_args_marshal(ftype,REV,marshaller),LTV_NULL); // pre-
     THROW(cif_ffi_call(ftype,lambda->data,rval,&args),LTV_NULL);
@@ -295,7 +296,7 @@ extern void split() { // mini parser that pops a lit and pushes its CAR & CDR
     char *tdata=NULL;
     int len=0,tlen=0;
 
-    int advance(int adv) { adv=MIN(adv,len); tdata+=adv; len-=adv; return adv; }
+    auto advance = [&](int adv) { adv=MIN(adv,len); tdata+=adv; len-=adv; return adv; };
 
     THROW(!(ltv=vm_stack_deq(POP)),LTV_NULL); // ,"popping ltv to split");
     THROW(ltv->flags&LT_NSTR,LTV_NULL); // throw if non-string
@@ -709,13 +710,14 @@ static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
         STRY(!vm_enq(VMRES_DICT,locals),"pushing locals into dict");
 
         int index=0;
-        int marshaller(char *name,LTV *type) {
-            LTV *arg=cif_create_cvar(type,ARGS[index],NULL);
-            LT_put(locals,FORMATA(argid,32,"ARG%d",index++),HEAD,arg); // embed by index
-            if (name)
-                LT_put(locals,name,HEAD,arg); // embed by name
-            return 0;
-        }
+        CIF_MARSHAL_OP marshaller =
+            [&](char *name,LTV *type) {
+                LTV *arg=cif_create_cvar(type,ARGS[index],NULL);
+                LT_put(locals,FORMATA(argid,32,"ARG%d",index++),HEAD,arg); // embed by index
+                if (name)
+                    LT_put(locals,name,HEAD,arg); // embed by name
+                return 0;
+            };
         LTV *ffi_type_info=LT_get(continuation,TYPE_BASE,HEAD,KEEP);
         STRY(cif_args_marshal(ffi_type_info,REV,marshaller),"marshalling ffi args");
         LT_put(locals,"RETURN",HEAD,cif_rval_create(ffi_type_info,RET)); // embed return val cvar in environment; ok if it fails

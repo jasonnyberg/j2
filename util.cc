@@ -181,14 +181,14 @@ int fstrnprint(FILE *ofile,char *str,int len)
     return len;
 }
 
-char *bufdup(const char *buf,int len)
+void *bufdup(const void *buf,int len)
 {
     // always null terminate whether string or not
-    char *newbuf;
-    if (len<0) len=strlen(buf);
+    void *newbuf;
+    if (len<0) len=strlen((char *) buf);
     newbuf=mymalloc(len+1);
     memcpy(newbuf,buf,len);
-    newbuf[len]=0;
+    ((char *) newbuf)[len]=0;
     return newbuf;
 }
 
@@ -289,7 +289,7 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
                         } else if (!match) i++;
                         return !depth && match;
                     };
-    
+
     if (include) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(!memchr(include,buf[i],inclen)?1:0)) break;
     if (exclude) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(memchr(exclude,buf[i],exclen)?1:0))  break;
     if (balance) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(1)) break;
@@ -303,7 +303,7 @@ char *balanced_readline(FILE *ifile,int *length) {
                         static size_t buflen=0;
 
                         if ((*linelen=getline(&line,&buflen,ifile))>0) {
-                            if ((expr=realloc(expr,(*length)+(*linelen)+1)))
+                            if ((expr=(char *) realloc(expr,(*length)+(*linelen)+1)))
                                 memmove(expr+(*length),line,(*linelen)+1);
                             return expr;
                         }

@@ -36,6 +36,8 @@
 #ifndef LISTREE_H
 #define LISTREE_H
 
+#include <functional>
+
 //////////////////////////////////////////////////
 // LisTree (Valtree w/collision lists)
 //////////////////////////////////////////////////
@@ -114,8 +116,7 @@ struct LTI {
 #endif
 };
 
-typedef void *(*LTI_METAOP)(LTI **lti);
-typedef void *(*LTI_OP)(LTI *lti);
+typedef std::function<void *(LTI *)> LTI_OP;
 
 extern LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags);
 extern LTV *LTV_renew(LTV *ltv,void *data,int len,LTV_FLAGS flags);
@@ -150,7 +151,7 @@ typedef enum {
     LT_TRAVERSE_REVERSE =1<<4, // LTOBJ_OP can set to traverse the "next level" in reverse order
     LT_TRAVERSE_TYPE    =LT_TRAVERSE_LTI|LT_TRAVERSE_LTV,
 } LT_TRAVERSE_FLAGS;
-typedef void *(*LTOBJ_OP)(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags);
+typedef std::function<void *(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags)> LTOBJ_OP;
 void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop);
 void *ltv_traverse(LTV *ltv,LTOBJ_OP preop,LTOBJ_OP postop);
 extern void *listree_acyclic(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags);

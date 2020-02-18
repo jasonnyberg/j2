@@ -161,39 +161,39 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
     Dwarf_Debug dbg;
     Dwarf_Error error=0;
 
-    int read_cu_list() {
-        CU_DATA cu_data_local;
-        if (!cu_data) cu_data=&cu_data_local; // allow caller to not care
-        Dwarf_Die die;
+    auto read_cu_list =
+        [&]() {
+            CU_DATA cu_data_local;
+            if (!cu_data) cu_data=&cu_data_local; // allow caller to not care
+            Dwarf_Die die;
 
+            while (1) {
+                TRY(dwarf_next_cu_header_c(dbg,
+                                           flags&RDW_is_info,
+                                           &cu_data->header_length,
+                                           &cu_data->version_stamp,
+                                           &cu_data->abbrev_offset,
+                                           &cu_data->address_size,
+                                           &cu_data->length_size,
+                                           &cu_data->extension_size,
+                                           &cu_data->sig8,
+                                           &cu_data->offset,
+                                           &cu_data->next_cu_header_offset,
+                                           &error),
+                    "reading next cu header");
+                DWARF_ID(cu_data->next_cu_header_offset_str,cu_data->next_cu_header_offset);
+                CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for no next cu header");
+                CATCH(status!=DW_DLV_OK,status,goto done,"checking error dwarf_next_cu_header");
 
-        while (1) {
-            TRY(dwarf_next_cu_header_c(dbg,
-                                       flags&RDW_is_info,
-                                       &cu_data->header_length,
-                                       &cu_data->version_stamp,
-                                       &cu_data->abbrev_offset,
-                                       &cu_data->address_size,
-                                       &cu_data->length_size,
-                                       &cu_data->extension_size,
-                                       &cu_data->sig8,
-                                       &cu_data->offset,
-                                       &cu_data->next_cu_header_offset,
-                                       &error),
-                "reading next cu header");
-            DWARF_ID(cu_data->next_cu_header_offset_str,cu_data->next_cu_header_offset);
-            CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for no next cu header");
-            CATCH(status!=DW_DLV_OK,status,goto done,"checking error dwarf_next_cu_header");
+                static char alias[32];
+                DWARF_ALIAS(alias,cu_data->sig8);
+                DEBUG(fprintf(OUTFILE,CODE_BLUE "Read a CU header, is_info=%d, offset 0x%x sig8 %s" CODE_RESET "\n",flags&RDW_is_info,cu_data->offset,alias));
 
-            static char alias[32];
-            DWARF_ALIAS(alias,cu_data->sig8);
-            DEBUG(fprintf(OUTFILE,CODE_BLUE "Read a CU header, is_info=%d, offset 0x%x sig8 %s" CODE_RESET "\n",flags&RDW_is_info,cu_data->offset,alias));
-
-            STRY(traverse_siblings(dbg,NULL,op,flags),"processing cu die and sibs");
-        }
+                STRY(traverse_siblings(dbg,NULL,op,flags),"processing cu die and sibs");
+            }
     done:
-        return status;
-    }
+            return status;
+        };
 
     LTV *debug_link_filename=get_separated_debug_filename(filename);
     if (debug_link_filename) {
@@ -493,109 +493,113 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
     CLL_init(&queue);
     LTV_enq(&queue,cif_create_cvar(type,cvar->data,NULL),TAIL); // copy cvar so we don't mess with it
 
-    int traverse_array(LTV *cvar,int count)
-    {
-        int status=0;
-        STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"looking up cvar type");
-        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
-        for (int i=0;i<count;i++) {
-            cif_dump_cvar(ofile,cvar,depth+4);
-            cvar->data+=type_info->bytesize;
-        }
-    done:
-        return status;
-    }
-    int process_type_info(LTV *cvar) {
-        int status=0;
-        LTV *type=NULL;
-
-        void *type_info_op(CLL *lnk) {
-            LTV *ltv=((LTVR *) lnk)->ltv;
-            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) ltv;
-            switch (type_info->tag) {
-                case DW_TAG_member:
-                    LTV_enq(&queue,cif_create_cvar(ltv,cvar->data+type_info->data_member_location,NULL),TAIL);
-                    break;
-                default:
-                    fprintf(ofile,CODE_RED "child tag %d unimplemented" CODE_RESET "\n",type_info->tag);
-                    break;
+    auto traverse_array =
+        [&](LTV *cvar,int count) {
+            int status=0;
+            STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"looking up cvar type");
+            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
+            for (int i=0;i<count;i++) {
+                cif_dump_cvar(ofile,cvar,depth+4);
+                cvar->data+=type_info->bytesize;
             }
-        done:
-            return status?NON_NULL:NULL;
-        }
+    done:
+            return status;
+        };
 
-        STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"looking up cvar type");
-        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
+    auto process_type_info =
+        [&](LTV *cvar) {
+            int status=0;
+            LTV *type=NULL;
 
-        char *name=attr_get(type,TYPE_SYMB);
-        {
-            const char *str=NULL;
-            dwarf_get_TAG_name(type_info->tag,&str);
-            fprintf(ofile,"%*c%s \"%s\" ",depth*4,' ',str+7,name);
-
-            switch(type_info->tag) {
-                case DW_TAG_union_type:
-                case DW_TAG_structure_type: {
-                    LTI *children=NULL;
-                    if ((children=LTI_resolve(type,TYPE_LIST,false)))
-                        CLL_map(&children->ltvs,FWD,type_info_op);
-                    break;
-                }
-                case DW_TAG_subprogram:
-                case DW_TAG_subroutine_type:
-                    fprintf(ofile,"0x%x",type->data);
-                    break;
-                case DW_TAG_pointer_type:
-                    fprintf(ofile,"0x%x",*(void **) type->data);
-                    break;
-                case DW_TAG_array_type: {
-                    TYPE_INFO_LTV *base_info=NULL;
-                    if (type_info->flags&TYPEF_BASE) // link to base type
-                        STRY(!(base_info=(TYPE_INFO_LTV *) LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)),"looking up base die for %s",type_info->id_str);
-                    char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_SYMB):NULL;
-                    if (base_symb) {
-                        LTV *subrange_ltv=LT_get(&type_info->ltv,"subrange type",HEAD,KEEP);
-                        TYPE_INFO_LTV *subrange=subrange_ltv?(TYPE_INFO_LTV *) subrange_ltv->data:NULL;
-                        if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
-                            fprintf(ofile,"\n");
-                            LTV *tcvar=cif_create_cvar(&base_info->ltv,cvar->data,NULL);
-                            traverse_array(tcvar,subrange->upper_bound+1);
-                            LTV_release(tcvar);
-                        }
-                        else
-                            fprintf(ofile,"(unbounded array of %s)",base_symb);
+            auto type_info_op =
+                [&](CLL *lnk) {
+                    LTV *ltv=((LTVR *) lnk)->ltv;
+                    TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) ltv;
+                    switch (type_info->tag) {
+                        case DW_TAG_member:
+                            LTV_enq(&queue,cif_create_cvar(ltv,cvar->data+type_info->data_member_location,NULL),TAIL);
+                            break;
+                        default:
+                            fprintf(ofile,CODE_RED "child tag %d unimplemented" CODE_RESET "\n",type_info->tag);
+                            break;
                     }
-                    break;
-                }
-                case DW_TAG_enumeration_type:
-                    fprintf(ofile,"(enum display unimplemented)");
-                    break;
-                case DW_TAG_enumerator:
-                    fprintf(ofile,"0x%x",type_info->const_value);
-                    break;
-                case DW_TAG_member:
-                    if (type_info->flags&TYPEF_BYTESIZE)
-                        ; /* fall thru! */
-                    else {
-                        LTV_enq(&queue,cif_create_cvar(cif_find_concrete(type),cvar->data,NULL),HEAD);
+            done:
+                    return status?(void *) NON_NULL:(void *) NULL;
+                };
+
+            STRY(!(type=LT_get(cvar,TYPE_BASE,HEAD,KEEP)),"looking up cvar type");
+            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type->data;
+
+            char *name=attr_get(type,TYPE_SYMB);
+
+            {
+                const char *str=NULL;
+                dwarf_get_TAG_name(type_info->tag,&str);
+                fprintf(ofile,"%*c%s \"%s\" ",depth*4,' ',str+7,name);
+
+                switch(type_info->tag) {
+                    case DW_TAG_union_type:
+                    case DW_TAG_structure_type: {
+                        LTI *children=NULL;
+                        if ((children=LTI_resolve(type,TYPE_LIST,false)))
+                            CLL_map(&children->ltvs,FWD,type_info_op);
                         break;
                     }
-                case DW_TAG_base_type: {
-                    TYPE_UVALUE uval={};
-                    char buf[64];
-                    if (Type_getUVAL(cvar,&uval))
-                        fprintf(ofile,"%s (%p)",Type_pushUVAL(&uval,buf),cvar->data);
-                    break;
+                    case DW_TAG_subprogram:
+                    case DW_TAG_subroutine_type:
+                        fprintf(ofile,"0x%x",type->data);
+                        break;
+                    case DW_TAG_pointer_type:
+                        fprintf(ofile,"0x%x",*(void **) type->data);
+                        break;
+                    case DW_TAG_array_type: {
+                        TYPE_INFO_LTV *base_info=NULL;
+                        if (type_info->flags&TYPEF_BASE) // link to base type
+                            STRY(!(base_info=(TYPE_INFO_LTV *) LT_get(&type_info->ltv,TYPE_BASE,HEAD,KEEP)),"looking up base die for %s",type_info->id_str);
+                        char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_SYMB):NULL;
+                        if (base_symb) {
+                            LTV *subrange_ltv=LT_get(&type_info->ltv,"subrange type",HEAD,KEEP);
+                            TYPE_INFO_LTV *subrange=subrange_ltv?(TYPE_INFO_LTV *) subrange_ltv->data:NULL;
+                            if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
+                                fprintf(ofile,"\n");
+                                LTV *tcvar=cif_create_cvar(&base_info->ltv,cvar->data,NULL);
+                                traverse_array(tcvar,subrange->upper_bound+1);
+                                LTV_release(tcvar);
+                            }
+                            else
+                                fprintf(ofile,"(unbounded array of %s)",base_symb);
+                        }
+                        break;
+                    }
+                    case DW_TAG_enumeration_type:
+                        fprintf(ofile,"(enum display unimplemented)");
+                        break;
+                    case DW_TAG_enumerator:
+                        fprintf(ofile,"0x%x",type_info->const_value);
+                        break;
+                    case DW_TAG_member:
+                        if (type_info->flags&TYPEF_BYTESIZE)
+                            ; /* fall thru! */
+                        else {
+                            LTV_enq(&queue,cif_create_cvar(cif_find_concrete(type),cvar->data,NULL),HEAD);
+                            break;
+                        }
+                    case DW_TAG_base_type: {
+                        TYPE_UVALUE uval={};
+                        char buf[64];
+                        if (Type_getUVAL(cvar,&uval))
+                            fprintf(ofile,"%s (%p)",Type_pushUVAL(&uval,buf),cvar->data);
+                        break;
+                    }
+                    default:
+                        LTV_enq(&queue,cif_create_cvar(cif_find_concrete(type),cvar->data,NULL),HEAD);
+                        break;
                 }
-                default:
-                    LTV_enq(&queue,cif_create_cvar(cif_find_concrete(type),cvar->data,NULL),HEAD);
-                    break;
             }
-        }
     done:
-        fprintf(ofile,"\n");
-        return status;
-    }
+            fprintf(ofile,"\n");
+            return status;
+        };
 
     fprintf(ofile,"CVAR:\n");
     while ((cvar=LTV_deq(&queue,HEAD))) {
@@ -853,75 +857,76 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             }
         }
 
-        int get_expr_loclist_data(Dwarf_Unsigned exprlen,Dwarf_Ptr exprloc) {
-            int status=0;
-            Dwarf_Locdesc *llbuf;
-            Dwarf_Signed listlen;
-            STRY(dwarf_loclist_from_expr(dbg,exprloc,exprlen,&llbuf,&listlen,&error),"getting exprloc");
-            for (int j=0;j<llbuf->ld_cents;j++)
-            {
-                if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ;
-                else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ;
-                else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31) ;
-                else
-                    switch(llbuf->ld_s[j].lr_atom)
-                    {
-                        case DW_OP_addr:
-                            type_info->addr=llbuf->ld_s[j].lr_number;
-                            type_info->flags|=TYPEF_ADDR;
-                            break;
-                        case DW_OP_GNU_push_tls_address: // THREAD LOCAL STORAGE
-                            type_info->tag=0; // disqualify TLS variables
-                            break;
-                        case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                        case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u: // llbuf->ld_s[j].lr_number
-                        case DW_OP_fbreg: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                        case DW_OP_bregx: // fprintf(OUTFILE," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                        case DW_OP_regx: // fprintf(OUTFILE," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                        case DW_OP_pick:
-                        case DW_OP_plus_uconst:
-                        case DW_OP_piece:
-                        case DW_OP_deref_size:
-                        case DW_OP_xderef_size:
-                        case DW_OP_GNU_uninit:
-                        case DW_OP_GNU_encoded_addr:
-                        case DW_OP_GNU_implicit_pointer:
-                        case DW_OP_GNU_entry_value:
-                        case DW_OP_call_frame_cfa:
-                        case DW_OP_deref:
-                        case DW_OP_skip:
-                        case DW_OP_bra:
-                        case DW_OP_plus:
-                        case DW_OP_shl:
-                        case DW_OP_or:
-                        case DW_OP_and:
-                        case DW_OP_xor:
-                        case DW_OP_eq:
-                        case DW_OP_ne:
-                        case DW_OP_gt:
-                        case DW_OP_lt:
-                        case DW_OP_shra:
-                        case DW_OP_mul:
-                        case DW_OP_minus:
+        auto get_expr_loclist_data =
+            [&](Dwarf_Unsigned exprlen,Dwarf_Ptr exprloc) {
+                int status=0;
+                Dwarf_Locdesc *llbuf;
+                Dwarf_Signed listlen;
+                STRY(dwarf_loclist_from_expr(dbg,exprloc,exprlen,&llbuf,&listlen,&error),"getting exprloc");
+                for (int j=0;j<llbuf->ld_cents;j++)
+                {
+                    if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ;
+                    else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ;
+                    else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31) ;
+                    else
+                        switch(llbuf->ld_s[j].lr_atom)
+                        {
+                            case DW_OP_addr:
+                                type_info->addr=llbuf->ld_s[j].lr_number;
+                                type_info->flags|=TYPEF_ADDR;
+                                break;
+                            case DW_OP_GNU_push_tls_address: // THREAD LOCAL STORAGE
+                                type_info->tag=0; // disqualify TLS variables
+                                break;
+                            case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                            case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u: // llbuf->ld_s[j].lr_number
+                            case DW_OP_fbreg: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                            case DW_OP_bregx: // fprintf(OUTFILE," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                            case DW_OP_regx: // fprintf(OUTFILE," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                            case DW_OP_pick:
+                            case DW_OP_plus_uconst:
+                            case DW_OP_piece:
+                            case DW_OP_deref_size:
+                            case DW_OP_xderef_size:
+                            case DW_OP_GNU_uninit:
+                            case DW_OP_GNU_encoded_addr:
+                            case DW_OP_GNU_implicit_pointer:
+                            case DW_OP_GNU_entry_value:
+                            case DW_OP_call_frame_cfa:
+                            case DW_OP_deref:
+                            case DW_OP_skip:
+                            case DW_OP_bra:
+                            case DW_OP_plus:
+                            case DW_OP_shl:
+                            case DW_OP_or:
+                            case DW_OP_and:
+                            case DW_OP_xor:
+                            case DW_OP_eq:
+                            case DW_OP_ne:
+                            case DW_OP_gt:
+                            case DW_OP_lt:
+                            case DW_OP_shra:
+                            case DW_OP_mul:
+                            case DW_OP_minus:
 
-                        case DW_OP_stack_value: // 0x9f
-                        case DW_OP_lit16: // 0x40
-                        case DW_OP_GNU_parameter_ref: // unreferenced parameter
-                            // fprintf(OUTFILE," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
-                            break;
-                        default:
-                            fprintf(OUTFILE," Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
-                            fprintf(OUTFILE,CODE_RED " lowpc %" DW_PR_DUx " hipc %"  DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
-                                   llbuf->ld_lopc,llbuf->ld_hipc,llbuf->ld_section_offset,llbuf->ld_from_loclist?"debug_loc":"debug_info",llbuf->ld_cents);
-                            fprintf(OUTFILE,CODE_RESET "\n");
-                            break;
-                    }
-            }
-            dwarf_dealloc(dbg,llbuf->ld_s, DW_DLA_LOC_BLOCK);
-            dwarf_dealloc(dbg,llbuf, DW_DLA_LOCDESC);
+                            case DW_OP_stack_value: // 0x9f
+                            case DW_OP_lit16: // 0x40
+                            case DW_OP_GNU_parameter_ref: // unreferenced parameter
+                                // fprintf(OUTFILE," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                                break;
+                            default:
+                                fprintf(OUTFILE," Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                                fprintf(OUTFILE,CODE_RED " lowpc %" DW_PR_DUx " hipc %"  DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
+                                        llbuf->ld_lopc,llbuf->ld_hipc,llbuf->ld_section_offset,llbuf->ld_from_loclist?"debug_loc":"debug_info",llbuf->ld_cents);
+                                fprintf(OUTFILE,CODE_RESET "\n");
+                                break;
+                        }
+                }
+                dwarf_dealloc(dbg,llbuf->ld_s, DW_DLA_LOC_BLOCK);
+                dwarf_dealloc(dbg,llbuf, DW_DLA_LOCDESC);
         done:
-            return status;
-        }
+                return status;
+            };
 
         Dwarf_Unsigned vuint;
         Dwarf_Ptr vptr;
@@ -929,6 +934,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 
         dwarf_dealloc(dbg,atlist[atcnt],DW_DLA_ATTR);
     }
+
     dwarf_dealloc(dbg,atlist,DW_DLA_LIST);
 
     // Disqualify certain nodes

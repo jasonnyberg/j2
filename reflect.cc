@@ -1262,6 +1262,9 @@ int cif_curate_module(LTV *module,int bootstrap)
                                 attr_set(&type_info->ltv,TYPE_SYMB,type_name); // let the member have it's own name, even if it's not a "symbolic" type
                             break;
                         case DW_TAG_formal_parameter:
+                            if (post && base_symb)
+                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"formal parameter %s",base_symb));
+                            break;
                         case DW_TAG_unspecified_parameters: // varargs
                         case DW_TAG_compile_unit:
                         case DW_TAG_type_unit:

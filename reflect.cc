@@ -705,6 +705,11 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         case DW_TAG_formal_parameter:
         case DW_TAG_variable:
         case DW_TAG_unspecified_parameters: // varargs
+        case DW_TAG_class_type:
+        case DW_TAG_rvalue_reference_type:
+        case DW_TAG_reference_type:
+        case DW_TAG_template_type_parameter:
+        case DW_TAG_template_value_parameter:
             break;
         default:
             fprintf(OUTFILE,CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
@@ -715,17 +720,12 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         case DW_TAG_GNU_call_site:
         case DW_TAG_GNU_call_site_parameter:
         case DW_TAG_dwarf_procedure:
-        case DW_TAG_reference_type: // C++?
         case DW_TAG_namespace:
-        case DW_TAG_class_type:
         case DW_TAG_inheritance:
         case DW_TAG_imported_declaration:
-        case DW_TAG_template_type_parameter:
-        case DW_TAG_template_value_parameter:
         case DW_TAG_imported_module:
 
         case DW_TAG_ptr_to_member_type:
-        case DW_TAG_rvalue_reference_type:
         case DW_TAG_GNU_template_parameter_pack:
         case DW_TAG_unspecified_type:
             type_info->tag=0; // reject
@@ -836,6 +836,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_defaulted:
             case DW_AT_const_expr:
             case DW_AT_noreturn:
+            case DW_AT_default_value:
                 break;
             default: {
                 fprintf(OUTFILE,CODE_RED "Unrecognized attr 0x%x\n",vshort);
@@ -1164,20 +1165,18 @@ int cif_curate_module(LTV *module,int bootstrap)
                             }
                             break;
                         case DW_TAG_array_type:
-                            if (post) {
-                                if (base_symb) {
-                                    LTV *subrange_ltv=LT_get(&type_info->ltv,"subrange type",HEAD,KEEP);
-                                    TYPE_INFO_LTV *subrange=subrange_ltv?(TYPE_INFO_LTV *) subrange_ltv->data:NULL;
-                                    if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
-                                        if (base_info && (base_info->flags&TYPEF_BYTESIZE)) {
-                                            type_info->bytesize=base_info->bytesize * (subrange->upper_bound+1);
-                                            type_info->flags|=TYPEF_BYTESIZE;
-                                        }
-                                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb)+20,"(%s)[%d]",base_symb,subrange->upper_bound+1));
+                            if (post && base_symb) {
+                                LTV *subrange_ltv=LT_get(&type_info->ltv,"subrange type",HEAD,KEEP);
+                                TYPE_INFO_LTV *subrange=subrange_ltv?(TYPE_INFO_LTV *) subrange_ltv->data:NULL;
+                                if (subrange && subrange->flags&TYPEF_UPPERBOUND) {
+                                    if (base_info && (base_info->flags&TYPEF_BYTESIZE)) {
+                                        type_info->bytesize=base_info->bytesize * (subrange->upper_bound+1);
+                                        type_info->flags|=TYPEF_BYTESIZE;
                                     }
-                                    else
-                                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)[]",base_symb));
+                                    categorize_symbolic(FORMATA(composite_name,strlen(base_symb)+20,"(%s)[%d]",base_symb,subrange->upper_bound+1));
                                 }
+                                else
+                                    categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"(%s)[]",base_symb));
                             }
                             break;
                         case DW_TAG_volatile_type:
@@ -1228,7 +1227,6 @@ int cif_curate_module(LTV *module,int bootstrap)
                                     char *linkage_symbol=type_info->flags&TYPEF_LINKAGE?attr_get(&type_info->ltv,TYPE_LINK):type_name;
                                     if (dlhandle) {
                                         dlerror(); // reset
-                                        fprintf(ERRFILE,"looking up dlhandle for function %s (%s)\n",linkage_symbol,type_name);
                                         if ((addr=dlsym(dlhandle,linkage_symbol)))
                                             LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
                                         else
@@ -1258,13 +1256,46 @@ int cif_curate_module(LTV *module,int bootstrap)
                                 categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
                             break;
                         case DW_TAG_member:
-                            if (type_name && post)
+                            if (post && type_name)
                                 attr_set(&type_info->ltv,TYPE_SYMB,type_name); // let the member have it's own name, even if it's not a "symbolic" type
                             break;
                         case DW_TAG_formal_parameter:
                             if (post && base_symb)
-                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"formal parameter %s",base_symb));
+                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"formal (%s)",base_symb));
                             break;
+                        case DW_TAG_class_type:
+                            if (post && type_name) {
+                                categorize_symbolic(FORMATA(composite_name,strlen(type_name),"class (%s)",type_name));
+                                fprintf(ERRFILE,"class %s\n",type_name);
+                            }
+                            break;
+
+
+                        case DW_TAG_reference_type: // C++?
+                            if (post && base_symb) {
+                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"&(%s)",base_symb));
+                                // fprintf(ERRFILE,"reference %s %s\n",type_name,base_symb);
+                            }
+                            break;
+                        case DW_TAG_rvalue_reference_type:
+                            if (post && base_symb) {
+                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"rval &(%s)",base_symb));
+                                // fprintf(ERRFILE,"rval reference %s %s\n",type_name,base_symb);
+                            }
+                            break;
+                        case DW_TAG_template_type_parameter:
+                            if (post && base_symb) {
+                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"template type param (%s)",base_symb));
+                                // fprintf(ERRFILE,"template type param %s %s\n",type_name,base_symb);
+                            }
+                            break;
+                        case DW_TAG_template_value_parameter:
+                            if (post && base_symb) {
+                                categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"template value param (%s)",base_symb));
+                                // fprintf(ERRFILE,"template value param %s %s\n",type_name,base_symb);
+                            }
+                            break;
+
                         case DW_TAG_unspecified_parameters: // varargs
                         case DW_TAG_compile_unit:
                         case DW_TAG_type_unit:

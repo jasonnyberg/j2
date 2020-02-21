@@ -275,6 +275,7 @@ int print_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
     if (type_info->flags&TYPEF_SYMBOLIC)   fprintf(ofile,"|symbolic");
     if (type_info->flags&TYPEF_OFFSET)     fprintf(ofile,"|offset %x",      type_info->offset);
     if (type_info->flags&TYPEF_IS_INFO)    fprintf(ofile,"|info");
+    if (type_info->flags&TYPEF_IS_DECL)    fprintf(ofile,"|decl");
     if (type_info->flags&TYPEF_SIGNATURE)  fprintf(ofile,"|sig %s",         alias);
     return status;
 }
@@ -295,6 +296,7 @@ int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
         case DW_TAG_variable:         fprintf(ofile," style=filled fillcolor=cyan"); break;
         case DW_TAG_typedef:          fprintf(ofile," style=filled fillcolor=green"); break;
         case DW_TAG_structure_type:   fprintf(ofile," style=filled fillcolor=blue"); break;
+        case DW_TAG_class_type:       fprintf(ofile," style=filled fillcolor=blue"); break;
         case DW_TAG_union_type:       fprintf(ofile," style=filled fillcolor=violet"); break;
         case DW_TAG_member:           fprintf(ofile," style=filled fillcolor=lightblue"); break;
         case DW_TAG_enumeration_type: fprintf(ofile," style=filled fillcolor=magenta"); break;
@@ -342,6 +344,7 @@ LTV *cif_find_concrete(LTV *type)
         type_info=(TYPE_INFO_LTV *) type;
         switch (type_info->tag) {
             case DW_TAG_structure_type:
+            case DW_TAG_class_type:
             case DW_TAG_union_type:
             case DW_TAG_enumeration_type:
             case DW_TAG_array_type:
@@ -363,6 +366,7 @@ LTV *cif_find_indexable(LTV *type)
         type_info=(TYPE_INFO_LTV *) type;
         switch (type_info->tag) {
             case DW_TAG_structure_type:
+            case DW_TAG_class_type:
             case DW_TAG_union_type:
             case DW_TAG_array_type:
             case DW_TAG_pointer_type:
@@ -424,6 +428,7 @@ LTV *cif_create_cvar(LTV *type,void *data,char *member)
 
         switch(basic_type_info->tag) {
             case DW_TAG_structure_type:
+            case DW_TAG_class_type:
             case DW_TAG_union_type:
                 if (member) {
                     if ((status=!(member_type=cif_get_child(basic_type,member))))
@@ -508,6 +513,57 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
         };
 
     auto process_type_info =
+
+
+        /*
+<2><0x11e4 GOFF=0x32b75><DW_TAG_class_type> DW_AT_name<function<void(VM_CMD*)>> DW_AT_declaration<yes(1)> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>> DW_AT_sibling<<0x000012e2 GOFF=0x00032c73>>
+<1><0x94 GOFF=0x72c6c><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x744e2><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0xa0 GOFF=0x745ae><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0xa0 GOFF=0x746c8><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x747d4><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x748e0><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x74997><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x9c GOFF=0x74a5f><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x9c GOFF=0x74b75><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x74ccf><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0xa0 GOFF=0x74d9b><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x74e52><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x74f5e><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x75015><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x9c GOFF=0x750dd><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x75194><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x752ee><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8a GOFF=0x75499><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x755a5><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8b GOFF=0x75989><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0xa4 GOFF=0x75aa7><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8e GOFF=0x75b61><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8e GOFF=0x75c1b><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x8e GOFF=0x75cd5><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x59 GOFF=0x75dba><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
+<1><0xf4 GOFF=0x76253><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x68 GOFF=0x762c5><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x69 GOFF=0x7634c><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x9e GOFF=0x77291><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x99 GOFF=0x77334><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
+<1><0xab GOFF=0x773e9><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x69 GOFF=0x7745c><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x69 GOFF=0x77531><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x82 GOFF=0x7761f><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x6c GOFF=0x776a9><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x6c GOFF=0x77733><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x72 GOFF=0x777c3><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<3><0x53 GOFF=0x778dc><DW_TAG_template_type_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<1><0x2e5 GOFF=0x77cd6><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
+<2><0x7f GOFF=0x77d5f><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+<cu_header> signature<0xc89dd6ef3b53fd90> typeoffset<0x00000034>
+<2><0x1f2 GOFF=0x78747><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
+        */
+
+
+
+
         [&](LTV *cvar) {
             int status=0;
             LTV *type=NULL;
@@ -540,7 +596,8 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 
                 switch(type_info->tag) {
                     case DW_TAG_union_type:
-                    case DW_TAG_structure_type: {
+                    case DW_TAG_structure_type:
+                    case DW_TAG_class_type: {
                         LTI *children=NULL;
                         if ((children=LTI_resolve(type,TYPE_LIST,false)))
                             CLL_map(&children->ltvs,FWD,type_info_op);
@@ -692,6 +749,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         case DW_TAG_const_type:
         case DW_TAG_restrict_type:
         case DW_TAG_structure_type:
+        case DW_TAG_class_type:
         case DW_TAG_union_type:
         case DW_TAG_enumeration_type:
         case DW_TAG_compile_unit:
@@ -705,7 +763,6 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         case DW_TAG_formal_parameter:
         case DW_TAG_variable:
         case DW_TAG_unspecified_parameters: // varargs
-        case DW_TAG_class_type:
         case DW_TAG_rvalue_reference_type:
         case DW_TAG_reference_type:
         case DW_TAG_template_type_parameter:
@@ -739,6 +796,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
     CATCH(status==DW_DLV_NO_ENTRY,0,goto done,"checking for DW_DLV_NO_ENTRY in dwarf_attrlist");
     SCATCH("getting die attrlist");
 
+
     Dwarf_Attribute *attr=NULL;
     while (atcnt--) {
         char *prefix;
@@ -750,11 +808,52 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         Dwarf_Sig8 vsig8;
         char *vstr;
 
+        auto dump_attr =
+            [&]() {
+                int status=0;
+
+                fprintf(OUTFILE,CODE_RED "dumping attr 0x%x\n",vshort);
+                Dwarf_Signed vint;
+                Dwarf_Unsigned vuint;
+                Dwarf_Addr vaddr;
+                Dwarf_Off voffset;
+                Dwarf_Half vshort;
+                Dwarf_Bool vbool;
+                Dwarf_Ptr vptr;
+                Dwarf_Block *vblock;
+                Dwarf_Sig8 vsig8;
+                char *vstr;
+                const char *vcstr;
+
+                STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
+                STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr formname");
+                fprintf(OUTFILE,"form %d (%s) ",vshort,vcstr);
+
+                STRY(dwarf_whatform_direct(*attr,&vshort,&error),"getting attr form_direct");
+                STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr form_direct name");
+                fprintf(OUTFILE,"form_direct %d (%s) ",vshort,vcstr);
+
+                IF_OK(dwarf_formref(*attr,&voffset,&error),       fprintf(OUTFILE,"formref 0x%"        DW_PR_DSx " ",voffset));
+                IF_OK(dwarf_global_formref(*attr,&voffset,&error),fprintf(OUTFILE,"global_formref 0x%" DW_PR_DSx " ",voffset));
+                IF_OK(dwarf_formaddr(*attr,&vaddr,&error),        fprintf(OUTFILE,"addr 0x%"           DW_PR_DUx " ",vaddr));
+                IF_OK(dwarf_formflag(*attr,&vbool,&error),        fprintf(OUTFILE,"flag %"             DW_PR_DSd " ",vbool));
+                IF_OK(dwarf_formudata(*attr,&vuint,&error),       fprintf(OUTFILE,"udata %"            DW_PR_DUu " ",vuint));
+                IF_OK(dwarf_formsdata(*attr,&vint,&error),        fprintf(OUTFILE,"sdata %"            DW_PR_DSd " ",vint));
+                IF_OK(dwarf_formblock(*attr,&vblock,&error),      fprintf(OUTFILE,"block 0x%"          DW_PR_DUx " ",vblock->bl_len));
+                IF_OK(dwarf_formstring(*attr,&vstr,&error),       fprintf(OUTFILE,"string %s ",                      vstr));
+                IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        fprintf(OUTFILE,"addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
+                                                                          vsig8.signature[0],vsig8.signature[1],vsig8.signature[2],vsig8.signature[3],
+                                                                          vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
+                fprintf(OUTFILE,"\n");
+        done:
+                return status;
+            };
+
         switch (vshort) {
             case DW_AT_name: // string
                 break;
             case DW_AT_type: // global_formref
-                STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
+                //STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
                 IF_OK(dwarf_global_formref(*attr,&type_info->base,&error),type_info->flags|=TYPEF_BASE);
                 DWARF_ID(type_info->base_str,type_info->base);
                 IF_OK(dwarf_formsig8(*attr,&type_info->sig8,&error),type_info->flags|=(TYPEF_BASE|TYPEF_SIGNATURE));
@@ -793,11 +892,20 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                 type_info->flags|=TYPEF_VECTOR; // an attribute of an array
                 break;
             case DW_AT_signature:
-                IF_OK(dwarf_formsig8(*attr,&type_info->sig8,&error),type_info->flags|=TYPEF_SIGNATURE);
+            case DW_AT_GNU_odr_signature: // One Definition Rule
+                IF_OK(dwarf_formsig8(*attr,&type_info->sig8,&error),                    type_info->flags|=TYPEF_SIGNATURE);
+                IF_OK(dwarf_formudata(*attr,(Dwarf_Unsigned *) &type_info->sig8,&error),type_info->flags|=TYPEF_SIGNATURE);
+                if (!type_info->flags&TYPEF_SIGNATURE) {
+                    printf("sig attr (%d) with wrong form\n",vshort);
+                    dump_attr();
+                }
                 break;
             case DW_AT_linkage_name: // C++ mangling
                 IF_OK(dwarf_formstring(*attr,&vstr,&error),type_info->flags|=TYPEF_LINKAGE);
                 attr_set(&type_info->ltv,TYPE_LINK,vstr);
+                break;
+            case DW_AT_declaration: // i.e. not a definition (BOOLEAN)
+                type_info->flags|=TYPEF_IS_DECL;
                 break;
             case DW_AT_sibling:
             case DW_AT_high_pc:
@@ -817,11 +925,10 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_prototyped: // signature?
             case DW_AT_language:
             case DW_AT_producer:
-            case DW_AT_declaration: // i.e. not a definition
             case DW_AT_abstract_origin: // associated with DW_TAG_inlined_subroutine
             case DW_AT_GNU_tail_call:
             case DW_AT_GNU_call_site_value:
-            case 8473: // an attribute that has no definition or name in current dwarf.h
+            case DW_AT_GNU_macros: //
             case DW_AT_specification: // C++?
             case DW_AT_object_pointer: // C++
             case DW_AT_pure: // C++
@@ -829,7 +936,6 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_ranges:
             case DW_AT_explicit:
 
-            case DW_AT_GNU_odr_signature: // One Definition Rule
             case DW_AT_alignment:
             case DW_AT_identifier_case:
             case DW_AT_deleted:
@@ -838,44 +944,9 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_noreturn:
             case DW_AT_default_value:
                 break;
-            default: {
-                fprintf(OUTFILE,CODE_RED "Unrecognized attr 0x%x\n",vshort);
-                { // scope for these temps
-                    Dwarf_Signed vint;
-                    Dwarf_Unsigned vuint;
-                    Dwarf_Addr vaddr;
-                    Dwarf_Off voffset;
-                    Dwarf_Half vshort;
-                    Dwarf_Bool vbool;
-                    Dwarf_Ptr vptr;
-                    Dwarf_Block *vblock;
-                    Dwarf_Sig8 vsig8;
-                    char *vstr;
-                    const char *vcstr;
-
-                    STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
-                    STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr formname");
-                    fprintf(OUTFILE,"form %d (%s) ",vshort,vcstr);
-
-                    STRY(dwarf_whatform_direct(*attr,&vshort,&error),"getting attr form_direct");
-                    STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr form_direct name");
-                    fprintf(OUTFILE,"form_direct %d (%s) ",vshort,vcstr);
-
-                    IF_OK(dwarf_formref(*attr,&voffset,&error),       fprintf(OUTFILE,"formref 0x%"        DW_PR_DSx " ",voffset));
-                    IF_OK(dwarf_global_formref(*attr,&voffset,&error),fprintf(OUTFILE,"global_formref 0x%" DW_PR_DSx " ",voffset));
-                    IF_OK(dwarf_formaddr(*attr,&vaddr,&error),        fprintf(OUTFILE,"addr 0x%"           DW_PR_DUx " ",vaddr));
-                    IF_OK(dwarf_formflag(*attr,&vbool,&error),        fprintf(OUTFILE,"flag %"             DW_PR_DSd " ",vbool));
-                    IF_OK(dwarf_formudata(*attr,&vuint,&error),       fprintf(OUTFILE,"udata %"            DW_PR_DUu " ",vuint));
-                    IF_OK(dwarf_formsdata(*attr,&vint,&error),        fprintf(OUTFILE,"sdata %"            DW_PR_DSd " ",vint));
-                    IF_OK(dwarf_formblock(*attr,&vblock,&error),      fprintf(OUTFILE,"block 0x%"          DW_PR_DUx " ",vblock->bl_len));
-                    IF_OK(dwarf_formstring(*attr,&vstr,&error),       fprintf(OUTFILE,"string %s ",                      vstr));
-                    IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        fprintf(OUTFILE,"addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
-                                                                              vsig8.signature[0],vsig8.signature[1],vsig8.signature[2],vsig8.signature[3],
-                                                                              vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
-                    fprintf(OUTFILE,"\n");
-                }
+            default:
+                dump_attr();
                 break;
-            }
         }
 
         auto get_expr_loclist_data =
@@ -1148,6 +1219,10 @@ int cif_curate_module(LTV *module,int bootstrap)
                             if (post && type_name)
                                 categorize_symbolic(FORMATA(composite_name,strlen(type_name),"struct %s",type_name));
                             break;
+                        case DW_TAG_class_type:
+                            if (post && type_name)
+                                categorize_symbolic(FORMATA(composite_name,strlen(type_name),"class (%s)",type_name));
+                            break;
                         case DW_TAG_union_type:
                             if (post && type_name)
                                 categorize_symbolic(FORMATA(composite_name,strlen(type_name),"union %s",type_name));
@@ -1262,12 +1337,6 @@ int cif_curate_module(LTV *module,int bootstrap)
                         case DW_TAG_formal_parameter:
                             if (post && base_symb)
                                 categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"formal (%s)",base_symb));
-                            break;
-                        case DW_TAG_class_type:
-                            if (post && type_name) {
-                                categorize_symbolic(FORMATA(composite_name,strlen(type_name),"class (%s)",type_name));
-                                fprintf(ERRFILE,"class %s\n",type_name);
-                            }
                             break;
 
 
@@ -1903,8 +1972,7 @@ int cif_ffi_prep(LTV *type)
                 *count=1;
             else
                 *count=CLL_len(&children->ltvs);
-            //DEBUG
-                   (fprintf(OUTFILE,"ffi_prep child for tag %d name %s children %x count %d\n",tag,name,children,*count));
+            DEBUG(fprintf(OUTFILE,"ffi_prep child for tag %d name %s children %x count %d\n",tag,name,children,*count));
             (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
             if (*count) {
                 int size=0,largest=0,index=0;
@@ -1915,7 +1983,8 @@ int cif_ffi_prep(LTV *type)
                         LTV *child_type=((LTVR *) lnk)->ltv;
                         char *child_name=attr_get(child_type,TYPE_SYMB);
                         TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) child_type->data;
-                        DEBUG(fprintf(OUTFILE,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
+                        //DEBUG
+                            (fprintf(OUTFILE,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
                         LTV *child_ffi_ltv=cvar_ffi_ltv(child_type,&size);
                         STRY(!child_ffi_ltv,"validating child ffi ltv");
 
@@ -1957,6 +2026,7 @@ int cif_ffi_prep(LTV *type)
                         switch (type_info->tag) {
                             case DW_TAG_union_type:
                             case DW_TAG_structure_type:
+                            case DW_TAG_class_type:
                             case DW_TAG_subprogram:
                             case DW_TAG_subroutine_type:
                                 if (LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) // definitely have traversed this subtree
@@ -1991,7 +2061,9 @@ int cif_ffi_prep(LTV *type)
                     if (!LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) {
                         switch (type_info->tag) {
                             case DW_TAG_union_type:
-                            case DW_TAG_structure_type: { // complex
+                            case DW_TAG_structure_type:
+                            case DW_TAG_class_type:
+                            { // complex
                                 LTV *ffi_type_ltv=LTV_init(NEW(LTV),NEW(ffi_type),sizeof(ffi_type),LT_OWN|LT_BIN|LT_CVAR|LT_FFI);
                                 LT_put((*ltv),FFI_TYPE,HEAD,ffi_type_ltv);
                                 ffi_type *ft=(ffi_type *) ffi_type_ltv->data;

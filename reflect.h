@@ -150,6 +150,7 @@ typedef enum {
     TYPEF_IS_INFO    = 1<<0x0f, // new for dwarf v4
     TYPEF_OFFSET     = 1<<0x10, // new for dwarf v4
     TYPEF_LINKAGE    = 1<<0x11,
+    TYPEF_IS_DECL    = 1<<0x12,
 } TYPE_FLAGS;
 
 

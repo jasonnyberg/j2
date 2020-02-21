@@ -1573,12 +1573,20 @@ int cif_curate_module(LTV *module,int bootstrap)
                         if (type_info->tag!=DW_TAG_compile_unit || LT_get(module,name,HEAD,KEEP)) {
                             STRY(link2parent(name),"linking die to parent");
                             STRY(!LT_put(index,type_info->id_str,TAIL,&type_info->ltv),"indexing type info");
+
+
                             if (parent_type_info && (parent_type_info->tag==DW_TAG_type_unit)) {
                                 static char alias[32];
                                 DWARF_ALIAS(alias,cu_data.sig8);
                                 STRY(!LT_put(aliases,alias,TAIL,&type_info->ltv),"aliasing type info %s with %s",type_info->id_str,alias);
                                 DEBUG(fprintf(OUTFILE,"---aliasing type info %s with %s\n",type_info->id_str,alias));
+                            } else if (type_info->flags&TYPEF_SIGNATURE) {
+                                static char alias[32];
+                                DWARF_ALIAS(alias,cu_data.sig8);
+                                DEBUG(fprintf(OUTFILE,"type info signature unrecorded, %s sig %s\n",type_info->id_str,alias));
                             }
+
+
                             STRY(traverse_child(dbg,die,child_op,flags|RDW_traverse_sibs),"traversing child and its siblings");
 
                             if (type_info->tag==DW_TAG_compile_unit)
@@ -1612,7 +1620,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                 };
 
             return work_op(NULL,die,0);
-        };
+        }; // curate die
 
     auto resolve_aliases =
         [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
@@ -1972,7 +1980,9 @@ int cif_ffi_prep(LTV *type)
                 *count=1;
             else
                 *count=CLL_len(&children->ltvs);
-            DEBUG(fprintf(OUTFILE,"ffi_prep child for tag %d name %s children %x count %d\n",tag,name,children,*count));
+            //DEBUG
+                        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (ltv);
+            (fprintf(OUTFILE,"ffi_prep child for %s tag %d name %s children %x count %d\n",type_info->id_str,tag,name,children,*count));
             (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
             if (*count) {
                 int size=0,largest=0,index=0;

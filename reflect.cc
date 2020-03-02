@@ -168,7 +168,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
             Dwarf_Die die;
 
             while (1) {
-                TRY(dwarf_next_cu_header_c(dbg,
+                TRY(dwarf_next_cu_header_d(dbg,
                                            flags&RDW_is_info,
                                            &cu_data->header_length,
                                            &cu_data->version_stamp,
@@ -179,6 +179,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
                                            &cu_data->sig8,
                                            &cu_data->offset,
                                            &cu_data->next_cu_header_offset,
+                                           &cu_data->header_cu_type,
                                            &error),
                     "reading next cu header");
                 DWARF_ID(cu_data->next_cu_header_offset_str,cu_data->next_cu_header_offset);
@@ -187,7 +188,8 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
 
                 static char alias[32];
                 DWARF_ALIAS(alias,cu_data->sig8);
-                DEBUG(fprintf(OUTFILE,CODE_BLUE "Read a CU header, is_info=%d, offset 0x%x sig8 %s" CODE_RESET "\n",flags&RDW_is_info,cu_data->offset,alias));
+                DEBUG(fprintf(OUTFILE,CODE_BLUE "Read a CU header, type=%d, is_info=%d, offset 0x%x sig8 %s" CODE_RESET "\n",
+                              cu_data->header_cu_type,flags&RDW_is_info,cu_data->offset,alias));
 
                 STRY(traverse_siblings(dbg,NULL,op,flags),"processing cu die and sibs");
             }
@@ -513,57 +515,6 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
         };
 
     auto process_type_info =
-
-
-        /*
-<2><0x11e4 GOFF=0x32b75><DW_TAG_class_type> DW_AT_name<function<void(VM_CMD*)>> DW_AT_declaration<yes(1)> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>> DW_AT_sibling<<0x000012e2 GOFF=0x00032c73>>
-<1><0x94 GOFF=0x72c6c><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x744e2><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0xa0 GOFF=0x745ae><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0xa0 GOFF=0x746c8><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x747d4><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x748e0><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x74997><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x9c GOFF=0x74a5f><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x9c GOFF=0x74b75><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x74ccf><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0xa0 GOFF=0x74d9b><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x74e52><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x74f5e><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x75015><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x9c GOFF=0x750dd><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x75194><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x752ee><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8a GOFF=0x75499><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x755a5><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8b GOFF=0x75989><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0xa4 GOFF=0x75aa7><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8e GOFF=0x75b61><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8e GOFF=0x75c1b><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x8e GOFF=0x75cd5><DW_TAG_rvalue_reference_type> DW_AT_byte_size<0x00000008> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x59 GOFF=0x75dba><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
-<1><0xf4 GOFF=0x76253><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x68 GOFF=0x762c5><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x69 GOFF=0x7634c><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x9e GOFF=0x77291><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x99 GOFF=0x77334><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
-<1><0xab GOFF=0x773e9><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x69 GOFF=0x7745c><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x69 GOFF=0x77531><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x82 GOFF=0x7761f><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x6c GOFF=0x776a9><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x6c GOFF=0x77733><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x72 GOFF=0x777c3><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<3><0x53 GOFF=0x778dc><DW_TAG_template_type_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<1><0x2e5 GOFF=0x77cd6><DW_TAG_class_type> DW_AT_signature<0xc89dd6ef3b53fd90 <type signature>>
-<2><0x7f GOFF=0x77d5f><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-<cu_header> signature<0xc89dd6ef3b53fd90> typeoffset<0x00000034>
-<2><0x1f2 GOFF=0x78747><DW_TAG_formal_parameter> DW_AT_type<0xc89dd6ef3b53fd90 <type signature>>
-        */
-
-
-
-
         [&](LTV *cvar) {
             int status=0;
             LTV *type=NULL;
@@ -1127,11 +1078,14 @@ int cif_curate_module(LTV *module,int bootstrap)
         [&](LTV *type_info_ltv) {
             LTV *base=NULL;
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type_info_ltv;
-            if ((type_info->flags&TYPEF_BASE) && (type_info->flags&TYPEF_SIGNATURE)) {
+            if ((type_info->flags&TYPEF_BASE) && !(type_info->flags&TYPEF_IS_DECL) && (type_info->flags&TYPEF_SIGNATURE)) {
                 static char alias[32];
                 DWARF_ALIAS(alias,type_info->sig8);
                 base=LT_get(aliases,alias,HEAD,KEEP);
                 DEBUG(fprintf(OUTFILE,"resolve %s ref to %s found %x\n",type_info->id_str,alias,base));
+                if (!base)
+                    //DEBUG
+                    (fprintf(OUTFILE,"resolve %s ref to %s not found\n",type_info->id_str,alias,base));
             }
             return base;
         };
@@ -1570,6 +1524,11 @@ int cif_curate_module(LTV *module,int bootstrap)
                         }
                         else DEBUG(fprintf(OUTFILE,"disqualified die %s\n",type_info->id_str));
 
+                        if (!strcmp(type_info->id_str,"000776bf"))
+                            printf("here!\n");
+                        if (!strcmp(type_info->id_str,"00032d4b"))
+                            printf("here!\n");
+                        
                         if (type_info->tag!=DW_TAG_compile_unit || LT_get(module,name,HEAD,KEEP)) {
                             STRY(link2parent(name),"linking die to parent");
                             STRY(!LT_put(index,type_info->id_str,TAIL,&type_info->ltv),"indexing type info");
@@ -1579,11 +1538,15 @@ int cif_curate_module(LTV *module,int bootstrap)
                                 static char alias[32];
                                 DWARF_ALIAS(alias,cu_data.sig8);
                                 STRY(!LT_put(aliases,alias,TAIL,&type_info->ltv),"aliasing type info %s with %s",type_info->id_str,alias);
-                                DEBUG(fprintf(OUTFILE,"---aliasing type info %s with %s\n",type_info->id_str,alias));
-                            } else if (type_info->flags&TYPEF_SIGNATURE) {
+                                DEBUG(fprintf(OUTFILE,"--- aliasing type info %s with %s\n",type_info->id_str,alias));
+                            }
+
+                            if ((type_info->flags&TYPEF_IS_DECL) && (type_info->flags&TYPEF_SIGNATURE)) {
                                 static char alias[32];
-                                DWARF_ALIAS(alias,cu_data.sig8);
-                                DEBUG(fprintf(OUTFILE,"type info signature unrecorded, %s sig %s\n",type_info->id_str,alias));
+                                DWARF_ALIAS(alias,type_info->sig8);
+                                STRY(!LT_put(aliases,alias,TAIL,&type_info->ltv),"aliasing type info %s with %s",type_info->id_str,alias);
+                                //DEBUG
+                                    (fprintf(OUTFILE,"type info signature unrecorded, %s sig %s\n",type_info->id_str,alias));
                             }
 
 
@@ -1612,7 +1575,8 @@ int cif_curate_module(LTV *module,int bootstrap)
                             if (base) // we can link base immediately
                                 LT_put(&type_info->ltv,TYPE_BASE,HEAD,base);
                             else
-                                DEBUG(fprintf(OUTFILE," >>>>  deferring base lookup for %s\n",type_info->id_str));
+                                //DEBUG
+                                    (fprintf(OUTFILE," >>>>  deferring base lookup for %s\n",type_info->id_str));
                         }
                     }
             done:
@@ -1626,9 +1590,14 @@ int cif_curate_module(LTV *module,int bootstrap)
         [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             if (!listree_acyclic(lti,ltvr,ltv,depth,flags)) {
                 if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
-                    LTV *base=resolve_alias(*ltv);
-                    if (base)
-                        LT_put((*ltv),TYPE_BASE,HEAD,base);
+                    LTV *old_base=LT_get((*ltv),TYPE_BASE,HEAD,KEEP);
+                    if (!old_base) { // not already resolved
+                        LTV *base=resolve_alias(*ltv);
+                        if (base) {
+                            printf("base resolved, %s -> %s\n",((TYPE_INFO_LTV *) (*ltv))->id_str,(((TYPE_INFO_LTV *) base)->id_str));
+                            LT_put((*ltv),TYPE_BASE,HEAD,base);
+                        }
+                    }
                 }
             }
             return (void *) NULL;
@@ -1656,9 +1625,10 @@ int cif_curate_module(LTV *module,int bootstrap)
 
     STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs),"traversing module type units");
     STRY(ltv_traverse(index,resolve_aliases,NULL)!=NULL,"resolving type_unit alias references"); // type_units can fwd-reference other type units
-    LTV_release(index); // type_info indecies would conflict with debug_info indicoes
-    index=aliases; // type_info sig8's are what carry forwards into debug_info section
+    LTV_release(index); // type_info indicies would conflict with debug_info indicoes
+    index=aliases; // type_info sig8's are what carry forward into debug_info section
     STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs|RDW_is_info),"traversing module compute units");
+    STRY(ltv_traverse(index,resolve_aliases,NULL)!=NULL,"resolving type_unit alias references"); // another pass for type_unit/debug_info cross-referencing
     resolve_symbols();
     LTV_release(index); // i.e. aliases
     STRY(ltv_traverse(module,remove_die_names,resolve_meta)!=NULL,"cleaning up and linking types to pointers"); // link X.meta to pointer-to-X
@@ -1981,7 +1951,7 @@ int cif_ffi_prep(LTV *type)
             else
                 *count=CLL_len(&children->ltvs);
             //DEBUG
-                        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (ltv);
+            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (ltv);
             (fprintf(OUTFILE,"ffi_prep child for %s tag %d name %s children %x count %d\n",type_info->id_str,tag,name,children,*count));
             (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
             if (*count) {
@@ -1994,7 +1964,9 @@ int cif_ffi_prep(LTV *type)
                         char *child_name=attr_get(child_type,TYPE_SYMB);
                         TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) child_type->data;
                         //DEBUG
-                            (fprintf(OUTFILE,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
+                        if (!child_name)
+                            printf("null child name!\n");
+                        (fprintf(OUTFILE,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
                         LTV *child_ffi_ltv=cvar_ffi_ltv(child_type,&size);
                         STRY(!child_ffi_ltv,"validating child ffi ltv");
 

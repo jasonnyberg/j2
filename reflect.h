@@ -127,6 +127,7 @@ typedef struct {
     Dwarf_Bool     is_info;
     Dwarf_Sig8     sig8;
     Dwarf_Unsigned offset;
+    Dwarf_Half     header_cu_type;
     char *         dwo_name;
     char *         linkage_name;
 } CU_DATA;

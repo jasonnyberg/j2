@@ -124,15 +124,15 @@ typedef struct {
     Dwarf_Half     address_size;
     Dwarf_Half     length_size;
     Dwarf_Half     extension_size;
-    Dwarf_Bool     is_info;
     Dwarf_Sig8     sig8;
     Dwarf_Unsigned offset;
-    Dwarf_Half     header_cu_type;
+    Dwarf_Half     header_cu_type; // See DW_UT_...
     char *         dwo_name;
     char *         linkage_name;
 } CU_DATA;
 
 typedef enum {
+    TYPEF_NONE,
     TYPEF_BASE       = 1<<0x00,
     TYPEF_CONSTVAL   = 1<<0x01,
     TYPEF_BYTESIZE   = 1<<0x02,
@@ -161,6 +161,7 @@ typedef struct
     int depth;
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
+    Dwarf_Off offset; // CU-relative offset
     Dwarf_Off base;
     TYPE_FLAGS flags;
     Dwarf_Half tag; // kind of item (base, struct, etc.
@@ -175,7 +176,6 @@ typedef struct
     Dwarf_Signed location; // ??
     Dwarf_Unsigned addr; // from loclist
     Dwarf_Bool external; // new for dwarf v4
-    Dwarf_Unsigned offset; // new for dwarf v4
     Dwarf_Sig8 sig8; // used in dwarf v4
 } TYPE_INFO_LTV;
 

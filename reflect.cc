@@ -354,19 +354,20 @@ LTV *cif_find_concrete(LTV *type)
     TYPE_INFO_LTV *type_info=NULL;
     while (type && (type->flags&LT_TYPE)) {
         type_info=(TYPE_INFO_LTV *) type;
-        switch (type_info->tag) {
-            case DW_TAG_structure_type:
-            case DW_TAG_class_type:
-            case DW_TAG_union_type:
-            case DW_TAG_enumeration_type:
-            case DW_TAG_array_type:
-            case DW_TAG_pointer_type:
-            case DW_TAG_base_type:
-                return type;
-            default:
-                type=LT_get(type,TYPE_BASE,HEAD,KEEP);
-                break;
-        }
+        if (!(type_info->flags&TYPEF_SIGNATURE) || (type_info->flags&TYPEF_IS_DECL))
+            switch (type_info->tag) {
+                case DW_TAG_structure_type:
+                case DW_TAG_class_type:
+                case DW_TAG_union_type:
+                case DW_TAG_enumeration_type:
+                case DW_TAG_array_type:
+                case DW_TAG_pointer_type:
+                case DW_TAG_base_type:
+                    return type;
+                default:
+                    break;
+            }
+        type=LT_get(type,TYPE_BASE,HEAD,KEEP);
     }
     return NULL;
 }
@@ -376,17 +377,18 @@ LTV *cif_find_indexable(LTV *type)
     TYPE_INFO_LTV *type_info=NULL;
     while (type && (type->flags&LT_TYPE)) {
         type_info=(TYPE_INFO_LTV *) type;
-        switch (type_info->tag) {
-            case DW_TAG_structure_type:
-            case DW_TAG_class_type:
-            case DW_TAG_union_type:
-            case DW_TAG_array_type:
-            case DW_TAG_pointer_type:
-                return type;
-            default:
-                type=LT_get(type,TYPE_BASE,HEAD,KEEP);
-                break;
-        }
+        if (!(type_info->flags&TYPEF_SIGNATURE) || (type_info->flags&TYPEF_IS_DECL))
+            switch (type_info->tag) {
+                case DW_TAG_structure_type:
+                case DW_TAG_class_type:
+                case DW_TAG_union_type:
+                case DW_TAG_array_type:
+                case DW_TAG_pointer_type:
+                    return type;
+                default:
+                    break;
+            }
+        type=LT_get(type,TYPE_BASE,HEAD,KEEP);
     }
     return NULL;
 }
@@ -701,8 +703,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
     if (dwarf_get_die_infotypes_flag(die))
         type_info->flags|=TYPEF_IS_INFO;
 
-    switch (type_info->tag)
-    {
+    switch (type_info->tag) {
         case DW_TAG_type_unit:
         case DW_TAG_compile_unit:
             DWARF_ID(cu_data->offset_str,goff);
@@ -721,15 +722,20 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         case DW_TAG_subrange_type:
         case DW_TAG_member:
         case DW_TAG_enumerator:
-        case DW_TAG_subprogram:
-        case DW_TAG_subroutine_type:
         case DW_TAG_formal_parameter:
-        case DW_TAG_variable:
         case DW_TAG_unspecified_parameters: // varargs
         case DW_TAG_rvalue_reference_type:
         case DW_TAG_reference_type:
         case DW_TAG_template_type_parameter:
         case DW_TAG_template_value_parameter:
+            break;
+        case DW_TAG_variable:
+        case DW_TAG_subprogram:
+        case DW_TAG_subroutine_type:
+            if (type_info->depth>1) {
+                type_info->tag=0;
+                goto done;
+            }
             break;
         default:
             fprintf(OUTFILE,CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
@@ -814,6 +820,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 
         switch (vshort) {
             case DW_AT_name: // string
+                type_info->flags|=TYPEF_HAS_NAME;
                 break;
             case DW_AT_type: // global_formref
                 //STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
@@ -1083,25 +1090,10 @@ int cif_curate_module(LTV *module,int bootstrap)
     int status=0;
     CU_DATA cu_data;
 
+    LTV *type_ltvs=LTV_NULL_LIST;
     LTV *index[]={ LTV_NULL,LTV_NULL }; // type_units, compile_units
     LTV *aliases=LTV_NULL;
     void *dlhandle=NULL;
-
-    auto resolve_alias =
-        [&](LTV *type_info_ltv) {
-            LTV *base=NULL;
-            TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type_info_ltv;
-            if ((type_info->flags&TYPEF_BASE) && !(type_info->flags&TYPEF_IS_DECL) && (type_info->flags&TYPEF_SIGNATURE)) {
-                static char alias[32];
-                DWARF_ALIAS(alias,type_info->sig8);
-                base=LT_get(aliases,alias,HEAD,KEEP);
-                DEBUG(fprintf(OUTFILE,"resolve %s ref to %s found %x\n",type_info->id_str,alias,base));
-                if (!base)
-                    //DEBUG
-                    (fprintf(OUTFILE,"resolve %s ref to %s not found\n",type_info->id_str,alias,base));
-            }
-            return base;
-        };
 
     auto derive_symbolic_name =
         [&](TYPE_INFO_LTV *type_info,int post) {
@@ -1183,7 +1175,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                     break;
                 case DW_TAG_class_type:
                     if (post && type_name)
-                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"class (%s)",type_name));
+                        categorize_symbolic(FORMATA(composite_name,strlen(type_name),"class %s",type_name));
                     break;
                 case DW_TAG_union_type:
                     if (post && type_name)
@@ -1298,7 +1290,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                     break;
                 case DW_TAG_formal_parameter:
                     if (post && base_symb)
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"formal (%s)",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"formal %s",base_symb));
                     break;
 
 
@@ -1316,13 +1308,13 @@ int cif_curate_module(LTV *module,int bootstrap)
                     break;
                 case DW_TAG_template_type_parameter:
                     if (post && base_symb) {
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"template type param (%s)",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"template_type_param %s",base_symb));
                         // fprintf(ERRFILE,"template type param %s %s\n",type_name,base_symb);
                     }
                     break;
                 case DW_TAG_template_value_parameter:
                     if (post && base_symb) {
-                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"template value param (%s)",base_symb));
+                        categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"template_value_param %s",base_symb));
                         // fprintf(ERRFILE,"template value param %s %s\n",type_name,base_symb);
                     }
                     break;
@@ -1496,10 +1488,21 @@ int cif_curate_module(LTV *module,int bootstrap)
                     int is_cu=cu_data.header_cu_type==DW_IDX_compile_unit;
 
                     if (!(type_info=(TYPE_INFO_LTV *) LT_get(index[is_cu],offset_str,HEAD,KEEP))) { // may have been curated previously
+                        // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
                         STRY(!(type_info=NEW(TYPE_INFO_LTV)),"creating a type_info item");
+                        STRY(!LTV_init(&type_info->ltv,type_info,sizeof(TYPE_INFO_LTV),LT_BIN|LT_CVAR|LT_TYPE),"initializing type_info");
+                        STRY(!LTV_put(LTV_list(type_ltvs),&type_info->ltv,HEAD,NULL),"putting type_ltv on gc list"); // any unused types will be garbage collected later
+
                         type_info->depth=depth;
-                        LTV_init(&type_info->ltv,type_info,sizeof(TYPE_INFO_LTV),LT_BIN|LT_CVAR|LT_TYPE); // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
                         STRY(populate_type_info(dbg,die,type_info,&cu_data),"populating die type info");
+
+                        switch (type_info->tag) {
+                            case DW_TAG_subprogram:
+                            case DW_TAG_subroutine_type:
+                                if (!type_info->flags&TYPEF_HAS_NAME)
+                                    goto done;
+                        }
+
                         if ((name=get_diename(dbg,die))) // name is allocated from heap...
                             STRY(!attr_own(&type_info->ltv,TYPE_NAME,name),"naming type info");
 
@@ -1510,6 +1513,9 @@ int cif_curate_module(LTV *module,int bootstrap)
                         }
                         else
                             DEBUG(fprintf(OUTFILE,"disqualified die %s\n",type_info->id_str));
+
+                        if (!strcmp(type_info->id_str,"0000a861"))
+                            printf("here in cif_curate_module!\n");
 
                         if (type_info->tag!=DW_TAG_compile_unit || LT_get(module,name,HEAD,KEEP)) { // only traverse listed CU's siblings
                             STRY(link2parent(name),"linking die to parent");
@@ -1550,45 +1556,24 @@ int cif_curate_module(LTV *module,int bootstrap)
             if (!listree_acyclic(lti,ltvr,ltv,depth,flags)) {
                 if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
                     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *)(*ltv);
-                    if (type_info->flags&TYPEF_BASE) {
-                        int is_cu=(type_info->flags&TYPEF_IS_INFO)!=0;
-                        LTV *base=NULL;
-                        if (!type_info->base) {
-                            static char alias[32];
-                            DWARF_ALIAS(alias,type_info->sig8);
-                            base=resolve_alias(&type_info->ltv);
-                        } else {
-                            base=LT_get(index[is_cu],type_info->base_str,HEAD,KEEP);
-                            if (!base) { // may need to look ahead to resolve a base
-                                printf(CODE_RED "looking offdie for base of %s\n",type_info->id_str);
-                                //Dwarf_Die basedie;
-                                //STRY(dwarf_offdie_b(dbg,type_info->base,(type_info->flags&TYPEF_IS_INFO)!=0,&basedie,&error),"looking up forward-referenced die");
-                                //STRY(curate_die(dbg,basedie,(DIEWALK_FLAGS) RDW_is_info),"processing forward-referenced die (no sibs)");
-                                //base=LT_get(index[is_cu],type_info->base_str,HEAD,KEEP); // grabbing it from index
-                            }
-                        }
+                    LTV *base=NULL;
+                    int tried=0;
+                    if (type_info->flags&TYPEF_BASE && type_info->base) { // base is offset
+                        base=LT_get(index[(type_info->flags&TYPEF_IS_INFO)!=0],type_info->base_str,HEAD,KEEP);
+                        tried=1;
+                    } else if (type_info->flags&TYPEF_BASE || // base is signature
+                               ((type_info->flags&TYPEF_SIGNATURE) && !(type_info->flags&TYPEF_IS_DECL))) {
+                        static char alias[32];
+                        DWARF_ALIAS(alias,type_info->sig8);
+                        base=LT_get(aliases,alias,HEAD,KEEP);
+                        tried=1;
+                    }
+                    if (tried) {
                         if (base) // we can link base immediately
                             LT_put(&type_info->ltv,TYPE_BASE,HEAD,base);
                         else
                             //DEBUG
-                            (fprintf(OUTFILE," >>>>  deferring base lookup for %s\n",type_info->id_str));
-                    }
-                }
-            }
-            return (void *) NULL;
-        };
-
-    auto resolve_aliases =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-            if (!listree_acyclic(lti,ltvr,ltv,depth,flags)) {
-                if ((*flags&LT_TRAVERSE_LTV) && (*ltv)->flags&LT_TYPE) {
-                    LTV *old_base=LT_get((*ltv),TYPE_BASE,HEAD,KEEP);
-                    if (!old_base) { // not already resolved
-                        LTV *base=resolve_alias(*ltv);
-                        if (base) {
-                            printf("base resolved, %s -> %s\n",((TYPE_INFO_LTV *) (*ltv))->id_str,(((TYPE_INFO_LTV *) base)->id_str));
-                            LT_put((*ltv),TYPE_BASE,HEAD,base);
-                        }
+                            (fprintf(OUTFILE,CODE_RED " >>>>  failed base/alias lookup for %s" CODE_RESET "\n",type_info->id_str));
                     }
                 }
             }
@@ -1645,11 +1630,13 @@ int cif_curate_module(LTV *module,int bootstrap)
     STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs),"traversing module type units");
     STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs|RDW_is_info),"traversing module compute units");
 
-    STRY(ltv_traverse(index[0],resolve_bases,NULL)!=NULL,"resolving cu bases"); // type_units can fwd-reference other type units
-    STRY(ltv_traverse(index[1],resolve_bases,NULL)!=NULL,"resolving tu bases"); // type_units can fwd-reference other type units
-    STRY(ltv_traverse(index[0],resolve_aliases,NULL)!=NULL,"resolving cu aliases"); // type_units can fwd-reference other type units
-    STRY(ltv_traverse(index[1],resolve_aliases,NULL)!=NULL,"resolving tu aliases"); // type_units can fwd-reference other type units
+    STRY(ltv_traverse(index[0],resolve_bases,NULL)!=NULL,"resolving cu bases");
+    STRY(ltv_traverse(index[1],resolve_bases,NULL)!=NULL,"resolving tu bases");
     resolve_symbols(filename);
+    LTV *ltv=NULL;
+    while (ltv=LTV_get(LTV_list(type_ltvs),POP,HEAD,NULL,NULL))
+        LTV_release(ltv);
+    LTV_release(type_ltvs);
     LTV_release(index[0]);
     LTV_release(index[1]);
     LTV_release(aliases);
@@ -1972,9 +1959,11 @@ int cif_ffi_prep(LTV *type)
                 *count=1;
             else
                 *count=CLL_len(&children->ltvs);
+
             //DEBUG
             TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (ltv);
             (fprintf(OUTFILE,"ffi_prep child for %s tag %d name %s children %x count %d\n",type_info->id_str,tag,name,children,*count));
+
             (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
             if (*count) {
                 int size=0,largest=0,index=0;
@@ -1985,10 +1974,12 @@ int cif_ffi_prep(LTV *type)
                         LTV *child_type=((LTVR *) lnk)->ltv;
                         char *child_name=attr_get(child_type,TYPE_SYMB);
                         TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) child_type->data;
+
                         //DEBUG
                         if (!child_name)
                             printf("null child name!\n");
                         (fprintf(OUTFILE,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
+
                         LTV *child_ffi_ltv=cvar_ffi_ltv(child_type,&size);
                         STRY(!child_ffi_ltv,"validating child ffi ltv");
 
@@ -2061,6 +2052,10 @@ int cif_ffi_prep(LTV *type)
                 char *name=attr_get((*ltv),TYPE_SYMB);
                 if ((*ltv)->flags&LT_TYPE) {
                     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
+
+                    if (!strcmp(type_info->id_str,"0000231e"))
+                        printf("here in cif_ffi_prep!\n");
+
                     DEBUG(fprintf(OUTFILE,"ffi_prep post %s(%s)\n",name,type_info->id_str));
                     if (!LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) {
                         switch (type_info->tag) {

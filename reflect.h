@@ -189,8 +189,8 @@ extern int cif_dot_cvar(FILE *ofile,LTV *ltv);
 
 extern int cif_curate_module(LTV *mod_ltv,int bootstrap);
 extern int cif_preview_module(LTV *mod_ltv);
-extern int cif_ffi_prep(LTV *type);
 
+extern LTV *cif_ffi_prep(LTV *lambda);
 extern LTV *cif_rval_create(LTV *lambda,void *data);
 extern LTV *cif_get_meta(LTV *ltv);
 extern LTV *cif_put_meta(LTV *ltv,LTV *meta);

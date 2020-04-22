@@ -622,7 +622,6 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
             return status;
         };
 
-    fprintf(ofile,"CVAR:\n");
     while ((cvar=LTV_deq(&queue,HEAD))) {
         process_type_info(cvar);
         LTV_release(cvar);
@@ -636,15 +635,16 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 int cif_print_cvar(FILE *ofile,LTV *ltv,int depth)
 {
     int status=0;
+    if (ltv->flags&LT_FFI)
+        fprintf(ofile,"FFI: ");
+    if (ltv->flags&LT_CIF)
+        fprintf(ofile,"CIF: ");
     if (ltv->flags&LT_TYPE) // special case
         print_type_info(ofile,(TYPE_INFO_LTV *) ltv);
-    else if (ltv->flags&LT_FFI)
-        fprintf(OUTFILE,"Flagged as FFI");
-    else if (ltv->flags&LT_CIF)
-        fprintf(OUTFILE,"Flagged as CIF");
     else
         cif_dump_cvar(ofile,ltv,depth); // use reflection!!!!!
  done:
+    fprintf(ofile,"\n");
     return status;
 }
 
@@ -1510,9 +1510,6 @@ int cif_curate_module(LTV *module,int bootstrap)
                         else
                             DEBUG(fprintf(OUTFILE,"disqualified die %s\n",type_info->id_str));
 
-                        if (!strcmp(type_info->id_str,"0000a861"))
-                            printf("here in cif_curate_module!\n");
-
                         if (type_info->tag!=DW_TAG_compile_unit || LT_get(module,name,HEAD,KEEP)) { // only traverse listed CU's siblings
                             STRY(link2parent(name),"linking die to parent");
                             STRY(!LT_put(index[is_cu],type_info->id_str,TAIL,&type_info->ltv),"indexing type info");
@@ -1630,9 +1627,6 @@ int cif_curate_module(LTV *module,int bootstrap)
 
     resolve_symbols(filename);
 
-    LTV *ltv=NULL;
-    while (ltv=LTV_get(LTV_list(type_ltvs),POP,HEAD,NULL,NULL))
-        LTV_release(ltv);
     LTV_release(type_ltvs);
     LTV_release(index[0]);
     LTV_release(index[1]);
@@ -1640,7 +1634,7 @@ int cif_curate_module(LTV *module,int bootstrap)
 
     STRY(ltv_traverse(module,remove_die_names,resolve_meta)!=NULL,"cleaning up and linking types to pointers"); // link X.meta to pointer-to-X
 
-    cif_ffi_prep(module);
+    //cif_ffi_prep(module);
 
     printf("Finished curating module\n");
 
@@ -1843,6 +1837,34 @@ int Type_putUVAL(LTV *cvar,TYPE_UVALUE *uval)
 
 int Type_isBitField(TYPE_INFO_LTV *type_info) { return (type_info->bitsize || type_info->bitoffset); }
 
+int is_readable(LTV *type)
+{
+    if (type && type->flags&LT_TYPE) {
+        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type;
+        switch(type_info->tag) {
+            case DW_TAG_enumeration_type:
+                //case DW_TAG_pointer_type:
+            case DW_TAG_base_type:
+                return true;
+            default:
+                break;
+        }
+    }
+    return false;
+}
+
+// convert interpreter params into something FFI can use
+extern void print_type(LTV *ltv,char *prefix)
+{
+    int old_show_ref=show_ref;
+    show_ref=1;
+    if (prefix)
+        fprintf(OUTFILE,"%s",prefix);
+    print_ltv(OUTFILE,NULL,ltv,NULL,2);
+    show_ref=old_show_ref;
+}
+
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1942,10 +1964,8 @@ LTV *cvar_ffi_ltv(LTV *type,int *size)
 }
 
 // prepare a type_info cvar for ffi use
-int cif_ffi_prep(LTV *type)
+LTV *cif_ffi_prep(LTV *lambda)
 {
-    int status=0;
-
     auto collate_child_ffi_types =
         [&](LTV *ltv,int tag,int *count,ffi_type ***child_types) {
             int status=0;
@@ -2004,6 +2024,7 @@ int cif_ffi_prep(LTV *type)
 
     auto pre =
         [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+            int status=0;
             if (((*flags)&LT_TRAVERSE_LTV)) {
                 if ((*ltv)->flags&LT_RVIS) // allow absolute descent but not recursive descent
                     (*flags)|=LT_TRAVERSE_HALT;
@@ -2043,6 +2064,7 @@ int cif_ffi_prep(LTV *type)
 
     auto post =
         [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+            int status=0;
             if ((*flags&LT_TRAVERSE_LTV)) {
                 char *name=attr_get((*ltv),TYPE_SYMB);
                 if ((*ltv)->flags&LT_TYPE) {
@@ -2095,12 +2117,14 @@ int cif_ffi_prep(LTV *type)
             return status?(void *) NON_NULL:(void *) NULL;
         };
 
-    // postfix traversal so structs/unions are processed after their members. also need to catch circular dependencies
-    STRY(ltv_traverse(type,pre,post)!=NULL,"traversing module");
- done:
-    return status;
-}
+    LTV *cif=LT_get(lambda,FFI_CIF,HEAD,KEEP); // can we already retrieve?
 
+    // postfix traversal so structs/unions are processed after their members. also need to catch circular dependencies
+    if (!cif && ltv_traverse(lambda,pre,post)==NULL) // no cif but successful prep...
+        cif=LT_get(lambda,FFI_CIF,HEAD,KEEP); // ...retry retrieve
+
+    return cif;
+}
 
 LTV *cif_rval_create(LTV *lambda,void *data)
 {
@@ -2229,33 +2253,6 @@ extern LTV *cif_box(LTV *ltv) {
 }
 */
 
-int is_readable(LTV *type)
-{
-    if (type && type->flags&LT_TYPE) {
-        TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) type;
-        switch(type_info->tag) {
-            case DW_TAG_enumeration_type:
-                //case DW_TAG_pointer_type:
-            case DW_TAG_base_type:
-                return true;
-            default:
-                break;
-        }
-    }
-    return false;
-}
-
-// convert interpreter params into something FFI can use
-extern void print_type(LTV *ltv,char *prefix)
-{
-    int old_show_ref=show_ref;
-    show_ref=1;
-    if (prefix)
-        fprintf(OUTFILE,"%s",prefix);
-    print_ltv(OUTFILE,NULL,ltv,NULL,2);
-    show_ref=old_show_ref;
-}
-
 // (encaps LTVs into LTV cvars, cast basic types, ref/deref pointers, ...)
 LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
 {
@@ -2341,12 +2338,11 @@ LTV *cif_coerce_c2i(LTV *ltv)
     return status?NULL:result;
 }
 
-int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_args)
+int cif_ffi_call(LTV *cif,void *loc,LTV *rval,CLL *coerced_args)
 {
     int status=0;
     int index=0;
     void **args=NULL;
-    LTV *cif_ltv=LT_get(type,FFI_CIF,HEAD,KEEP);
     int arity=CLL_len(coerced_args);
     args=calloc(sizeof(void *),arity);
 
@@ -2361,7 +2357,7 @@ int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_args)
         };
     CLL_map(coerced_args,FWD,index_arg);
 
-    ffi_call((ffi_cif *) cif_ltv->data,loc,rval->data,args); // no return value
+    ffi_call((ffi_cif *) cif->data,loc,rval->data,args); // no return value
 
  done:
     return status;
@@ -2383,165 +2379,17 @@ LTV *cif_create_closure(LTV *function_type,void (*thunk) (ffi_cif *CIF, void *RE
     int status=0;
     LTV *closure=NULL;
 
-    LTV *function_ltv=NULL,*ffi_cif_ltv=NULL;
-    STRY(!(function_ltv=cif_find_function(function_type)),"finding closure type");
-    STRY(!(ffi_cif_ltv=LT_get(function_ltv,FFI_CIF,HEAD,KEEP)),"getting closure cif");
+    LTV *lambda=NULL,*ffi_cif_ltv=NULL;
+    STRY(!(lambda=cif_find_function(function_type)),"finding closure type");
+    STRY(!(ffi_cif_ltv=cif_ffi_prep(lambda)),"getting closure cif");
     ffi_cif *cif=(ffi_cif *) ffi_cif_ltv->data;
     void *executable=NULL;
     void *writeable=ffi_closure_alloc(sizeof(ffi_closure),&executable);
-    STRY(!(closure=cif_create_cvar(function_ltv,NULL,NULL)),"creating closure cvar");
+    STRY(!(closure=cif_create_cvar(lambda,NULL,NULL)),"creating closure cvar");
     STRY(ffi_prep_closure_loc(writeable,cif,thunk,closure,executable)!=FFI_OK,"prepping closure"); // closure passes itself to callback
     LTV_renew(closure,executable,0,LT_NONE); // update closure with function pointer
-    LT_put(closure,"WRITEABLE", HEAD,LTV_init(NEW(LTV),writeable, 0,LT_NONE));
+    LT_put(closure,"WRITEABLE", HEAD,LTV_init(NEW(LTV),writeable,0,LT_NONE));
 
  done:
     return closure;
 }
-
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-
-
-
-
-
-
-#if 0
-
-long long *Type_getLocation(char *loc)
-{
-    return STRTOLLP(loc);
-}
-
-int Type_traverseArray(DICT *dict,void *data,TYPE_INFO_LTV *type_info,Type_traverseFn fn)
-{
-    TYPE_INFO_LTV subrange_info,element_info;
-    ull *upper_bound,*byte_size;
-    int status=fn(dict,data,type_info);
-
-    if (Type_findBasic(dict,type_info->nexttype,&ZERO(element_info)) &&
-        Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,0),&ZERO(subrange_info)))
-    {
-        upper_bound=STRTOULLP(subrange_info.DW_AT_upper_bound);
-        byte_size=STRTOULLP(element_info.DW_AT_byte_size);
-        if (upper_bound && *upper_bound && byte_size)
-        {
-            int i;
-            for (i=0;i<=*upper_bound;i++)
-            {
-                char name[256];
-                if (strlen(type_info->name))
-                    sprintf(name,"%s.%d",type_info->name,i);
-                else
-                    sprintf(name,"%d",i);
-                Type_combine(&element_info,type_info->addr+(i*(*byte_size)),name);
-                Type_traverseTypeInfo(dict,data,&element_info,fn);
-            }
-        }
-    }
-
-    return status;
-}
-
-int Type_traverseUnion(DICT *dict,void *data,TYPE_INFO_LTV *type_info,Type_traverseFn fn)
-{
-    TYPE_INFO_LTV local_type_info;
-    int status=fn(dict,data,type_info);
-
-    if (Type_findBasic(dict,Type_getChild(dict,type_info->item,"dutype",0),&ZERO(local_type_info)) &&
-        !strcmp(local_type_info.category,"enumeration_type"))
-    {
-        unsigned int value=*(unsigned int *) type_info->addr;
-        if (Type_getTypeInfo(Type_getChild(dict,type_info->item,NULL,value),&ZERO(local_type_info)))
-        {
-            char *name=strlen(type_info->name)?
-                              FORMATA(name,256,"%s.%s",type_info->name,local_type_info.DW_AT_name):
-                              local_type_info.DW_AT_name;
-            Type_combine(&local_type_info,type_info->addr,name);
-            Type_traverseTypeInfo(dict,data,&local_type_info,fn);
-        }
-    }
-
-    return status;
-}
-
-
-char *Type_humanReadableVal(TYPE_INFO_LTV *type_info,char *buf)
-{
-    strcpy(buf,"n/a");
-
-    TYPE_UVALUE uval={};
-    if (!strcmp(type_info->category,"base_type"))
-    {
-        char buf2[64];
-        if (Type_getUVAL(type_info,type_info->addr,&uval))
-            sprintf(buf,"%s",Type_pushUVAL(&uval,buf2));
-    } else if (!strcmp(type_info->category,"enumeration_type")) {
-        if (Type_getUVAL(type_info,type_info->addr,&uval))
-        {
-            unsigned int value;
-            char *valstr;
-            DICT_ITEM *enumitem;
-
-            UVAL2VAR(uval,value);
-            valstr=ulltostr("values.%llu",value);
-            enumitem=jli_getitem(&type_info->item->dict,valstr,strlen(valstr),0);
-
-            if (enumitem) sprintf(buf,ENUMS_PREFIX "%s",enumitem->data);
-            else sprintf(buf,"%lld",value);
-        }
-    }
-    else if (!strcmp(type_info->category,"pointer_type"))
-    {
-        void *newaddr=(void *) *(unsigned int *) type_info->addr;
-        sprintf(buf,"0x%x",newaddr);
-    }
-
-    return buf;
-}
-
-
-
-
-JLI_EXTENSION(reflect_czero)
-{
-    DICT_ITEM *var=jli_getitem(dict,"",0,1);
-    if (var)
-    {
-        TYPE_INFO_LTV type_info;
-        ull *loc=INTVAR(&var->dict,"addr",0);
-        char *type=strvar(&var->dict,"type",0);
-        DICT_ITEM *typeitem=Type_findBasic(dict,Type_lookupName(dict,type),&ZERO(type_info));
-        ull *byte_size=STRTOULLP(type_info.DW_AT_byte_size);
-        if (byte_size && type && loc) bzero((char *) *loc,*byte_size);
-    }
-    DELETE(dict_free(var));
-    return 0;
-}
-
-
-
-char *reflect_enumstr(char *type,unsigned int value)
-{
-    TYPE_INFO_LTV type_info;
-    DICT_ITEM *enumitem,*typeitem;
-    char *valstr=ulltostr("values.%llu",(ull)value);
-
-    return ((typeitem=Type_findBasic(reflection_dict,Type_lookupName(reflection_dict,type),&type_info)) &&
-            (enumitem=jli_getitem(&typeitem->dict,valstr,strlen(valstr),0)))?
-        enumitem->data:NULL;
-}
-
-
-#endif

@@ -219,11 +219,14 @@ void vm_dump_ltv(LTV *ltv,char *label) {
     return;
 }
 
-static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
+static void vm_ffi(LTV *lambda) {
     CLL args; CLL_init(&args); // list of ffi arguments
-    LTV *rval=NULL;
+    LTV *ftype=NULL,*cif=NULL,*rval=NULL;
     int void_func;
-    LTV *ftype=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
+
+    THROW(!(ftype=LT_get(lambda,TYPE_BASE,HEAD,KEEP)),LTV_NULL);
+    THROW(!(cif=cif_ffi_prep(ftype)),LTV_NULL);
+
     rval=cif_rval_create(ftype,NULL);
     if ((void_func=!rval))
         rval=LTV_NULL;
@@ -241,7 +244,7 @@ static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
         };
     TSTART(vm_env->state,"");
     THROW(cif_args_marshal(ftype,REV,marshaller),LTV_NULL); // pre-
-    THROW(cif_ffi_call(ftype,lambda->data,rval,&args),LTV_NULL);
+    THROW(cif_ffi_call(cif,lambda->data,rval,&args),LTV_NULL);
     if (void_func)
         LTV_release(rval);
     else

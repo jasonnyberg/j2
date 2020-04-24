@@ -1044,8 +1044,8 @@ int cif_preview_module(LTV *module) // just put the cu name under module
             char *cu_name=NULL;
             Dwarf_Off offset;
             STRY(dwarf_CU_dieoffset_given_die(die,&offset,&error),"getting global die offset");
-            STRY(!(cu_name=get_diename(dbg,die)),"looking up cu die name");
-            STRY(!attr_imm(module,cu_name,(long long) offset),"adding cu name to list of compute units");
+            STRY(!(cu_name=get_diename(dbg,die)),"looking up compile unit die name");
+            STRY(!attr_imm(module,cu_name,(long long) offset),"adding compile unit name to list of compile units");
     done:
             return status;
         };
@@ -1446,6 +1446,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                                     if (!LTV_empty(&type_info->ltv) && name)
                                         STRY(!LT_put(module,name,TAIL,&type_info->ltv),"linking cu to module");
                                     break;
+                                case DW_TAG_subroutine_type:
                                 case DW_TAG_subprogram:
                                 case DW_TAG_variable:
                                     if (parent && name)
@@ -1608,8 +1609,8 @@ int cif_curate_module(LTV *module,int bootstrap)
             if (!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
                 fprintf(OUTFILE,"failed while dlopen'ing %s; continuing without resolving global functions/variables\n",dlerror());
 
-            STRY(ltv_traverse(index[0],resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
-            STRY(ltv_traverse(index[1],resolve_types,resolve_types)!=NULL,"linking symbolic names"); // links symbols on pre- and post-passes
+            STRY(ltv_traverse(index[1],resolve_types,resolve_types)!=NULL,"linking symbolic type info names"); // links symbols on pre- and post-passes
+            STRY(ltv_traverse(index[0],resolve_types,resolve_types)!=NULL,"linking symbolic compile unit names"); // links symbols on pre- and post-passes
             if (dlhandle)
                 STRY(dlclose(dlhandle),"closing shared library");
             //graph_types_to_file("/tmp/types.dot",types);
@@ -1619,11 +1620,11 @@ int cif_curate_module(LTV *module,int bootstrap)
 
     char *filename=FORMATA(filename,module->len,"%s",module->data);
 
-    STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs),"traversing module type units");
-    STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs|RDW_is_info),"traversing module compute units");
+    STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs|RDW_is_info),"traversing type info units");
+    STRY(traverse_cus(filename,curate_die,&cu_data,RDW_traverse_sibs),"traversing compile units");
 
-    STRY(ltv_traverse(index[0],resolve_bases,NULL)!=NULL,"resolving cu bases");
-    STRY(ltv_traverse(index[1],resolve_bases,NULL)!=NULL,"resolving tu bases");
+    STRY(ltv_traverse(index[1],resolve_bases,NULL)!=NULL,"resolving type info bases");
+    STRY(ltv_traverse(index[0],resolve_bases,NULL)!=NULL,"resolving compile unit bases");
 
     resolve_symbols(filename);
 
@@ -1632,9 +1633,7 @@ int cif_curate_module(LTV *module,int bootstrap)
     LTV_release(index[1]);
     LTV_release(aliases);
 
-    STRY(ltv_traverse(module,remove_die_names,resolve_meta)!=NULL,"cleaning up and linking types to pointers"); // link X.meta to pointer-to-X
-
-    //cif_ffi_prep(module);
+    STRY(ltv_traverse(module,remove_die_names,resolve_meta)!=NULL,"cleaning up and binding pointers to pointees"); // link X.meta to pointer-to-X
 
     printf("Finished curating module\n");
 

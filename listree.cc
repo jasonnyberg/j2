@@ -86,11 +86,12 @@ static LTI *aa_most(LTI *t,int dir) {
     return lti==&aa_sentinel?t:lti;
 }
 
-static LTI *aa_find(LTI **t,char *name,int len,int *insert) { // find/insert node into t
+// find "name" in "t"; walk until we hit target or find sentinel; optionally inserting there
+static LTI *aa_find(LTI **t,char *name,int len,int *insert) {
     LTI *lti=NULL;
     int iter=(*insert)&ITER;
     int dir=(*insert)&1;
-    if ((*t)==&aa_sentinel)
+    if ((*t)==&aa_sentinel) // at edge... either insert or return NULL
         lti=((*insert)&INSERT)?(*t)=LTI_init(NEW(LTI),name,len):NULL;
     else {
         int delta=0;
@@ -110,7 +111,7 @@ static LTI *aa_find(LTI **t,char *name,int len,int *insert) { // find/insert nod
     }
     if ((*insert)&INSERT) { // rebalance if necessary
         aa_skew(t);
-        aa_split(t);
+        aa_split(t); 
     }
     return lti;
 }
@@ -302,7 +303,6 @@ LTI *LTI_init(LTI *lti,char *name,int len)
         lti->name=bufdup(name,len);
         for (int i=0;i<PREVIEWLEN;i++)
             lti->preview[i]=len>i?name[i]:0;
-        strncpy(lti->preview,name,PREVIEWLEN);
         CLL_init(&lti->ltvs);
     }
     TALLOC(lti,sizeof(LTI),"LTI");

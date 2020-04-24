@@ -101,7 +101,7 @@ typedef struct {
     LTV *ltv;
 } LTVR; // LisTree Value Reference
 
-enum { RIGHT=0,LEFT=1,PREVIEWLEN=2,INSERT=4,ITER=8 }; // RIGHT==FWD, LEFT==REV
+enum { RIGHT=0,LEFT=1,PREVIEWLEN=5,INSERT=4,ITER=8 }; // RIGHT==FWD, LEFT==REV
 
 // FWD/REV define whether Left is processed before right or vice/versa for each of INFIX/PREFIX/POSTFIX
 enum { /*FWD=0,REV=1,*/ INFIX=1<<1,PREFIX=2<<1,POSTFIX=3<<1,TREEDIR=INFIX|PREFIX|POSTFIX };
@@ -110,7 +110,8 @@ struct LTI {
     LTI *lnk[2]; // AA TREE LEFT/RIGHT
     char *name;
     CLL ltvs;
-    char level,len,preview[PREVIEWLEN];
+    unsigned short len;
+    unsigned char level,preview[PREVIEWLEN];
 #ifdef VIZ
     fvec pos,vel;
 #endif

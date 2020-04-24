@@ -173,7 +173,7 @@ int fstrnprint(FILE *ofile,char *str,int len)
             case '\t': fputs("\\t",ofile); break;
             case '\r': fputs("\\r",ofile); break;
             case '\n': fputs("\\n",ofile); break;
-            case '\"': fputs("\"",ofile); break;
+            case '"': fputs("\\\"",ofile); break;
             default: fputc(*buf,ofile); break;
         }
     } while (++buf,--len);

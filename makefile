@@ -31,9 +31,5 @@ build/libreflect.dbg: build/libreflect.so
 	objcopy --strip-debug $^
 	objcopy --add-gnu-debuglink=$@ $^
 
-build/libreflect.dwp: build/libreflect.so
-	dwp -o $@ build/*.dwo
-	objcopy --add-gnu-debuglink=$@ $^
-
 strip: compile build/libreflect.dbg
-split: compile build/libreflect.dwp
+split:; make -f Make.splitdwarf

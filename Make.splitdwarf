@@ -1,0 +1,34 @@
+SHELL:=bash
+.SHELLFLAGS:=-eu -o pipefail -c
+.ONESHELL:=true
+.DELETE_ON_ERROR:=true
+
+CXXFLAGS+=-fPIC -ggdb3 -fdebug-types-section -fno-eliminate-unused-debug-types
+CXXFLAGS+=-I. -gsplit-dwarf -fpermissive
+CXXFLAGS+=-fdebug-prefix-map=$(shell pwd)=.
+#CXXFLAGS+=-O3 -gdwarf-4
+
+LDFLAGS+=-fPIC -shared -Wl,-fno-eliminate-unused-debug-types
+
+SHLIBS+=-ldwarf -ldw -lelf -ldl -lffi -lpthread
+
+CXXFLAGS+=-DLTTNG
+SHLIBS+=-lurcu -lurcu-bp -lurcu-common -llttng-ust -llttng-ctl -llttng-ust-tracepoint
+
+all: libreflect.dwp jj
+
+libreflect.so: trace.o util.o cll.o listree.o reflect.o compile.o vm.o extensions.o
+	g++ $(LDFLAGS) -Wl,-soname=$@ -o $@ $^
+
+libreflect.dwp: libreflect.so
+	dwp -o $@ *.dwo
+	objcopy --add-gnu-debuglink=$@ $^
+
+jj: jj.o libreflect.so
+	g++ -rdynamic -o $@ -Wl,-rpath,/home/jnyberg/j2: $^ $(SHLIBS)
+
+clean:; rm -f *.o *.so jj *.dwo *.dwp
+
+readelf:; readelf -a
+dwarfdump:; dwarfdump -G -i -d
+

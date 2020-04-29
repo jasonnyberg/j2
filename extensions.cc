@@ -96,21 +96,24 @@ LTV *get_separated_debug_filename(char *filename)
                 const void *buildid;
                 const char *debuglink=dwelf_elf_gnu_debuglink(elf,&crc);
                 if (debuglink) {
+                    debug_filename=LTV_init(NEW(LTV),debuglink,-1,LT_DUP);
                     ssize_t idlen=dwelf_elf_gnu_build_id(elf,&buildid);
                     Dwarf *dwarf=dwarf_begin_elf(elf,DWARF_C_READ,NULL);
+                    const char *altname;
                     if (dwarf) {
-                        const char *altname;
                         int idlen=dwelf_dwarf_gnu_debugaltlink(dwarf,&altname,&buildid);
                         dwarf_end(dwarf);
                     }
-                    debug_filename=LTV_init(NEW(LTV),mymalloc(256),256,LT_OWN);
-                    char *buf=(char *) debug_filename->data;
+                    LTV *buildid_filename=LTV_init(NEW(LTV),mymalloc(256),256,LT_OWN);
+                    char *buf=(char *) buildid_filename->data;
                     buf+=sprintf(buf,"/usr/lib/debug/.build-id/%02x",*((unsigned char *) buildid++));
                     buf+=sprintf(buf,"/");
                     while (--idlen)
                         buf+=sprintf(buf,"%02x",*((unsigned char *) buildid++));
                     buf+=sprintf(buf,".debug");
-                    debug_filename->len=buf-(char *) (debug_filename->data);
+                    buildid_filename->len=buf-(char *) (buildid_filename->data);
+                    LT_put(debug_filename,"buildid",TAIL,buildid_filename);
+                    fprintf(OUTFILE,CODE_BLUE "debug filename candidates: %s %s" CODE_RESET "\n",debug_filename->data,buildid_filename->data);
                 }
                 elf_end(elf);
             }

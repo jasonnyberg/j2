@@ -98,8 +98,7 @@ extern void attr_del(LTV *ltv,char *attr) { LTV_erase(ltv,LTI_resolve(ltv,attr,f
 extern char *attr_deref(LTV *ltv,char *attr,LTV *index)
 {
     char *attr_val=attr_get(ltv,attr);
-    if (attr_val)
-        return attr_get(index,attr_val);
+    return attr_val?attr_get(index,attr_val):NULL;
 }
 
 /////////////////////////////////////////////////////////////
@@ -914,6 +913,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_const_expr:
             case DW_AT_noreturn:
             case DW_AT_default_value:
+            case DW_AT_GNU_dwo_id: // GNU DebugFission (split dwarf)
                 break;
             default:
                 dump_attr();
@@ -975,6 +975,8 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                             case DW_OP_stack_value: // 0x9f
                             case DW_OP_lit16: // 0x40
                             case DW_OP_GNU_parameter_ref: // unreferenced parameter
+                            case DW_OP_GNU_addr_index: // GNU DebugFission
+                            case DW_OP_GNU_const_index: // GNU DebugFission
                                 // fprintf(OUTFILE," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                                 break;
                             default:

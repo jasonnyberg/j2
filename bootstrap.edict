@@ -6,8 +6,8 @@
 [compile_ltv(@code jit_edict code)]@compile
 [[a b c] compile compile!!! stack!]@test_compile
 
-[try(cif_preview_module!)]@preview
-[try(cif_curate_module(0))]@import
+[vm_try(cif_preview_module!)]@preview
+[vm_try(cif_curate_module(0))]@import
 [[preview(lib) import(lib) lib](@lib)]@loadlib
 
 [loadlib([test/build/libtestlib.so]) @test test.y.1 stack!]@testimport

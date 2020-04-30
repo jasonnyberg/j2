@@ -669,9 +669,7 @@ static int vm_run() {
         vm_reset_ext();
         vm_code_peek();
         VMOP_CALL call=vmop_call[OPCODE];
-        do {
-            call=vm_dispatch(call);
-        } while (call);
+        while (call=vm_dispatch(call)); // inner loop
         vm_env->state&=~(VM_YIELD);
     }
  done:

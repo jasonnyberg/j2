@@ -59,22 +59,22 @@
 pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
 enum {
-    VMRES_DICT,  // stack of dictionary frames
-    VMRES_STACK, // stack of data stacks
-    VMRES_FUNC,  // stack of pending f() calls
-    VMRES_EXCP,  // exception for bypass/throw
-    VMRES_CODE,
-    VMRES_COUNT,
+      VMRES_DICT,  // stack of dictionary frames
+      VMRES_STACK, // stack of data stacks
+      VMRES_FUNC,  // stack of pending f() calls
+      VMRES_EXCP,  // exception for bypass/throw
+      VMRES_CODE,
+      VMRES_COUNT,
 } VM_LISTRES;
 
 static char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_EXCP","VMRES_CODE" };
 
 enum {
-    VM_YIELD    = 0x01,
-    VM_BYPASS   = 0x02,
-    VM_THROWING = 0x04,
-    VM_COMPLETE = 0x08,
-    VM_ERROR    = 0x10,
+      VM_YIELD    = 0x01,
+      VM_BYPASS   = 0x02,
+      VM_THROWING = 0x04,
+      VM_COMPLETE = 0x08,
+      VM_ERROR    = 0x10,
 } VM_STATE;
 
 typedef struct {
@@ -219,11 +219,14 @@ void vm_dump_ltv(LTV *ltv,char *label) {
     return;
 }
 
-static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
+static void vm_ffi(LTV *lambda) {
     CLL args; CLL_init(&args); // list of ffi arguments
-    LTV *rval=NULL;
+    LTV *ftype=NULL,*cif=NULL,*rval=NULL;
     int void_func;
-    LTV *ftype=LT_get(lambda,TYPE_BASE,HEAD,KEEP);
+
+    THROW(!(ftype=LT_get(lambda,TYPE_BASE,HEAD,KEEP)),LTV_NULL);
+    THROW(!(cif=cif_ffi_prep(ftype)),LTV_NULL);
+
     rval=cif_rval_create(ftype,NULL);
     if ((void_func=!rval))
         rval=LTV_NULL;
@@ -240,7 +243,7 @@ static void vm_ffi(LTV *lambda) { // adapted from edict.c's ffi_eval(...)
     }
     TSTART(vm_env->state,"");
     THROW(cif_args_marshal(ftype,REV,marshaller),LTV_NULL); // pre-
-    THROW(cif_ffi_call(ftype,lambda->data,rval,&args),LTV_NULL);
+    THROW(cif_ffi_call(cif,lambda->data,rval,&args),LTV_NULL);
     if (void_func)
         LTV_release(rval);
     else
@@ -579,19 +582,19 @@ static void vmop_F2S() { VMOP_DEBUG();
 
 static void vmop_S2D() { VMOP_DEBUG();
     SKIP_IF_STATE();
-        THROW(!vm_stack_enq(vm_deq(VMRES_DICT,POP)),LTV_NULL);
+    THROW(!vm_stack_enq(vm_deq(VMRES_DICT,POP)),LTV_NULL);
  done: return;
 }
 
 static void vmop_S2E() { VMOP_DEBUG();
     SKIP_IF_STATE();
-        THROW(!vm_stack_enq(vm_deq(VMRES_EXCP,POP)),LTV_NULL);
+    THROW(!vm_stack_enq(vm_deq(VMRES_EXCP,POP)),LTV_NULL);
  done: return;
 }
 
 static void vmop_S2F() { VMOP_DEBUG();
     SKIP_IF_STATE();
-        THROW(!vm_stack_enq(vm_deq(VMRES_FUNC,POP)),LTV_NULL);
+    THROW(!vm_stack_enq(vm_deq(VMRES_FUNC,POP)),LTV_NULL);
  done: return;
 }
 
@@ -621,28 +624,28 @@ static void vmop_EXT() { VMOP_DEBUG();
 //////////////////////////////////////////////////
 
 VMOP_CALL vmop_call[] = {
-    vmop_RESET,
-    vmop_EXT,
-    vmop_THROW,
-    vmop_CATCH,
-    vmop_PUSHEXT,
-    vmop_EVAL,
-    vmop_REF,
-    vmop_DEREF,
-    vmop_ASSIGN,
-    vmop_REMOVE,
-    vmop_CTX_PUSH,
-    vmop_CTX_POP,
-    vmop_FUN_PUSH,
-    vmop_FUN_EVAL,
-    vmop_FUN_POP,
-    vmop_S2S,
-    vmop_D2S,
-    vmop_E2S,
-    vmop_F2S,
-    vmop_S2D,
-    vmop_S2E,
-    vmop_S2F,
+                         vmop_RESET,
+                         vmop_EXT,
+                         vmop_THROW,
+                         vmop_CATCH,
+                         vmop_PUSHEXT,
+                         vmop_EVAL,
+                         vmop_REF,
+                         vmop_DEREF,
+                         vmop_ASSIGN,
+                         vmop_REMOVE,
+                         vmop_CTX_PUSH,
+                         vmop_CTX_POP,
+                         vmop_FUN_PUSH,
+                         vmop_FUN_EVAL,
+                         vmop_FUN_POP,
+                         vmop_S2S,
+                         vmop_D2S,
+                         vmop_E2S,
+                         vmop_F2S,
+                         vmop_S2D,
+                         vmop_S2E,
+                         vmop_S2F,
 };
 
 //////////////////////////////////////////////////
@@ -665,9 +668,7 @@ static int vm_run() {
         vm_reset_ext();
         vm_code_peek();
         VMOP_CALL call=vmop_call[OPCODE];
-        do {
-            call=vm_dispatch(call);
-        } while (call);
+        while (call=vm_dispatch(call)); // inner loop
         vm_env->state&=~(VM_YIELD);
     }
  done:

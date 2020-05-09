@@ -569,11 +569,11 @@ extern int htm_main(int argc, char **argv)
 
     Htm htm;
     RegionDesc rd[]= {
-        //   size             pos         breadth        depth  ll
-        {{{},16,16,1,0}, {{}, -8, -8, -8}, {{}, 0, 4, 8}, {{}, 0, 4, 8}, 0},
-        {{{},32,32,1,0}, {{},-16,-16,  8}, {{},16, 8, 0}, {{}, 2, 8, 0}, 1},
-        //{{{},16,16,4,0}, {{}, -8, -8, 8}, {{},16, 8, 8}, {{}, 2, 8, 8}, 1},
-        //{{{}, 8, 8,4,0}, {{}, -4, -4,16}, {{}, 8, 8, 0}, {{}, 8, 8, 0}, 1}
+                      //   size             pos         breadth        depth  ll
+                      {{{},16,16,1,0}, {{}, -8, -8, -8}, {{}, 0, 4, 8}, {{}, 0, 4, 8}, 0},
+                      {{{},32,32,1,0}, {{},-16,-16,  8}, {{},16, 8, 0}, {{}, 2, 8, 0}, 1},
+                      //{{{},16,16,4,0}, {{}, -8, -8, 8}, {{},16, 8, 8}, {{}, 2, 8, 8}, 1},
+                      //{{{}, 8, 8,4,0}, {{}, -4, -4,16}, {{}, 8, 8, 0}, {{}, 8, 8, 0}, 1}
     };
 
     Htm_init(&htm,rd,2);
@@ -628,90 +628,90 @@ extern int htm_main(int argc, char **argv)
             Interface *interface;
 
             if (region) ZLOOP(i,INTERFACES) if (i==INTRA)
-            {
-                interface=&htm.region[r].interface[i];
-
-                glColor4f(1,1,1,1);
-                if (interface &&
-                    interface->output && interface->output->size.vol &&
-                    interface->input && interface->input->size.vol)
-                {
-                    int size=interface->output->size.x*interface->depth*interface->output->size.y*interface->depth;
-                    GLubyte tex[interface->output->size.x][interface->depth][interface->output->size.y][interface->depth][4];
-                    int active,predicted,imagined,perm,score;
-                    GLubyte r,g,b,a;
-                    float x,y,z,w,h;
-
-                    int synapse_op(D3 *ipos,D3 *opos,int dendrite,int synapse,DendriteMap *map)
-                    {
-                        Dendrites *dens=&interface->dendrites[opos->vol];
-                        Dendrite *den=&dens->dendrite[dendrite];
-                        Synapse *syn=&den->synapse[synapse];
-                        int ix,iy,offset;
-
-                        if (synapse==0) ix=iy=interface->depth/2;
-
-                        if (CLIP3D(ipos->v,interface->input->size.v))
                         {
-                            ix+=map->offset[synapse].x;
-                            iy+=map->offset[synapse].y;
-                            active=interface->output->active[opos->vol];
-                            predicted=interface->output->predicted[opos->vol];
-                            imagined=interface->output->imagined[opos->vol];
-                            perm=syn->permanence;
-                            score=interface->output->score[opos->vol];
-                            r=perm<PTHRESH?(PTHRESH-perm-1)*2:0;
-                            g=perm>PTHRESH?(perm-PTHRESH)*2:0;
-                            b=synapse==0?0xff:0;
-                            a=r|g|b?0xff:0;
-                            offset=(opos->x+ix)*(opos->y+iy);
-                            if (offset>=0 && offset<size)
+                            interface=&htm.region[r].interface[i];
+
+                            glColor4f(1,1,1,1);
+                            if (interface &&
+                                interface->output && interface->output->size.vol &&
+                                interface->input && interface->input->size.vol)
                             {
-                                tex[opos->x][ix][opos->y][iy][0]|=r;
-                                tex[opos->x][ix][opos->y][iy][1]|=g;
-                                tex[opos->x][ix][opos->y][iy][2]|=b;
-                                tex[opos->x][ix][opos->y][iy][3]|=a;
+                                int size=interface->output->size.x*interface->depth*interface->output->size.y*interface->depth;
+                                GLubyte tex[interface->output->size.x][interface->depth][interface->output->size.y][interface->depth][4];
+                                int active,predicted,imagined,perm,score;
+                                GLubyte r,g,b,a;
+                                float x,y,z,w,h;
+
+                                int synapse_op(D3 *ipos,D3 *opos,int dendrite,int synapse,DendriteMap *map)
+                                {
+                                    Dendrites *dens=&interface->dendrites[opos->vol];
+                                    Dendrite *den=&dens->dendrite[dendrite];
+                                    Synapse *syn=&den->synapse[synapse];
+                                    int ix,iy,offset;
+
+                                    if (synapse==0) ix=iy=interface->depth/2;
+
+                                    if (CLIP3D(ipos->v,interface->input->size.v))
+                                    {
+                                        ix+=map->offset[synapse].x;
+                                        iy+=map->offset[synapse].y;
+                                        active=interface->output->active[opos->vol];
+                                        predicted=interface->output->predicted[opos->vol];
+                                        imagined=interface->output->imagined[opos->vol];
+                                        perm=syn->permanence;
+                                        score=interface->output->score[opos->vol];
+                                        r=perm<PTHRESH?(PTHRESH-perm-1)*2:0;
+                                        g=perm>PTHRESH?(perm-PTHRESH)*2:0;
+                                        b=synapse==0?0xff:0;
+                                        a=r|g|b?0xff:0;
+                                        offset=(opos->x+ix)*(opos->y+iy);
+                                        if (offset>=0 && offset<size)
+                                        {
+                                            tex[opos->x][ix][opos->y][iy][0]|=r;
+                                            tex[opos->x][ix][opos->y][iy][1]|=g;
+                                            tex[opos->x][ix][opos->y][iy][2]|=b;
+                                            tex[opos->x][ix][opos->y][iy][3]|=a;
+                                        }
+                                    }
+                                    return 0;
+                                }
+
+                                BZERO(tex);
+                                Interface_traverse(interface,synapse_op);
+
+                                glPixelStorei(GL_UNPACK_ALIGNMENT, 0);
+                                glBindTexture(GL_TEXTURE_2D,tid);
+
+                                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,GL_NEAREST_MIPMAP_LINEAR);
+                                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,GL_NEAREST_MIPMAP_LINEAR);
+                                gluBuild2DMipmaps(GL_TEXTURE_2D,
+                                                  GL_RGBA,
+                                                  interface->output->size.y*interface->depth,
+                                                  interface->output->size.x*interface->depth,
+                                                  GL_RGBA,
+                                                  GL_UNSIGNED_BYTE,
+                                                  tex);
+
+                                x=interface->output->position.x-.5;
+                                y=interface->output->position.y-.5;
+                                z=interface->output->position.z-.1;
+                                w=interface->output->size.x;
+                                h=interface->output->size.y;
+
+                                glEnable(GL_TEXTURE_2D);
+                                glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
+                                glBindTexture(GL_TEXTURE_2D, tid);
+                                glBegin(GL_QUADS);
+                                glTexCoord2f(0.0, 0.0); glVertex3f(x,y,z);
+                                glTexCoord2f(0.0, 1.0); glVertex3f(x+w,y,z);
+                                glTexCoord2f(1.0, 1.0); glVertex3f(x+w,y+h,z);
+                                glTexCoord2f(1.0, 0.0); glVertex3f(x,y+h,z);
+                                glEnd();
+                                glDisable(GL_TEXTURE_2D);
                             }
                         }
-                        return 0;
-                    }
-
-                    BZERO(tex);
-                    Interface_traverse(interface,synapse_op);
-
-                    glPixelStorei(GL_UNPACK_ALIGNMENT, 0);
-                    glBindTexture(GL_TEXTURE_2D,tid);
-
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER,GL_NEAREST_MIPMAP_LINEAR);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,GL_NEAREST_MIPMAP_LINEAR);
-                    gluBuild2DMipmaps(GL_TEXTURE_2D,
-                                      GL_RGBA,
-                                      interface->output->size.y*interface->depth,
-                                      interface->output->size.x*interface->depth,
-                                      GL_RGBA,
-                                      GL_UNSIGNED_BYTE,
-                                      tex);
-
-                    x=interface->output->position.x-.5;
-                    y=interface->output->position.y-.5;
-                    z=interface->output->position.z-.1;
-                    w=interface->output->size.x;
-                    h=interface->output->size.y;
-
-                    glEnable(GL_TEXTURE_2D);
-                    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-                    glBindTexture(GL_TEXTURE_2D, tid);
-                    glBegin(GL_QUADS);
-                    glTexCoord2f(0.0, 0.0); glVertex3f(x,y,z);
-                    glTexCoord2f(0.0, 1.0); glVertex3f(x+w,y,z);
-                    glTexCoord2f(1.0, 1.0); glVertex3f(x+w,y+h,z);
-                    glTexCoord2f(1.0, 0.0); glVertex3f(x,y+h,z);
-                    glEnd();
-                    glDisable(GL_TEXTURE_2D);
-                }
-            }
         }
 
         int Interface_display(Interface *interface)
@@ -896,10 +896,10 @@ extern int htm_main(int argc, char **argv)
         mousepos.x=x;
         mousepos.y=y;
         if (state==0) switch (button)
-        {
-            case 3: zoom*=0.9; break;
-            case 4: zoom*=1.1; break;
-        }
+                      {
+                          case 3: zoom*=0.9; break;
+                          case 4: zoom*=1.1; break;
+                      }
         glutPostRedisplay();
         if (show_coords) printf("t(%f,%f,%f) r(%f,%f,%f) z(%f)\n",trans.x,trans.y,trans.z,rot.x,rot.y,rot.z,zoom);
     }

@@ -33,7 +33,7 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 #define _C99
 #include <libelf.h>
 #include <elfutils/libdwelf.h>
@@ -70,8 +70,7 @@ extern LTV *brl(FILE *fp) {
     return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
 }
 
-extern void throw(LTV *ltv) { vm_throw(ltv); }
-extern void try(int exp) { if (exp) vm_throw(LTV_NULL); }
+extern void vm_try(int exp) { if (exp) vm_throw(LTV_NULL); }
 
 extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
 extern void file_close(FILE *fp) { fclose(fp); }
@@ -83,6 +82,32 @@ extern void pinglib(char *filename)
     else
         dlclose(dlhandle);
 }
+
+extern LTV *ltvenv(char *var) {
+    char *val=getenv(var);
+    char *buf=val;
+    int len=0;
+    if (val)
+        len=strlen(val);
+    for (int i=0;buf<(val+len);buf+=i+1) {
+        i=series(buf,len,NULL,":",NULL);
+        fstrnprint(stdout,buf,i);
+    }
+    return LTV_init(NEW(LTV),val,-1,LT_DUP);
+}
+
+extern void printptr(char *var) { printf("%x\n",var); }
+
+// while (access(fileName, R_OK ));
+
+/*
+  So, for example, suppose you ask GDB to debug /usr/bin/ls, which has a debug link that specifies the file ls.debug, and a build ID whose value in hex is abcdef1234. If the list of the global debug directories includes /usr/lib/debug, then GDB will look for the following debug information files, in the indicated order:
+
+  - /usr/lib/debug/.build-id/ab/cdef1234.debug
+  - /usr/bin/ls.debug
+  - /usr/bin/.debug/ls.debug
+  - /usr/lib/debug/usr/bin/ls.debug.
+*/
 
 // compiled separately because of it's use of libdwelf, which conflicts with libdwarf IIRC
 LTV *get_separated_debug_filename(char *filename)
@@ -97,21 +122,24 @@ LTV *get_separated_debug_filename(char *filename)
                 const void *buildid;
                 const char *debuglink=dwelf_elf_gnu_debuglink(elf,&crc);
                 if (debuglink) {
+                    debug_filename=LTV_init(NEW(LTV),(char *) debuglink,-1,LT_DUP);
                     ssize_t idlen=dwelf_elf_gnu_build_id(elf,&buildid);
                     Dwarf *dwarf=dwarf_begin_elf(elf,DWARF_C_READ,NULL);
+                    const char *altname;
                     if (dwarf) {
-                        const char *altname;
                         int idlen=dwelf_dwarf_gnu_debugaltlink(dwarf,&altname,&buildid);
                         dwarf_end(dwarf);
                     }
-                    debug_filename=LTV_init(NEW(LTV),mymalloc(256),256,LT_OWN);
-                    char *buf=(char *) debug_filename->data;
+                    LTV *buildid_filename=LTV_init(NEW(LTV),mymalloc(256),256,LT_OWN);
+                    char *buf=(char *) buildid_filename->data;
                     buf+=sprintf(buf,"/usr/lib/debug/.build-id/%02x",*((unsigned char *) buildid++));
                     buf+=sprintf(buf,"/");
                     while (--idlen)
                         buf+=sprintf(buf,"%02x",*((unsigned char *) buildid++));
                     buf+=sprintf(buf,".debug");
-                    debug_filename->len=((void *) buf)-debug_filename->data;
+                    buildid_filename->len=buf-(char *) (buildid_filename->data);
+                    LT_put(debug_filename,"buildid",TAIL,buildid_filename);
+                    fprintf(OUTFILE,CODE_BLUE "debug filename candidates: %s %s" CODE_RESET "\n",debug_filename->data,buildid_filename->data);
                 }
                 elf_end(elf);
             }
@@ -122,29 +150,29 @@ LTV *get_separated_debug_filename(char *filename)
 }
 
 extern LTV *null() { return LTV_NULL; }
-extern void is_null(LTV *tos) { if (!(tos->flags&LT_NULL)) throw(LTV_NULL); }
+extern void is_null(LTV *tos) { if (!(tos->flags&LT_NULL)) vm_throw(LTV_NULL); }
 
-extern void int_iszero(int a)       { if (a) throw(LTV_NULL);    }
-extern void int_iseq(int a,int b)   { if (a!=b) throw(LTV_NULL); }
-extern void int_isneq(int a,int b)  { if (a==b) throw(LTV_NULL); }
-extern void int_islt(int a,int b)   { if (!(a<b)) throw(LTV_NULL); }
-extern void int_isgt(int a,int b)   { if (!(a>b)) throw(LTV_NULL); }
-extern void int_islteq(int a,int b) { if (a>b) throw(LTV_NULL); }
-extern void int_isgteq(int a,int b) { if (a<b) throw(LTV_NULL); }
+extern void int_iszero(int a)       { if (a) vm_throw(LTV_NULL);    }
+extern void int_iseq(int a,int b)   { if (a!=b) vm_throw(LTV_NULL); }
+extern void int_isneq(int a,int b)  { if (a==b) vm_throw(LTV_NULL); }
+extern void int_islt(int a,int b)   { if (!(a<b)) vm_throw(LTV_NULL); }
+extern void int_isgt(int a,int b)   { if (!(a>b)) vm_throw(LTV_NULL); }
+extern void int_islteq(int a,int b) { if (a>b) vm_throw(LTV_NULL); }
+extern void int_isgteq(int a,int b) { if (a<b) vm_throw(LTV_NULL); }
 
 extern int int_add(int a,int b) { return a+b; }
 extern int int_mul(int a,int b) { return a*b; }
 extern int int_inc(int a) { return ++a; }
 extern int int_dec(int a) { return --a; }
 
-extern int int_to_ascii(int i) { fprintf(OUTFILE,"%c\n",i); }
+extern void int_to_ascii(int i) { fprintf(OUTFILE,"%c\n",i); }
 
 int benchint=0;
 extern void bench() {
     if (--benchint<0) {
         fprintf(OUTFILE,"                                          done!\n");
         benchint=0;
-        throw(LTV_NULL);
+        vm_throw(LTV_NULL);
     }
- done: return;
+    return;
 }

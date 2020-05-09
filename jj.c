@@ -35,8 +35,8 @@
 
 #include "vm.h"
 
-char *bootstrap=
-    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"
-    "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
+const char *bootstrap=
+    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
+    "ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
 
-int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:bootstrap); }
+int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) bootstrap); }

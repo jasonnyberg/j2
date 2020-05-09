@@ -61,13 +61,8 @@ int _jit_edict(EMITTER emit,void *data,int len)
     char *tdata=(char *) data;
     int tlen=0;
 
-    int advance(int adv) { adv=MIN(adv,len); tdata+=adv; len-=adv; return adv; }
-
-    int skip_whitespace() {
-        advance(series(tdata,len,WHITESPACE,NULL,NULL)); // skip whitespace
-        return true;
-    }
-
+    int advance(int adv)  { adv=MIN(adv,len); tdata+=adv; len-=adv; return adv; };
+    int skip_whitespace() { advance(series(tdata,len,WHITESPACE,NULL,NULL)); return true; };
     int compile_term() {
         if ((tlen=series(tdata,len,NULL,NULL,"[]"))) {
             EMIT_EXT(tdata+1,tlen-2,LT_DUP); EMIT(PUSHEXT);
@@ -131,7 +126,7 @@ int _jit_edict(EMITTER emit,void *data,int len)
                 }
             }
         }
-     done:
+    done:
         return tlen;
     }
 
@@ -197,7 +192,7 @@ LTV *compile_ltv(COMPILER compiler,LTV *ltv)
 }
 
 char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP",
-                        "S2S","D2S","E2S","F2S","S2D","S2E","S2F" };
+                       "S2S","D2S","E2S","F2S","S2D","S2E","S2F" };
 
 void disassemble(FILE *ofile,LTV *ltv)
 {

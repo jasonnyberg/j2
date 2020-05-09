@@ -39,4 +39,3 @@
  */
 #define TRACEPOINT_DEFINE
 #include "trace.h"
-

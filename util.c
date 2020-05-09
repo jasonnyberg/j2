@@ -128,7 +128,7 @@ void *mymalloc(int size)
 
 void *myrealloc(void *buf, int newsize)
 {
-    char *r=realloc(buf,newsize);
+    void *r=realloc(buf,newsize);
     if (r) Gmymalloc+=1;
     TDEALLOC(buf,"");
     TALLOC(r,newsize,"");
@@ -173,7 +173,7 @@ int fstrnprint(FILE *ofile,char *str,int len)
             case '\t': fputs("\\t",ofile); break;
             case '\r': fputs("\\r",ofile); break;
             case '\n': fputs("\\n",ofile); break;
-            case '\"': fputs("\"",ofile); break;
+            case '"': fputs("\\\"",ofile); break;
             default: fputc(*buf,ofile); break;
         }
     } while (++buf,--len);
@@ -184,12 +184,12 @@ int fstrnprint(FILE *ofile,char *str,int len)
 char *bufdup(const char *buf,int len)
 {
     // always null terminate whether string or not
-    char *newbuf;
-    if (len<0) len=strlen(buf);
+    void *newbuf;
+    if (len<0) len=strlen((char *) buf);
     newbuf=mymalloc(len+1);
     memcpy(newbuf,buf,len);
-    newbuf[len]=0;
-    return newbuf;
+    ((char *) newbuf)[len]=0;
+    return (char *) newbuf;
 }
 
 char *stripdup(char *buf,int *len)
@@ -218,9 +218,9 @@ int strnncmp(char *a,int alen,char *b,int blen)
     int mismatch;
     alen=(alen<0)?(int) strlen(a):alen;
     blen=(blen<0)?(int) strlen(b):blen;
-    mismatch=strncmp(a,b,MIN(alen,blen));
+    mismatch=strncmp(a,b,MIN(alen,blen)); // strnmatch for optimizations...
 
-    return mismatch?mismatch:alen-blen;
+    return mismatch?mismatch:alen-blen; // if !mismatch, then longer > shorter (any char is greater than "virtual null")
 }
 
 int strnspn(char *str,int len,char *accept)
@@ -262,7 +262,7 @@ int shexdump(FILE *ofile,char *buf,int size,int width,int opts)
     int i=0;
     int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
     int pad=!(opts&SHEXDUMP_OPT_UNPADDED);
-    char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
+    const char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
     int shexbyte(int c) { return fprintf(ofile,pad?"%s%02hhx%s" CODE_RESET:"%s%2hhx%s" CODE_RESET,(c?CODE_RED:""),c,sep); }
     void readable(int j) { for (;j && o(i-j)<size;j--) fprintf(ofile,"%c",(buf[o(i-j)]<32 || buf[o(i-j)]>126)?'.':buf[o(i-j)]); }
     void hex(int j) { for (;j--;i++) o(i)<size? shexbyte(buf[o(i)]):fprintf(ofile,"  %s",sep); }
@@ -279,6 +279,8 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int exclen=exclude?strlen(exclude):0;
     int ballen=balance?strlen(balance)/2:0;
     int i=0,depth=0;
+    if (len==-1)
+        len=strlen(buf);
     int checkbal(int match) {
         if (balance) {
             int minlen=MIN(len-i,ballen);
@@ -301,11 +303,11 @@ char *balanced_readline(FILE *ifile,int *length) {
         static size_t buflen=0;
 
         if ((*linelen=getline(&line,&buflen,ifile))>0) {
-            if ((expr=realloc(expr,(*length)+(*linelen)+1)))
+            if ((expr=(char *) realloc(expr,(*length)+(*linelen)+1)))
                 memmove(expr+(*length),line,(*linelen)+1);
             return expr;
         }
-        return NULL;
+        return (char *) NULL;
     }
 
     int depth=0;
@@ -356,6 +358,6 @@ char *balanced_readline(FILE *ifile,int *length) {
         //else fprintf(ERRFILE,CODE_RED),fstrnprint(ERRFILE,delimiter+1,depth),fprintf(ERRFILE,CODE_RESET),fflush(ERRFILE);
     }
 
-done:
-    return (*length && !depth)?expr:(free(expr),NULL);
+ done:
+    return (*length && !depth)?expr:(free(expr),(char *) NULL);
 }

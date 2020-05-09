@@ -7,12 +7,12 @@ add_definitions(-ggdb3)
 add_definitions(-fdebug-types-section)
 add_definitions(-fno-eliminate-unused-debug-types)
 add_definitions(-DLTTNG)
+add_definitions(-fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=)
+
 include_directories(.)
+
 #add_definitions(-O3)
 #add_definitions(-gdwarf-4)
-#add_definitions(-gsplit-dwarf)
-add_definitions(-fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=)
-#set (CMAKE_SHARED_LINKER_FLAGS "-Wl,-fno-eliminate-unused-debug-types")
 
 add_library(reflect SHARED trace.c util.c cll.c listree.c reflect.c compile.c vm.c extensions.c)
 add_executable(jj jj.c)

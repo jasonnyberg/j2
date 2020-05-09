@@ -59,6 +59,7 @@
 
 #define TYPE_NAME "die name" // a die's type name
 #define TYPE_SYMB "die symb" // a die's symbolic type name
+#define TYPE_LINK "die link" // a cu's mangled linkage name
 #define TYPE_BASE "die base" // a die's base's ltv
 #define TYPE_LIST "die list" // type's children, in die order
 #define TYPE_CAST "die cast" // a casted cvar's original data (lifespan protection)
@@ -123,13 +124,15 @@ typedef struct {
     Dwarf_Half     address_size;
     Dwarf_Half     length_size;
     Dwarf_Half     extension_size;
-    Dwarf_Bool     is_info;
     Dwarf_Sig8     sig8;
     Dwarf_Unsigned offset;
+    Dwarf_Half     header_cu_type; // See DW_UT_...
     char           *dwo_name;
+    char *         linkage_name;
 } CU_DATA;
 
 typedef enum {
+    TYPEF_NONE,
     TYPEF_BASE       = 1<<0x00,
     TYPEF_CONSTVAL   = 1<<0x01,
     TYPEF_BYTESIZE   = 1<<0x02,
@@ -147,6 +150,9 @@ typedef enum {
     TYPEF_SIGNATURE  = 1<<0x0e, // new for dwarf v4
     TYPEF_IS_INFO    = 1<<0x0f, // new for dwarf v4
     TYPEF_OFFSET     = 1<<0x10, // new for dwarf v4
+    TYPEF_LINKAGE    = 1<<0x11,
+    TYPEF_IS_DECL    = 1<<0x12,
+    TYPEF_HAS_NAME   = 1<<0x13,
 } TYPE_FLAGS;
 
 
@@ -156,6 +162,7 @@ typedef struct
     int depth;
     char id_str[TYPE_IDLEN];     // global offset as a string
     char base_str[TYPE_IDLEN];   // global offset as a string
+    Dwarf_Off offset; // CU-relative offset
     Dwarf_Off base;
     TYPE_FLAGS flags;
     Dwarf_Half tag; // kind of item (base, struct, etc.
@@ -170,7 +177,6 @@ typedef struct
     Dwarf_Signed location; // ??
     Dwarf_Unsigned addr; // from loclist
     Dwarf_Bool external; // new for dwarf v4
-    Dwarf_Unsigned offset; // new for dwarf v4
     Dwarf_Sig8 sig8; // used in dwarf v4
 } TYPE_INFO_LTV;
 
@@ -183,17 +189,18 @@ extern int cif_dot_cvar(FILE *ofile,LTV *ltv);
 
 extern int cif_curate_module(LTV *mod_ltv,int bootstrap);
 extern int cif_preview_module(LTV *mod_ltv);
-extern int cif_ffi_prep(LTV *type);
 
+extern LTV *cif_ffi_prep(LTV *lambda);
 extern LTV *cif_rval_create(LTV *lambda,void *data);
-extern int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type));
 extern LTV *cif_get_meta(LTV *ltv);
 extern LTV *cif_put_meta(LTV *ltv,LTV *meta);
 extern LTV *cif_coerce_i2c(LTV *arg,LTV *type);
 extern LTV *cif_coerce_c2i(LTV *arg);
 extern int cif_ffi_call(LTV *type,void *loc,LTV *rval,CLL *coerced_ltvs);
 
-extern LTV *cif_type_info(char *typename);
+extern int cif_args_marshal(LTV *lambda,int dir,int (*marshal)(char *argname,LTV *type));
+
+extern LTV *cif_type_info(char *type_name);
 extern LTV *cif_find_base(LTV *type,int tag);
 extern LTV *cif_find_concrete(LTV *type);
 extern LTV *cif_find_indexable(LTV *type);

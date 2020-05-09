@@ -182,7 +182,7 @@ extern void try_logerror(const char *func,const char *cond,int status);
 #define PRINTA(p,len,buf) (p=alloca(len+1),snprintf(p,len+1,"%s",buf),p)
 #define FORMATA(p,len,fmt,args...) (p=alloca(strlen(fmt)+len+1),snprintf(p,strlen(fmt)+len+1,fmt,args),p)
 #define CONCATA(p,str1,str2) (stpcpy(stpcpy((p=alloca(strlen(str1)+strlen(str2)+1)),(str1)),(str2)),p)
-#define STRIPDUPA(str,len) (strstrip(memcpy(alloca(*len),str,*len),len))
+#define STRIPDUPA(str,len) (strstrip((char *) memcpy(alloca(*len),str,*len),len))
 
 extern void *mymalloc(int size);
 extern void *myrealloc(void *buf,int newsize);
@@ -191,7 +191,7 @@ extern void myfree(void *p,int size);
 extern void *mybzero(void *p,int size);
 #define ZERO(x) (*(typeof(&x))mybzero(&x,sizeof(x)))
 
-#define NEW(type) (mybzero(mymalloc(sizeof(type)),sizeof(type)))
+#define NEW(type) ((type *) (mybzero(mymalloc(sizeof(type)),sizeof(type))))
 #define RENEW(var,newlen) (myrealloc(var,newlen))
 #define DELETE(var) (myfree(var,0))
 #define RELEASE(var) (DELETE(var),var=NULL)

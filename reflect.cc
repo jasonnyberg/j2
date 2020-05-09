@@ -567,10 +567,10 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
                     }
                     case DW_TAG_subprogram:
                     case DW_TAG_subroutine_type:
-                        fprintf(ofile,"0x%x",type->data);
+                        fprintf(ofile,"0x%x",cvar->data);
                         break;
                     case DW_TAG_pointer_type:
-                        fprintf(ofile,"0x%x",*(void **) type->data);
+                        fprintf(ofile,"0x%x",*((void **) cvar->data));
                         break;
                     case DW_TAG_array_type: {
                         TYPE_INFO_LTV *base_info=NULL;

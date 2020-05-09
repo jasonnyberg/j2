@@ -83,6 +83,32 @@ extern void pinglib(char *filename)
         dlclose(dlhandle);
 }
 
+extern LTV *ltvenv(char *var) {
+    const char *val=getenv(var);
+    char *buf=val;
+    int len=0;
+    if (val)
+        len=strlen(val);
+    for (int i=0;buf<(val+len);buf+=i+1) {
+        i=series(buf,len,NULL,":",NULL);
+        fstrnprint(stdout,buf,i);
+    }
+    return LTV_init(NEW(LTV),val,-1,LT_DUP);
+}
+
+extern void printptr(char *var) { printf("%x\n",var); }
+
+// while (access(fileName, R_OK ));
+
+/*
+So, for example, suppose you ask GDB to debug /usr/bin/ls, which has a debug link that specifies the file ls.debug, and a build ID whose value in hex is abcdef1234. If the list of the global debug directories includes /usr/lib/debug, then GDB will look for the following debug information files, in the indicated order:
+
+- /usr/lib/debug/.build-id/ab/cdef1234.debug
+- /usr/bin/ls.debug
+- /usr/bin/.debug/ls.debug
+- /usr/lib/debug/usr/bin/ls.debug.
+*/
+
 // compiled separately because of it's use of libdwelf, which conflicts with libdwarf IIRC
 LTV *get_separated_debug_filename(char *filename)
 {
@@ -139,7 +165,7 @@ extern int int_mul(int a,int b) { return a*b; }
 extern int int_inc(int a) { return ++a; }
 extern int int_dec(int a) { return --a; }
 
-extern int int_to_ascii(int i) { fprintf(OUTFILE,"%c\n",i); }
+extern void int_to_ascii(int i) { fprintf(OUTFILE,"%c\n",i); }
 
 int benchint=0;
 extern void bench() {
@@ -148,5 +174,5 @@ extern void bench() {
         benchint=0;
         throw(LTV_NULL);
     }
- done: return;
+    return;
 }

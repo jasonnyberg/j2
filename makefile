@@ -6,6 +6,7 @@ SHELL:=bash
 
 all: compile
 
+switch-compiler:; sudo update-alternatives --config c++
 build:; mkdir build
 cmake: build; cd build && cmake ..
 compile: cmake; make -C build
@@ -19,6 +20,7 @@ midbench: cmake; rm callgrind.out.*; echo "midbench!" | (valgrind --tool=callgri
 inspect:; kcachegrind callgrind.out.*
 readelf:; readelf -a build/libreflect.so
 dwarfdump:; dwarfdump -G -i -d build/libreflect.so
+codeblocks: build; pushd build; cmake -G"CodeBlocks - Unix Makefiles" ..; popd
 
 REFLECT_FLAGS+= --shared -ggdb3 -fno-eliminate-unused-debug-types
 

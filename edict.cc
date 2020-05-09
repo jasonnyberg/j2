@@ -523,7 +523,7 @@ int atom_eval(THREAD *thread,TOK *ops_tok) // ops contains refs in children
             LTV *ltv_ifilename=NULL;
             STRY(!(ltv_ifilename=stack_get(thread,POP)),"popping import filename");
             char *ifilename=bufdup(ltv_ifilename->data,ltv_ifilename->len);
-            FILE *ifile=strncmp("stdin",ifilename,5)?fopen(ifilename,"r"):stdin;
+            FILE *ifile=strcmp("stdin",ifilename)?fopen(ifilename,"r"):stdin;
             if (ifile) {
                 TOK *file_tok=TOK_new(TOK_FILE,LTV_init(NEW(LTV),(void *) ifile,sizeof(FILE *),LT_IMM));
                 STRY(eval_push(thread,file_tok),"pushing file");

@@ -218,9 +218,9 @@ int strnncmp(char *a,int alen,char *b,int blen)
     int mismatch;
     alen=(alen<0)?(int) strlen(a):alen;
     blen=(blen<0)?(int) strlen(b):blen;
-    mismatch=strncmp(a,b,MIN(alen,blen));
+    mismatch=strncmp(a,b,MIN(alen,blen)); // strnmatch for optimizations...
 
-    return mismatch?mismatch:alen-blen;
+    return mismatch?mismatch:alen-blen; // if !mismatch, then longer > shorter (any char is greater than "virtual null")
 }
 
 int strnspn(char *str,int len,char *accept)
@@ -280,6 +280,8 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int exclen=exclude?strlen(exclude):0;
     int ballen=balance?strlen(balance)/2:0;
     int i=0,depth=0;
+    if (len==-1)
+        len=strlen(buf);
     auto checkbal = [&](int match) {
                         if (balance) {
                             int minlen=MIN(len-i,ballen);

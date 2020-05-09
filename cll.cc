@@ -43,7 +43,7 @@
 #define LINK(x,y,end) (CLL_SIB((y),!(end))=(x),CLL_SIB((x),(end))=(y))
 
 CLL *CLL_init(CLL *cll) { return cll?CLL_SIB(cll,FWD)=CLL_SIB(cll,REV)=cll:NULL; }
-void CLL_release(CLL *sentinel,void (*op)(CLL *cll)) { CLL *cll; for (cll=NULL;cll=CLL_get(sentinel,POP,HEAD);op(cll)); }
+void CLL_release(CLL *sentinel,void (*op)(CLL *cll)) { CLL *cll; for (cll=NULL;(cll=CLL_get(sentinel,POP,HEAD));op(cll)); }
 
 // convert a<->a' and b'<->b to a<->b and a'<->b', i.e. "splice OUT sub-CLL a thru b" OR "splice CLL b INTO CLL a at dir=HEAD/TAIL"
 CLL *CLL_splice(CLL *a,CLL *b,int end) { return a && b? (LINK(CLL_SIB(a,end),CLL_SIB(b,!end),!end),LINK(a,b,end)):NULL; }
@@ -55,7 +55,7 @@ CLL *CLL_next(CLL *sentinel,CLL *lnk,int dir) { CLL *rlnk=lnk?CLL_SIB(lnk,dir):C
 void *CLL_mapfrom(CLL *sentinel,CLL *ff,int dir,CLL_OP op) { // map with fast-forward
     void *rval=NULL;
     CLL *sib=NULL,*next=NULL;
-    for(rval=NULL,sib=CLL_SIB(ff?ff:sentinel,dir); // init
+    for(rval=NULL,(sib=CLL_SIB(ff?ff:sentinel,dir)); // init
         sib && sib!=sentinel && (next=CLL_SIB(sib,dir)) && !(rval=op(sib)); // next saved, op can cut
         sib=next);
     return rval;

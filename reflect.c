@@ -57,7 +57,9 @@
 #include "vm.h"
 #include "extensions.h"
 
-LTV *cif_module=NULL;// initialized/populated during bootstrap
+static int cif_curate_module(LTV *module, int bootstrap);
+
+LTV *cif_module = NULL; // initialized/populated during bootstrap
 
 __attribute__((constructor))
 static void init(void)
@@ -1029,8 +1031,7 @@ char *get_diename(Dwarf_Debug dbg,Dwarf_Die die)
 }
 
 
-//int _cif_preview_module(LTV *module) // just put the cu name under module
-int cif_preview_module(LTV *module) // just put the cu name under module
+int _cif_preview_module(LTV *module) // just put the cu name under module
 {
     CU_DATA cu_data;
     int op(Dwarf_Debug dbg,Dwarf_Die die,DIEWALK_FLAGS flags) {
@@ -1048,7 +1049,7 @@ int cif_preview_module(LTV *module) // just put the cu name under module
     char *filename=PRINTA(filename,module->len,module->data);
     return traverse_cus(filename,op,&cu_data,RDW_is_info);
 }
-//int cif_preview_module(LTV *module) { return _cif_preview_module(module); }
+int cif_preview_module(LTV *module) { return _cif_preview_module(module); }
 
 
 int cif_dump_module(char *ofilename,LTV *module)
@@ -1079,6 +1080,8 @@ int cif_dump_module(char *ofilename,LTV *module)
 
 extern void dump_macros(Dwarf_Debug dbg, Dwarf_Die cu_die);
 
+extern int cif_import_module(LTV *module) { return cif_curate_module(module,0); }
+
 int cif_curate_module(LTV *module,int bootstrap)
 {
     int status=0;
@@ -1104,7 +1107,7 @@ int cif_curate_module(LTV *module,int bootstrap)
         char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_SYMB):NULL;
         char *composite_name=NULL;
 
-        LTV *dedup_base() {
+        LTV *dedup_base(void) {
             if (base_info && base_symb) { // dedup types; to get here, base must have already been categorized
                 TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
                 if (symb_base && symb_base!=base_info) { // may already be correct
@@ -1322,7 +1325,7 @@ int cif_curate_module(LTV *module,int bootstrap)
             TYPE_INFO_LTV *type_info=NULL;
             TYPE_INFO_LTV *parent_type_info=(TYPE_INFO_LTV *) parent;
 
-            void read_cu_macros() { // inspired by https://github.com/tomhughes/libdwarf/blob/master/libdwarf/checkexamples.c
+            void read_cu_macros(void) { // inspired by https://github.com/tomhughes/libdwarf/blob/master/libdwarf/checkexamples.c
                 int status=0;
 
                 void macro_define(char *macro) {
@@ -1620,8 +1623,7 @@ int cif_curate_module(LTV *module,int bootstrap)
     return status;
 }
 
-
-char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
+char *Type_pushUVAL(TYPE_UVALUE *uval, char *buf)
 {
     switch(uval->base.dutype) {
         case TYPE_INT1S:   sprintf(buf,"0x%x",  uval->int1s.val);   break;

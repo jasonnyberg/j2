@@ -67,7 +67,7 @@ extern void set_ERRFILE(FILE *fp) { ERRFILE_VAR=fp; }
 
 extern LTV *brl(FILE *fp) {
     int len; char *data=NULL;
-    return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
+    return (data=balanced_readline(fp,"[","]",&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
 }
 
 extern void vm_try(int exp) { if (exp) vm_throw(LTV_NULL); }

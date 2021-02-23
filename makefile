@@ -27,6 +27,7 @@ REFLECT_FLAGS+= --shared -ggdb3 -fno-eliminate-unused-debug-types
 test/testh.so: ; gcc $(REFLECT_FLAGS) -o $@ test/testh.c
 test/test.so:  ; gcc $(REFLECT_FLAGS) -o $@ test/test.c
 test/math.so:  ; gcc $(REFLECT_FLAGS) -o $@ test/math.c
+test/util_test.so: ; gcc $(REFLECT_FLAGS) -I. -fPIC -o $@ test/util_test.c
 
 build/libreflect.dbg: build/libreflect.so
 	objcopy --only-keep-debug $^ $@

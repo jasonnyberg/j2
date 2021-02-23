@@ -44,7 +44,7 @@
 //#define mymalloc(len) mymalloc2((len),(__FILE__),(__LINE__))
 //#define myfree(p) myfree2((p),(__FILE__),(__LINE__))
 
-#define WHITESPACE " \t\n"
+#define WHITESPACE " \t\r\n"
 #define NEWLINE "\r\n"
 
 
@@ -258,7 +258,7 @@ extern int shexdump(FILE *ofile,char *buf,int size,int width,int opts);
 extern int hexdump(FILE *ofile,char *buf,int size);
 
 extern int series(char *buf,int len,char *include,char *exclude,char *balance);
-extern char *balanced_readline(FILE *ifile,int *length);
+extern char *balanced_readline(FILE *ifile,char *open,char *close,int *length);
 
 
 // Coroutine tool... wrap function with crBegin and crFinish, and use crReturn to return after saving location at which to resume execution (must not be used within a switch()

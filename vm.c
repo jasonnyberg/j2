@@ -100,7 +100,7 @@ static void init(void)
 {
     VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
     vm_ltv_container=LTV_NULL_LIST;
-    fun_pop_bc=compile(compilers[FORMAT_asm],fun_pop_asm,1);
+    fun_pop_bc=compile(jit_asm,fun_pop_asm,1);
     LTV_put(LTV_list(vm_ltv_container),fun_pop_bc,HEAD,NULL);
 }
 
@@ -274,7 +274,7 @@ void vm_eval_ltv(LTV *ltv) {
     if (ltv->flags&LT_CVAR) // type, ffi, ...
         vm_eval_cvar(ltv);
     else
-        vm_code_push(compile_ltv(compilers[FORMAT_edict],ltv));
+        vm_code_push(compile_ltv(jit_edict,ltv));
     vm_env->state|=VM_YIELD;
  done: return;
 }
@@ -663,7 +663,7 @@ static VMOP_CALL vm_dispatch(VMOP_CALL call) {
 }
 
 static int vm_run() {
-    vm_code_push(compile(compilers[FORMAT_edict],"CODE!",-1));
+    vm_code_push(compile(jit_edict,"CODE!",-1));
     while (!(vm_env->state&(VM_COMPLETE|VM_ERROR))) {
         vm_reset_ext();
         vm_code_peek();

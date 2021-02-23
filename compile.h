@@ -74,21 +74,6 @@ enum {
     VMOP_S2F,
 } VM_OPCODES;
 
-enum {
-    FORMAT_asm,
-    FORMAT_edict,
-    FORMAT_xml,
-    FORMAT_json,
-    FORMAT_yaml,
-    FORMAT_swagger,
-    FORMAT_lisp,
-    FORMAT_massoc,
-    FORMAT_MAX
-} VM_COMPILERS;
-
-extern char *formats[];
-extern COMPILER compilers[];
-
 extern LTV *compile(COMPILER compiler,void *data,int len);
 extern LTV *compile_ltv(COMPILER compiler,LTV *ltv);
 extern void disassemble(FILE *ofile,LTV *ltv);

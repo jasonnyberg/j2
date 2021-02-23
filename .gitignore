@@ -1,3 +1,5 @@
+j2.code-workspace
+.vscode/
 build
 cscope*
 .cproject

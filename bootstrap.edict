@@ -10,7 +10,7 @@
 [vm_try(cif_curate_module(0))]@import
 [[preview(lib) import(lib) lib](@lib)]@loadlib
 
-[loadlib([test/build/libtestlib.so]) @test test.y.1 stack!]@testimport
+[loadlib([../test/build/libtestlib.so]) @test test.y.1 stack!]@testimport
 [loadlib([/home/jnyberg/htm/build/libhtmlib.so]) @htm htm.init(int! '((char)*)*'!)]@testimport2
 [loadlib([/home/jnyberg/htm/build/libhtmlib.so]) <init(int! '((char)*)*'!)>]@testimport3
 

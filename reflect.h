@@ -187,8 +187,8 @@ extern LTV *cif_assign_cvar(LTV *cvar,LTV *ltv);
 extern int cif_print_cvar(FILE *ofile,LTV *ltv,int depth);
 extern int cif_dot_cvar(FILE *ofile,LTV *ltv);
 
-extern int cif_curate_module(LTV *mod_ltv,int bootstrap);
 extern int cif_preview_module(LTV *mod_ltv);
+extern int cif_import_module(LTV *mod_ltv);
 
 extern LTV *cif_ffi_prep(LTV *lambda);
 extern LTV *cif_rval_create(LTV *lambda,void *data);

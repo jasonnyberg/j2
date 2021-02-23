@@ -59,8 +59,9 @@
 
 LTV *cif_module=NULL;// initialized/populated during bootstrap
 
-__attribute__((constructor))
-static void init(void)
+int cif_curate_module(LTV *module, int bootstrap);
+
+__attribute__((constructor)) static void init(void)
 {
     Dl_info dl_info;
     dladdr((void *)init, &dl_info);
@@ -1087,7 +1088,7 @@ int cif_dump_module(char *ofilename,LTV *module)
 
 extern void dump_macros(Dwarf_Debug dbg, Dwarf_Die cu_die);
 
-int cif_curate_module(LTV *module,int bootstrap)
+static int cif_curate_module(LTV *module,int bootstrap)
 {
     int status=0;
     CU_DATA cu_data;
@@ -1643,8 +1644,9 @@ int cif_curate_module(LTV *module,int bootstrap)
     return status;
 }
 
+int cif_import_module(LTV *module) { return cif_curate_module(module, 0); }
 
-char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf)
+char *Type_pushUVAL(TYPE_UVALUE *uval, char *buf)
 {
     switch(uval->base.dutype) {
         case TYPE_INT1S:   sprintf(buf,"0x%x",  uval->int1s.val);   break;

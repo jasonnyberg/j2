@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(jj LANGUAGES C)
+project(reflect LANGUAGES C)
 
 add_definitions(-std=gnu99)
 add_definitions(-ggdb3)
@@ -15,20 +15,20 @@ include_directories(.)
 #add_definitions(-gdwarf-4)
 
 # build a shared library that is also an executable(!!)
-add_library(reflect SHARED trace.c util.c cll.c listree.c reflect.c compile.c vm.c extensions.c jj.c)
-target_compile_options(reflect PUBLIC "-fPIC")
-target_link_libraries(reflect "-pie -Wl,-E")
+add_library(${PROJECT_NAME} SHARED trace.c util.c cll.c listree.c reflect.c compile.c vm.c extensions.c jj.c)
+target_compile_options(${PROJECT_NAME} PUBLIC "-fPIC")
+target_link_libraries(${PROJECT_NAME} "-pie -Wl,-E")
 
-target_link_libraries(reflect dwarf elf dw dl ffi pthread)
+target_link_libraries(${PROJECT_NAME} dwarf elf dw dl ffi pthread)
 
 add_definitions(-DLTTNG)
-target_link_libraries(reflect urcu urcu-bp urcu-common lttng-ust lttng-ctl lttng-ust-tracepoint)
+target_link_libraries(${PROJECT_NAME} urcu urcu-bp urcu-common lttng-ust lttng-ctl lttng-ust-tracepoint)
 
 # build a demo executable that dynamically links reflection as a plugin
 add_executable(jj jj_plugin.c)
 target_link_libraries(jj dl)
 
-install(TARGETS reflect jj
+install(TARGETS ${PROJECT_NAME} jj
         RUNTIME DESTINATION bin COMPONENT j2
         LIBRARY DESTINATION lib COMPONENT j2)
 

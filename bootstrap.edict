@@ -20,7 +20,8 @@
 [a b int_add! a@ limit int_nequal! slowloop!]@slowloop
 [int! @limit limit@ int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
 
-[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [square(3)]) stack!]@async_test1
+[square(3)]@square3
+[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [square3!]) stack!]@async_test1
 
 [[]<@thunk @root @sig encaps(vm_continuation(encaps(sig) root thunk))>/]@continuation
 [[]<@continuation @arg vm_async(continuation arg)@thread>]@async
@@ -34,6 +35,8 @@
  minus(await(T2) await(T1))
  stack!
  ]@async_test7
+
+[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [testimport3!]) stack!]@async_test8
 
 [minus(1)]@decrement
 

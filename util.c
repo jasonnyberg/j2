@@ -48,7 +48,7 @@ __thread FILE *ERRFILE_VAR=NULL;
 
 int Gmymalloc=0;
 
-int try_depth=-1;
+int try_depth=0;
 int try_loglev=2;
 int try_infolev=1;
 int try_edepth=2;
@@ -84,9 +84,9 @@ void try_loginfo(const char *func,const char *cond)
     memset(logstr,' ',TRY_STRLEN);
     switch (try_infolev)
     {
-        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "Finished %s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "Finished %s",func,try_context.msgstr); break;
-        case 1: snprintf(logstr+indent,TRY_STRLEN,"Finished %s",try_context.msgstr); break;
+        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr); break;
+        case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr); break;
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 
@@ -99,9 +99,9 @@ void try_logerror(const char *func,const char *cond,int status)
     char errstr[TRY_STRLEN];
     switch (try_loglev)
     {
-        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr); break;
-        case 1: snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr); break;
+        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed to %s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed to %s",func,try_context.msgstr); break;
+        case 1: snprintf(errstr,TRY_STRLEN,"Failed to %s",try_context.msgstr); break;
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 

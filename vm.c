@@ -89,19 +89,21 @@ typedef struct {
     unsigned skipdepth;
 } VM_ENV;
 
-__thread LTV *vm_env_stack=NULL; // every thread can have a stack of vm_environments (supports interpreter->C->interpreter->C...
 __thread VM_ENV *vm_env=NULL; // every thread can have an active vm environment
 
 static LTV *vm_ltv_container=NULL; // holds LTVs we don't want garbage-collected
 static LTV *fun_pop_bc=NULL;
 
 __attribute__((constructor))
-static void init(void)
-{
-    VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
-    vm_ltv_container=LTV_NULL_LIST;
-    fun_pop_bc=compile(jit_asm,fun_pop_asm,1);
-    LTV_put(LTV_list(vm_ltv_container),fun_pop_bc,HEAD,NULL);
+static void init(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
+        vm_ltv_container = LTV_NULL_LIST;
+        fun_pop_bc = compile(jit_asm, fun_pop_asm, 1);
+        LTV_put(LTV_list(vm_ltv_container), fun_pop_bc, HEAD, NULL);
+        initialized++;
+    }
 }
 
 
@@ -685,8 +687,7 @@ static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
     int status=0;
     char *argid=NULL;
 
-    if (!vm_env_stack)
-        vm_env_stack=LTV_NULL_LIST;
+    LTV *vm_env_stack = LTV_NULL_LIST;
 
     LTV *continuation=(LTV *) USER_DATA;
 
@@ -765,7 +766,7 @@ extern LTV *vm_eval(LTV *root,LTV *code,LTV *arg) {
 }
 
 extern int vm_bootstrap(char *bootstrap) {
-    try_depth=0;
+    cif_init(0); // must dlopen as lib name when running from library
     LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
         print_ltv(OUTFILE,"",rval,"\n",0);

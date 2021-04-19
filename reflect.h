@@ -182,6 +182,8 @@ typedef struct
 
 extern LTV *cif_module;
 
+void cif_init(int bootstrap);
+
 extern LTV *cif_create_cvar(LTV *type,void *data,char *member);
 extern LTV *cif_assign_cvar(LTV *cvar,LTV *ltv);
 extern int cif_print_cvar(FILE *ofile,LTV *ltv,int depth);

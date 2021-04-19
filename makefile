@@ -6,6 +6,9 @@ SHELL:=bash
 
 all: compile
 
+# makefile version of reflection-as-plugin demo
+jj: jj_plugin.c ; gcc -g jj_plugin.c -o jj -ldl
+
 switch-compiler:; sudo update-alternatives --config c++
 build:; mkdir build
 cmake: build; cd build && cmake ..

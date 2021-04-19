@@ -61,18 +61,17 @@ static int cif_curate_module(LTV *module, int bootstrap);
 
 LTV *cif_module = NULL; // initialized/populated during bootstrap
 
-__attribute__((constructor))
-static void init(void)
-{
-    Dl_info dl_info;
-    dladdr((void *)init, &dl_info);
-    fprintf(ERRFILE,CODE_RED "reflection module path is: %s" CODE_RESET "\n",dl_info.dli_fname);
-    cif_module=LTV_init(NEW(LTV),(char *) dl_info.dli_fname,strlen(dl_info.dli_fname),LT_DUP|LT_RO);
-    try_depth=1;
-    cif_preview_module(cif_module);
+void cif_init(int bootstrap) {
+    if (!cif_module) {
+        Dl_info dl_info;
+        dladdr((void *)cif_init, &dl_info);
+        fprintf(ERRFILE, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
+        cif_module = LTV_init(NEW(LTV), (char *)dl_info.dli_fname, strlen(dl_info.dli_fname), LT_DUP | LT_RO);
+        cif_preview_module(cif_module);
 
-    print_ltv(ERRFILE,CODE_RED,cif_module,CODE_RESET "\n",0);
-    cif_curate_module(cif_module,true);
+        print_ltv(ERRFILE, CODE_RED, cif_module, CODE_RESET "\n", 0);
+        cif_curate_module(cif_module, bootstrap);
+    }
 }
 
 char *Type_pushUVAL(TYPE_UVALUE *uval,char *buf);
@@ -1588,7 +1587,7 @@ int cif_curate_module(LTV *module,int bootstrap)
 
     int resolve_symbols(char *filename) {
         char *f=bootstrap?NULL:filename;
-        if (!(dlhandle=dlopen(f,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
+        if (!(dlhandle = dlopen(f, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
             fprintf(OUTFILE,"failed while dlopen'ing %s; continuing without resolving global functions/variables\n",dlerror());
 
         STRY(ltv_traverse(index[1],resolve_types,resolve_types)!=NULL,"linking symbolic type info names"); // links symbols on pre- and post-passes

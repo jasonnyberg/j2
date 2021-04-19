@@ -49,7 +49,7 @@ int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) b
 
 const char *bootstrap =
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
-    "ROOT<repl(get_stdin())> [RETURN] ARG0 @";
+    "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
 
 int main(int argc, char *argv[]) {
     int status = 0;

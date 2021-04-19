@@ -48,7 +48,7 @@ __thread FILE *ERRFILE_VAR=NULL;
 
 int Gmymalloc=0;
 
-int try_depth=-1;
+int try_depth=0;
 int try_loglev=2;
 int try_infolev=1;
 int try_edepth=2;
@@ -84,9 +84,9 @@ void try_loginfo(const char *func,const char *cond)
     memset(logstr,' ',TRY_STRLEN);
     switch (try_infolev)
     {
-        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "Finished %s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "Finished %s",func,try_context.msgstr); break;
-        case 1: snprintf(logstr+indent,TRY_STRLEN,"Finished %s",try_context.msgstr); break;
+        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr); break;
+        case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr); break;
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 
@@ -99,9 +99,9 @@ void try_logerror(const char *func,const char *cond,int status)
     char errstr[TRY_STRLEN];
     switch (try_loglev)
     {
-        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed while %s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed while %s",func,try_context.msgstr); break;
-        case 1: snprintf(errstr,TRY_STRLEN,"Failed while %s",try_context.msgstr); break;
+        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed %s",func,cond,try_context.msgstr); break;
+        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed %s",func,try_context.msgstr); break;
+        case 1: snprintf(errstr,TRY_STRLEN,"Failed %s",try_context.msgstr); break;
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 
@@ -274,6 +274,49 @@ int shexdump(FILE *ofile,char *buf,int size,int width,int opts)
 
 int hexdump(FILE *ofile,char *buf,int size) { return shexdump(ofile,buf,size,16,0); }
 
+
+void escape_buf(char *buf,int len) {
+    char *src = buf;
+    int escape = 0;
+
+    auto hex = [&](char c) // return -1 if not a hex digit, else hex value
+    {
+        return (c >= 48 && c <= 57)?  c-48: /* 0-9 */
+               (c >= 65 && c <= 70)?  c-55: /* A-F */
+               (c >= 97 && c <= 102)? c-87: /* a-f */
+               -1;
+    };
+
+    for (int i = 0; i < len; i++) {
+        if (escape) {
+            switch(src[i]) {
+                case '\"':  *buf++ = '\"'; break;
+                case '/': *buf++ = '/'; break;
+                case '\\': *buf++ = '\\'; break;
+                case 'b': *buf++ = '\b'; break;
+                case 'f': *buf++ = '\f'; break;
+                case 'r': *buf++ = '\r'; break;
+                case 'n': *buf++ = '\n'; break;
+                case 't': *buf++ = '\t'; break;
+                case 'u':
+                    if (((len-i)<4) || hex(src[i+1])<0 || hex(src[i+2])<0 || hex(src[i+3])<0 || hex(src[i+4])<0) {
+                        *buf++ = 'u'; // not a valid 16b hex value, just leave it as is
+                        break;
+                    } else {
+                        *buf++ = hex(src[i++]) << 4 + hex(src[i++]);
+                        *buf++ = hex(src[i++]) << 4 + hex(src[i++]);
+                    }
+                }
+            escape = 0;
+            continue;
+        }
+        if (src[i]=='\\')
+            escape = 1;
+        else
+            *buf++ = src[i];
+    }
+}
+
 // sequence of include chars, then sequence of not-exclude chars, then terminate balanced sequence
 int series(char *buf,int len,char *include,char *exclude,char *balance) {
     int inclen=include?strlen(include):0;
@@ -283,83 +326,66 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     if (len==-1)
         len=strlen(buf);
     auto checkbal = [&](int match) {
-                        if (balance) {
-                            int minlen=MIN(len-i,ballen);
-                            if (depth && !strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen; // prefer close over open for bal[0]==bal[1]
-                            else if     (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
-                            else if     (depth || !match)                       i++;
-                        } else if (!match) i++;
-                        return !depth && match;
-                    };
-
+        if (balance) {
+            int minlen=MIN(len-i,ballen);
+            if (depth && !strncmp(buf+i,balance+ballen,minlen)) depth--,i+=ballen; // prefer close over open for bal[0]==bal[1]
+            else if     (!strncmp(buf+i,balance,minlen))        depth++,i+=ballen;
+            else if     (depth || !match)                       i++;
+        } else if (!match) i++;
+        return !depth && match;
+    };
     if (include) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(!memchr(include,buf[i],inclen)?1:0)) break;
     if (exclude) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(memchr(exclude,buf[i],exclen)?1:0))  break;
     if (balance) while (i<len) if (buf[i]=='\\') i+=2; else if (checkbal(1)) break;
     return i;
 }
 
-char *balanced_readline(FILE *ifile,int *length) {
-    char *expr=NULL;
+int balanced_string(char *line, int linelen, char *open, char *close, int *length /*in:out*/, char *stack /*in:out*/)
+{
+    int depth = strlen(stack);
+    int dels = strlen(open);
+    int i;
+    char *pos;
+    for (i = 0; i < linelen; i++, (*length)++) {
+        char c = line[*length];
+        if (c == '\\') { // don't interpret next char
+            i++;
+            (*length)++;
+        } else if (pos = (char *) memchr(close, c, dels)) {
+            if (depth && c == stack[depth - 1]) // balanced, pop
+                stack[--depth]=0;
+            else {
+                fprintf(ERRFILE, "Sequence misbalanced at \"%c\", offset %d, stack %s\n", c, *length,stack);
+                *length = -1;
+                break;
+            }
+        } else if (pos = (char *) memchr(open, c, dels)) {
+            stack[depth++] = close[pos - open];
+        }
+    }
+    return depth;
+}
+
+char *balanced_readline(FILE *ifile, char *open, char *close, int *length /*in:out*/) {
+    char *line = NULL;
     auto nextline = [&](int *linelen) {
-                        static char *line=NULL;
-                        static size_t buflen=0;
+        static char *buf=NULL;
+        static size_t buflen=0;
 
-                        if ((*linelen=getline(&line,&buflen,ifile))>0) {
-                            if ((expr=(char *) realloc(expr,(*length)+(*linelen)+1)))
-                                memmove(expr+(*length),line,(*linelen)+1);
-                            return expr;
-                        }
-                        return (char *) NULL;
-                    };
+        if ((*linelen=getline(&buf,&buflen,ifile))>0) {
+            if ((line=(char *) realloc(line,(*length)+(*linelen)+1)))
+                memmove(line+(*length),buf,(*linelen)+1);
+            return line;
+        }
+        return (char *) NULL;
+    };
 
-    int depth=0;
-    char delimiter[1024]; // balancing stack
+    char stack[1024] = {}; // balancing stack
     int linelen=0;
 
     *length=0;
-
-    while (nextline(&linelen)) {
-        int i,comment=0;
-        char c;
-        for (i=0; i<linelen; i++,(*length)++) {
-            if (!comment) {
-                c=expr[*length];
-                switch (c) {
-                    case '\\': i++; (*length)++; break; // don't interpret next char
-                        //case '#': comment++; break;
-                    case '[': delimiter[++depth]=']'; break;
-                        //case '(': delimiter[++depth]=')'; break;
-                        //case '{': delimiter[++depth]='}'; break;
-                        //case '<': delimiter[++depth]='>'; break;
-                    case '`': // case '"': case '\'': // special class of same-start-and-finish delimiters
-                        if (depth && delimiter[depth]!=c) {
-                            delimiter[++depth]=c;
-                            break;
-                        }
-                        // else fall through!!!
-                    case ']':
-                        //case ')':
-                        //case '}':
-                        //case '>':
-                        if (depth) {
-                            if (c==delimiter[depth]) depth--;
-                            else {
-                                fprintf(ERRFILE,"ERROR: Sequence unbalanced at \"%c\", offset %d\n",c,*length);
-                                free(expr); expr=NULL;
-                                *length=depth=0;
-                                goto done;
-                            }
-                        }
-                        break;
-                    default: break;
-                }
-            }
-        }
-        if (!depth)
-            break;
-        //else fprintf(ERRFILE,CODE_RED),fstrnprint(ERRFILE,delimiter+1,depth),fprintf(ERRFILE,CODE_RESET),fflush(ERRFILE);
-    }
-
-done:
-    return (*length && !depth)?expr:(free(expr),(char *) NULL);
+    while (nextline(&linelen) && balanced_string(line, linelen, open, close, length, stack) && *length>=0);
+    if (*length<=0)
+        DELETE(line);
+    return line; // length<0 signifies error!
 }

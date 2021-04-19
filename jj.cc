@@ -33,10 +33,14 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "reflect.h" // cif_init
 #include "vm.h"
 
 const char *bootstrap=
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
     "ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
 
-int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) bootstrap); }
+int main(int argc, char *argv[]) {
+    cif_init(1); // must dlopen NULL when running as executable
+    return vm_bootstrap(argc > 1 ? argv[1] : (char *)bootstrap);
+}

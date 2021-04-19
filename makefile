@@ -6,6 +6,9 @@ SHELL:=bash
 
 all: compile
 
+# makefile version of reflection-as-plugin demo
+jj: jj_plugin.c ; gcc -g jj_plugin.c -o jj -ldl
+
 switch-compiler:; sudo update-alternatives --config c++
 build:; mkdir build
 cmake: build; cd build && cmake ..
@@ -27,6 +30,7 @@ REFLECT_FLAGS+= --shared -ggdb3 -fno-eliminate-unused-debug-types
 test/testh.so: ; gcc $(REFLECT_FLAGS) -o $@ test/testh.c
 test/test.so:  ; gcc $(REFLECT_FLAGS) -o $@ test/test.c
 test/math.so:  ; gcc $(REFLECT_FLAGS) -o $@ test/math.c
+test/util_test.so: ; gcc $(REFLECT_FLAGS) -I. -fPIC -o $@ test/util_test.c
 
 build/libreflect.dbg: build/libreflect.so
 	objcopy --only-keep-debug $^ $@

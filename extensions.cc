@@ -67,15 +67,14 @@ extern void set_ERRFILE(FILE *fp) { ERRFILE_VAR=fp; }
 
 extern LTV *brl(FILE *fp) {
     int len; char *data=NULL;
-    return (data=balanced_readline(fp,&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
+    return (data=balanced_readline(fp,"[","]",&len))?LTV_init(NEW(LTV),data,len,LT_OWN):NULL;
 }
 
 extern void vm_try(int exp) { if (exp) vm_throw(LTV_NULL); }
 
 extern FILE *file_open(char *filename,char *opts) { return fopen(filename,opts); }
 extern void file_close(FILE *fp) { fclose(fp); }
-extern void pinglib(char *filename)
-{
+extern void pinglib(char *filename) {
     void *dlhandle=dlopen(filename,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND);
     if (!dlhandle)
         fprintf(OUTFILE,"dlopen error: handle %x %s\n",dlhandle,dlerror());

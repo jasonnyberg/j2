@@ -89,19 +89,21 @@ typedef struct {
     unsigned skipdepth;
 } VM_ENV;
 
-__thread LTV *vm_env_stack=NULL; // every thread can have a stack of vm_environments (supports interpreter->C->interpreter->C...
 __thread VM_ENV *vm_env=NULL; // every thread can have an active vm environment
 
 static LTV *vm_ltv_container=NULL; // holds LTVs we don't want garbage-collected
 static LTV *fun_pop_bc=NULL;
 
 __attribute__((constructor))
-static void init(void)
-{
-    VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
-    vm_ltv_container=LTV_NULL_LIST;
-    fun_pop_bc=compile(compilers[FORMAT_asm],fun_pop_asm,1);
-    LTV_put(LTV_list(vm_ltv_container),fun_pop_bc,HEAD,NULL);
+static void init(void) {
+    static int initialized = 0;
+    if (!initialized) {
+        VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
+        vm_ltv_container = LTV_NULL_LIST;
+        fun_pop_bc = compile(jit_asm, fun_pop_asm, 1);
+        LTV_put(LTV_list(vm_ltv_container), fun_pop_bc, HEAD, NULL);
+        initialized++;
+    }
 }
 
 
@@ -275,7 +277,7 @@ void vm_eval_ltv(LTV *ltv) {
     if (ltv->flags&LT_CVAR) // type, ffi, ...
         vm_eval_cvar(ltv);
     else
-        vm_code_push(compile_ltv(compilers[FORMAT_edict],ltv));
+        vm_code_push(compile_ltv(jit_edict,ltv));
     vm_env->state|=VM_YIELD;
  done: return;
 }
@@ -664,7 +666,7 @@ static VMOP_CALL vm_dispatch(VMOP_CALL call) {
 }
 
 static int vm_run() {
-    vm_code_push(compile(compilers[FORMAT_edict],"CODE!",-1));
+    vm_code_push(compile(jit_edict,"CODE!",-1));
     while (!(vm_env->state&(VM_COMPLETE|VM_ERROR))) {
         vm_reset_ext();
         vm_code_peek();
@@ -686,8 +688,7 @@ static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
     int status=0;
     char *argid=NULL;
 
-    if (!vm_env_stack)
-        vm_env_stack=LTV_NULL_LIST;
+    LTV *vm_env_stack = LTV_NULL_LIST;
 
     LTV *continuation=(LTV *) USER_DATA;
 
@@ -766,10 +767,12 @@ extern LTV *vm_eval(LTV *root,LTV *code,LTV *arg) {
     return vm_await(vm_async(vm_continuation(cif_type_info("(LTV)*(*)((LTV)*)"),root,code),arg));
 }
 
+extern "C" {
 extern int vm_bootstrap(char *bootstrap) {
-    try_depth=0;
+    cif_init(0); // must dlopen as lib name when running from library
     LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
         print_ltv(OUTFILE,"",rval,"\n",0);
     return !rval;
+}
 }

@@ -33,23 +33,43 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef VM_H
-#define VM_H
+/*
+#include "vm.h"
 
-#include "listree.h"
+const char *bootstrap=
+    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
+    "ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
 
-extern "C" {
-extern int vm_bootstrap(char *bootstrap);
+int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) bootstrap); }
+*/
+
+
+#include <stdio.h>
+#include <dlfcn.h> // dlopen/dlsym/dlclose
+
+const char *bootstrap =
+    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
+    "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
+
+int main(int argc, char *argv[]) {
+    int status = 0;
+    void *dlhandle = NULL;
+
+    dlerror(); // reset
+    dlhandle = dlopen("libreflect.so", RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND);
+    if (!dlhandle) {
+        printf("dlopen libreflect.so failed, error %s\n", dlerror());
+        goto done;
+    }
+
+    dlerror(); // reset
+    int *(*vm_bootstrap)(char *) = dlsym(dlhandle, "vm_bootstrap");
+    if (vm_bootstrap) {
+        vm_bootstrap(argc > 1 ? argv[1] : (char *) bootstrap);
+    }
+
+    dlclose(dlhandle);
+done:
+    return status;
 }
 
-#define THROW(expression,ltv) do { if (expression) { vm_throw(ltv); goto done; } } while(0)
-
-extern void vm_throw(LTV *ltv);
-extern LTV *vm_stack_enq(LTV *ltv);
-extern LTV *vm_stack_deq(int pop);
-extern LTV *encaps_ltv(LTV *ltv);
-extern LTV *decaps_ltv(LTV *ltv);
-extern LTV *vm_resolve(LTV *ref);
-extern void vm_eval_ltv(LTV *ltv);
-
-#endif // VM_H

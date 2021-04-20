@@ -1,4 +1,5 @@
 .vscode/
+.clang-format
 j2.code-workspace
 build
 cscope*

@@ -51,6 +51,7 @@ typedef int (*COMPILER)(EMITTER emit,void *data,int len);
 
 enum {
     VMOP_RESET,
+    VMOP_YIELD,
     VMOP_EXT,
     VMOP_THROW,
     VMOP_CATCH,

@@ -52,7 +52,7 @@
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
 extern int string(char *s) { fprintf(OUTFILE,"%s\n",s); }
-extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
+extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(OUTFILE,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
 
 extern FILE *get_stdin() { return stdin; }
 
@@ -90,7 +90,7 @@ extern LTV *ltvenv(char *var) {
         len=strlen(val);
     for (int i=0;buf<(val+len);buf+=i+1) {
         i=series(buf,len,NULL,":",NULL);
-        fstrnprint(stdout,buf,i);
+        fstrnprint(OUTFILE,buf,i);
     }
     return LTV_init(NEW(LTV),val,-1,LT_DUP);
 }

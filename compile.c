@@ -258,6 +258,7 @@ int jit_json(EMITTER emit, void *data, int len)
 
 LTV *compile(COMPILER compiler,void *data,int len)
 {
+    TSTART(0,"compile");
     char *buf=NULL;
     size_t flen=0;
     FILE *stream=open_memstream(&buf,&flen);
@@ -285,11 +286,13 @@ LTV *compile(COMPILER compiler,void *data,int len)
         len=strlen((char *) data);
     compiler(emit,data,len);
     fclose(stream);
+    TFINISH(0,"compile");
     return LTV_init(NEW(LTV),buf,flen,LT_BC|LT_OWN|LT_BIN|LT_LIST);
 }
 
 LTV *compile_ltv(COMPILER compiler,LTV *ltv)
 {
+    // print_ltv(stdout,CODE_RED "compile: ",ltv,CODE_RESET "\n",0);
     if (ltv->flags&(LT_CVAR|LT_BC))
         return ltv; // FFI or pre-compiled
     LTV *bc=compile(compiler,ltv->data,ltv->len);
@@ -301,6 +304,7 @@ char *opcode_name[] = { "RESET","YIELD","EXT","THROW","CATCH","PUSHEXT","EVAL","
 
 void disassemble(FILE *ofile,LTV *ltv)
 {
+    TSTART(0,"disassemble");
     unsigned char *data,*code=(unsigned char *) ltv->data;
     int i=0,length=0,flags=0;
     fprintf(ofile,"BYTECODE: ");
@@ -311,15 +315,17 @@ void disassemble(FILE *ofile,LTV *ltv)
                 length=ntohl(*(unsigned *) (code+i)); i+=sizeof(unsigned);
                 flags=ntohl(*(unsigned *)  (code+i)); i+=sizeof(unsigned);
                 data=code+i;                          i+=length;
+                //fprintf(ofile, "\n" CODE_BLUE);
                 fprintf(ofile, CODE_BLUE);
                 fstrnprint(ofile,data,length);
                 fprintf(ofile, ":%x " CODE_RESET, flags);
                 break;
             case VMOP_RESET:
-                fprintf(ofile,"\n");
+                //fprintf(ofile,"\n");
             default:
                 fprintf(ofile,"%s ",opcode_name[opcode]);
         }
     }
     fprintf(ofile,"\n");
+    TFINISH(0,"disassemble");
 }

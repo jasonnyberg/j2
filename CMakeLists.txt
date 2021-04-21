@@ -15,11 +15,14 @@ include_directories(.)
 #add_definitions(-gdwarf-4)
 
 # build a shared library that is also an executable(!!)
-add_library(${PROJECT_NAME} SHARED util.c cll.c listree.c reflect.c compile.c vm.c extensions.c jj.c)
+add_library(${PROJECT_NAME} SHARED trace.c util.c cll.c listree.c reflect.c compile.c vm.c extensions.c jj.c)
 target_compile_options(${PROJECT_NAME} PUBLIC "-fPIC")
 target_link_libraries(${PROJECT_NAME} "-pie -Wl,-E")
 
-target_link_libraries(${PROJECT_NAME} c dwarf elf dw dl ffi pthread)
+target_link_libraries(${PROJECT_NAME} dwarf elf dw dl ffi pthread)
+
+add_definitions(-DLTTNG)
+target_link_libraries(${PROJECT_NAME} urcu urcu-bp urcu-common lttng-ust lttng-ctl lttng-ust-tracepoint)
 
 # build a demo executable that dynamically links reflection as a plugin
 add_executable(jj jj_plugin.c)

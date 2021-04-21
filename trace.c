@@ -33,37 +33,9 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
+#define TRACEPOINT_CREATE_PROBES
 /*
-#include "vm.h"
-
-const char *bootstrap=
-    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
-    "ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
-
-int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) bootstrap); }
-*/
-
-#include <stdio.h>
-#include <dlfcn.h>  // dlopen/dlsym/dlclose
-
-const char *bootstrap =
-    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
-    "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
-
-int
-main(int argc, char *argv[]) {
-    int   status   = 0;
-    void *dlhandle = NULL;
-
-    dlerror();  // reset
-    if (dlhandle = dlopen("libreflect.so", RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)) {
-        dlerror();  // reset
-        int *(*vm_bootstrap)(char *) = dlsym(dlhandle, "vm_bootstrap");
-        if (vm_bootstrap) vm_bootstrap(argc > 1 ? argv[1] : (char *)bootstrap);
-        dlclose(dlhandle);
-    } else {
-        printf("dlopen libreflect.so failed, error %s\n", dlerror());
-    }
-
-    return status;
-}
+ * The header containing our TRACEPOINT_EVENTs.
+ */
+#define TRACEPOINT_DEFINE
+#include "trace.h"

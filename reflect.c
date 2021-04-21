@@ -64,11 +64,12 @@ LTV *cif_module = NULL; // initialized/populated during bootstrap
 void cif_init(int bootstrap) {
     if (!cif_module) {
         Dl_info dl_info;
-        dladdr((void *) cif_init, &dl_info);
-        fprintf(stdout, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
+        dladdr((void *)cif_init, &dl_info);
+        fprintf(ERRFILE, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
         cif_module = LTV_init(NEW(LTV), (char *)dl_info.dli_fname, strlen(dl_info.dli_fname), LT_DUP | LT_RO);
         cif_preview_module(cif_module);
-        print_ltv(stdout, CODE_RED, cif_module, CODE_RESET "\n", 0);
+
+        print_ltv(ERRFILE, CODE_RED, cif_module, CODE_RESET "\n", 0);
         cif_curate_module(cif_module, bootstrap);
     }
 }

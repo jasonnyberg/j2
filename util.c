@@ -41,6 +41,8 @@
 #include <fnmatch.h>
 #include "util.h"
 
+#include "trace.h" // lttng
+
 __thread FILE *OUTFILE_VAR=NULL;
 __thread FILE *ERRFILE_VAR=NULL;
 
@@ -120,6 +122,7 @@ void *mymalloc(int size)
 {
     void *r=calloc(size,1);
     if (r) Gmymalloc+=1;
+    TALLOC(r,size,"");
     return r;
 }
 
@@ -127,6 +130,8 @@ void *myrealloc(void *buf, int newsize)
 {
     void *r=realloc(buf,newsize);
     if (r) Gmymalloc+=1;
+    TDEALLOC(buf,"");
+    TALLOC(r,newsize,"");
     return r;
 }
 
@@ -134,6 +139,7 @@ void myfree(void *p,int size)
 {
     if (p) Gmymalloc-=1;
     free(p);
+    TDEALLOC(p,"");
 }
 
 void *mybzero(void *buf,int size)

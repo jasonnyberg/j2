@@ -39,7 +39,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h> // uintptr_t
-#include "trace.h"
 
 //#define mymalloc(len) mymalloc2((len),(__FILE__),(__LINE__))
 //#define myfree(p) myfree2((p),(__FILE__),(__LINE__))

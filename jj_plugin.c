@@ -62,7 +62,7 @@ main(int argc, char *argv[]) {
         if (vm_bootstrap) vm_bootstrap(argc > 1 ? argv[1] : (char *)bootstrap);
         dlclose(dlhandle);
     } else {
-        printf("dlopen libreflect.so failed, error %s\n", dlerror());
+        fprintf(stderr,"dlopen libreflect.so failed, error %s\n", dlerror());
     }
 
     return status;

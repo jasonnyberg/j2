@@ -54,7 +54,6 @@
 #include "vm.h"
 #include "compile.h"
 #include "extensions.h"
-#include "trace.h"
 
 pthread_rwlock_t vm_rwlock = PTHREAD_RWLOCK_INITIALIZER;
 
@@ -153,7 +152,6 @@ static LTV *vm_use_ext() {
 }
 
 static void vm_listcat(int res) { // merge tos into head of nos
-    TSTART(vm_env->state,"");
     LTV *tos,*nos;
     THROW(!(tos = vm_deq(res, POP)), vm_exception);
     THROW(!(nos = vm_deq(res, KEEP)), vm_exception);
@@ -161,12 +159,10 @@ static void vm_listcat(int res) { // merge tos into head of nos
     CLL_MERGE(LTV_list(nos),LTV_list(tos),HEAD);
     LTV_release(tos);
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
 static void vm_code_push(LTV *ltv) {
-    TSTART(vm_env->state,"");
     THROW(!ltv,vm_exception);
     LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
     THROW(!opcode_ltv,vm_exception);
@@ -174,37 +170,30 @@ static void vm_code_push(LTV *ltv) {
     THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),vm_exception); // encaps code ltv within tracking ltv
     THROW(!vm_enq(VMRES_CODE,opcode_ltv),vm_exception);
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
 static void vm_code_peek() {
-    TSTART(vm_env->state,"");
     vm_env->code_ltvr=NULL;
     THROW(!(vm_env->code_ltv=LTV_get(ENV_LIST(VMRES_CODE),KEEP,HEAD,NULL,&vm_env->code_ltvr)),vm_exception);
     DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_peek %x" CODE_RESET "\n",vm_env->code_ltv->data));
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
 static void vm_code_pop() { DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_pop %x" CODE_RESET "\n",vm_env->code_ltv->data));
-    TSTART(vm_env->state,"");
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);
     if (CLL_EMPTY(ENV_LIST(VMRES_CODE)))
         vm_env->state|=VM_COMPLETE;
-    TFINISH(vm_env->state,"");
 }
 
 static void vm_resolve_at(CLL *cll,LTV *ref) {
-    TSTART(vm_env->state,"");
     int status=0;
     LTV *resolve_ltv(LTV *dict) { return REF_resolve(dict,ref,FALSE)?NULL:REF_ltv(REF_HEAD(ref)); }
     void *op(CLL *lnk) { return resolve_ltv(((LTVR *) lnk)->ltv); }
     CLL_map(cll,FWD,op);
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
@@ -214,13 +203,11 @@ LTV *vm_resolve(LTV *ref) {
 }
 
 void vm_dump_ltv(LTV *ltv,char *label) {
-    TSTART(vm_env->state,"");
     char *filename;
     fprintf(OUTFILE,"%s\n",label);
     print_ltv(OUTFILE,CODE_RED,ltv,CODE_RESET "\n",0);
     graph_ltv_to_file(FORMATA(filename,32,"/tmp/%s.dot",label),ltv,0,label);
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
@@ -246,7 +233,6 @@ static void vm_ffi(LTV *lambda) {
     done:
         return status;
     }
-    TSTART(vm_env->state,"");
     THROW(cif_args_marshal(ftype,REV,marshaller),vm_exception); // pre-
     THROW(cif_ffi_call(cif,lambda->data,rval,&args),vm_exception);
     if (void_func)
@@ -255,12 +241,10 @@ static void vm_ffi(LTV *lambda) {
         THROW(!vm_stack_enq(cif_coerce_c2i(rval)),vm_exception);
     CLL_release(&args,LTVR_release); //  ALWAYS release at end, to give other code a chance to enq an LTV
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
 static void vm_eval_cvar(LTV *cvar) {
-    TSTART(vm_env->state,"");
     vm_reset_ext(); // sanitize
     if (cvar->flags&LT_TYPE) {
         LTV *type;
@@ -270,7 +254,6 @@ static void vm_eval_cvar(LTV *cvar) {
         vm_ffi(cvar); // if not a type, it could be a function
     vm_reset_ext(); // sanitize again
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
@@ -285,7 +268,6 @@ void vm_eval_ltv(LTV *ltv) {
 }
 
 extern void is_lit() {
-    TSTART(vm_env->state,"");
     LTV *ltv;
     THROW(!(ltv=vm_stack_deq(POP)),vm_exception);
     THROW(ltv->flags&LT_NSTR,vm_exception); // throw if non-string
@@ -293,12 +275,10 @@ extern void is_lit() {
     THROW(tlen && ltv->len==tlen,vm_exception);
  done:
     LTV_release(ltv);
-    TFINISH(vm_env->state,"");
     return;
 }
 
 extern void split() { // mini parser that pops a lit and pushes its CAR & CDR
-    TSTART(vm_env->state,"");
     LTV *ltv=NULL;
     char *tdata=NULL;
     int len=0,tlen=0;
@@ -324,7 +304,6 @@ extern void split() { // mini parser that pops a lit and pushes its CAR & CDR
     }
  done:
     LTV_release(ltv);
-    TFINISH(vm_env->state,"");
     return;
 }
 
@@ -333,28 +312,23 @@ extern void locals() { vm_dump_ltv(vm_deq(VMRES_DICT,KEEP),res_name[VMRES_DICT])
 extern void dict() { vm_dump_ltv(&vm_env->ltv[VMRES_DICT],res_name[VMRES_DICT]); }
 
 LTV *encaps_ltv(LTV *ltv) {
-    TSTART(vm_env->state,"");
     LTV *ltvltv=NULL;
     THROW(!(ltvltv=cif_create_cvar(cif_type_info("(LTV)*"),NULL,NULL)),vm_exception); // allocate an LTV *
     (*(LTV **) ltvltv->data)=ltv; // ltvltv->data is a pointer to an LTV *
     THROW(!LT_put(ltvltv,"TYPE_CAST",HEAD,ltv),vm_exception);
  done:
-    TFINISH(vm_env->state,"");
     return ltvltv;
 }
 
 extern void encaps() {
-    TSTART(vm_env->state,"");
     THROW(!(vm_stack_enq(encaps_ltv(vm_stack_deq(POP)))),vm_exception);
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
 LTV *decaps_ltv(LTV *ltv) { return ltv; } // all the work is done via coersion
 
 extern void decaps() {
-    TSTART(vm_env->state,"");
     LTV *cvar_ltv=NULL,*ptr=NULL;
     THROW(!(cvar_ltv=vm_stack_deq(POP)),vm_exception);
     THROW(!(cvar_ltv->flags&LT_CVAR),vm_exception); // "checking at least if it's a cvar" // TODO: verify it's an "(LTV)*"
@@ -362,22 +336,17 @@ extern void decaps() {
     THROW(!(vm_stack_enq(ptr)),vm_exception);
  done:
     LTV_release(cvar_ltv);
-    TFINISH(vm_env->state,"");
     return;
 }
 
 extern void vm_while(LTV *lambda) {
-    TSTART(vm_env->state,"");
     while (!vm_env->state)
         vm_eval_ltv(lambda);
-    TFINISH(vm_env->state,"");
 }
 
 extern void dup() {
-    TSTART(vm_env->state,"");
     THROW(!vm_stack_enq(vm_stack_deq(KEEP)),vm_exception);
  done:
-    TFINISH(vm_env->state,"");
     return;
 }
 
@@ -385,7 +354,7 @@ extern void dup() {
 // Opcode Handlers
 //////////////////////////////////////////////////
 
-#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(ERRFILE,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
+#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(ERRFILE,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__));
 #define SKIP_IF_STATE() do { if (vm_env->state) { goto done; }} while(0);
 
 static void vmop_RESET() { VMOP_DEBUG();
@@ -622,7 +591,6 @@ static void vmop_EXT() { VMOP_DEBUG();
     vm_env->ext_length=ntohl(*(unsigned *) vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
     vm_env->ext_flags=ntohl(*(unsigned *)  vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
     vm_env->ext_data=vm_env->code_ltv->data;                        vm_env->code_ltv->data += vm_env->ext_length;
-    TOPEXT(vm_env->ext_data,vm_env->ext_length,vm_env->ext_flags,vm_env->state);
     DEBUG(fprintf(ERRFILE,CODE_BLUE " ");
           fprintf(ERRFILE,"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
           fstrnprint(ERRFILE,vm_env->ext_data,vm_env->ext_length);
@@ -752,6 +720,6 @@ extern int vm_bootstrap(char *bootstrap) {
     cif_init(0); // must dlopen as lib name when running from library
     LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
-        print_ltv(OUTFILE,"",rval,"\n",0);
+        print_ltv(stdout,"",rval,"\n",0);
     return !rval;
 }

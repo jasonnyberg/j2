@@ -44,8 +44,6 @@
 #include "reflect.h"
 #include "compile.h"
 
-#include "trace.h" // lttng
-
 int show_ref=0;
 int lti_count=0,ltvr_count=0,ltv_count=0;
 
@@ -234,13 +232,11 @@ LTV *LTV_init(LTV *ltv,void *data,int len,LTV_FLAGS flags)
             ltv->sub.ltis=&aa_sentinel;
         LTV_renew(ltv,data,len,flags);
     }
-    TALLOC(ltv,sizeof(LTV),"LTV");
     return ltv;
 }
 
 void LTV_free(LTV *ltv)
 {
-    TDEALLOC(ltv,"LTV");
     if (ltv) {
         LTV_renew(ltv,NULL,0,0);
         RELEASE(ltv);
@@ -271,14 +267,12 @@ LTVR *LTVR_init(LTVR *ltvr,LTV *ltv)
         ltvr->ltv=ltv;
         ltv->refs++;
     }
-    TALLOC(ltvr,sizeof(LTVR),"LTVR");
     return ltvr;
 }
 
 LTV *LTVR_free(LTVR *ltvr)
 {
     LTV *ltv=NULL;
-    TDEALLOC(ltvr,"LTVR");
     if (ltvr) {
         if (!CLL_EMPTY(&ltvr->lnk)) { CLL_cut(&ltvr->lnk); }
         if ((ltv=ltvr->ltv))
@@ -306,13 +300,11 @@ LTI *LTI_init(LTI *lti,char *name,int len)
             lti->preview[i]=len>i?name[i]:0;
         CLL_init(&lti->ltvs);
     }
-    TALLOC(lti,sizeof(LTI),"LTI");
     return lti;
 }
 
 void LTI_free(LTI *lti)
 {
-    TDEALLOC(lti,"LTI");
     if (lti) {
         RELEASE(lti->name);
         RELEASE(lti);
@@ -328,7 +320,6 @@ void LTI_free(LTI *lti)
 void LTV_release(LTV *ltv)
 {
     void *op(LTI *lti) { LTI_release(lti); return (void *) NULL; }
-    if (ltv) TALLOC(ltv,ltv->refs,"LTV_release (ptr/refs)");
     if (ltv && !(ltv->refs) && !(ltv->flags&LT_RO)) {
         if (ltv->flags&LT_REFS)      REF_delete(ltv); // cleans out REFS
         else if (ltv->flags&LT_LIST) CLL_release(&ltv->sub.ltvs,LTVR_release);
@@ -411,13 +402,11 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
         return rval;
     }
 
-    TSTART(0,"listree_traverse");
     void *traverse(CLL *lnk) { LTVR *ltvr=(LTVR *) lnk; return descend_ltv(NULL,ltvr,ltvr->ltv); }
     rval=CLL_map(ltvs,FWD,traverse);
     cleanup=1;
     preop=postop=NULL;
     CLL_map(ltvs,FWD,traverse); // clean up "visited" flags
-    TFINISH(rval!=0,"listree_traverse");
     return rval;
 }
 
@@ -442,7 +431,6 @@ extern LTI *LTI_iter(LTV *ltv,LTI *lti,int dir) { dir|=ITER; return ltv&&!LTI_in
 LTI *LTI_lookup(LTV *ltv,LTV *name,int insert)
 {
     LTI *lti=NULL;
-    TLOOKUP(ltv,name->data,name->len,insert);
     if (LTV_wildcard(name))
         for (lti=LTI_first(ltv); !LTI_invalid(lti) && fnmatch_len(name->data,name->len,lti->name,-1); lti=LTI_iter(ltv,lti,FWD));
     else

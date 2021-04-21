@@ -36,11 +36,15 @@
 #ifndef VM_H
 #define VM_H
 
+#include <stdio.h>
 #include "listree.h"
 
-extern int vm_bootstrap(char *bootstrap);
-
 #define THROW(expression,ltv) do { if (expression) { vm_throw(ltv); goto done; } } while(0)
+
+FILE *outfile();
+FILE *errfile();
+
+extern int vm_bootstrap(char *bootstrap);
 
 extern void vm_throw(LTV *ltv);
 extern LTV *vm_stack_enq(LTV *ltv);

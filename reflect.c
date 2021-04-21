@@ -65,11 +65,11 @@ void cif_init(int bootstrap) {
     if (!cif_module) {
         Dl_info dl_info;
         dladdr((void *)cif_init, &dl_info);
-        fprintf(ERRFILE, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
+        fprintf(stderr, CODE_RED "reflection module path is: %s" CODE_RESET "\n", dl_info.dli_fname);
         cif_module = LTV_init(NEW(LTV), (char *)dl_info.dli_fname, strlen(dl_info.dli_fname), LT_DUP | LT_RO);
         cif_preview_module(cif_module);
 
-        print_ltv(ERRFILE, CODE_RED, cif_module, CODE_RESET "\n", 0);
+        print_ltv(stderr, CODE_RED, cif_module, CODE_RESET "\n", 0);
         cif_curate_module(cif_module, bootstrap);
     }
 }
@@ -197,7 +197,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
 
             static char alias[32];
             DWARF_ALIAS(alias,cu_data->sig8);
-            DEBUG(fprintf(OUTFILE,CODE_BLUE "Read a CU header, offset 0x%x sig8 %s cu_type %s" CODE_RESET "\n",
+            DEBUG(fprintf(stdout,CODE_BLUE "Read a CU header, offset 0x%x sig8 %s cu_type %s" CODE_RESET "\n",
                           cu_data->offset,alias,DW_IDX_STRING[cu_data->header_cu_type]));
 
             STRY(traverse_siblings(dbg,NULL,op,flags),"processing cu die and sibs");
@@ -208,7 +208,7 @@ int traverse_cus(char *filename,DIE_OP op,CU_DATA *cu_data,DIEWALK_FLAGS flags)
 
     LTV *debug_link_filename=get_separated_debug_filename(filename);
     if (debug_link_filename) {
-        fprintf(OUTFILE,"Using alt debug filename %s for %s\n",(char *) debug_link_filename->data,filename);
+        fprintf(stderr,"Using alt debug filename %s for %s\n",(char *) debug_link_filename->data,filename);
         filename=(char *) debug_link_filename->data;
     }
 
@@ -734,7 +734,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             }
             break;
         default:
-            fprintf(OUTFILE,CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
+            fprintf(stderr,CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET,type_info->tag);
         case DW_TAG_lexical_block:
         case DW_AT_GNU_all_tail_call_sites:
         case DW_TAG_label:
@@ -773,10 +773,10 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
         Dwarf_Sig8 vsig8;
         char *vstr;
 
-        int dump_attr() {
+        int dump_attr(FILE *ofile) {
             int status=0;
 
-            fprintf(OUTFILE,CODE_RED "dumping attr 0x%x\n",vshort);
+            fprintf(ofile,CODE_RED "dumping attr 0x%x\n",vshort);
             Dwarf_Signed vint;
             Dwarf_Unsigned vuint;
             Dwarf_Addr vaddr;
@@ -791,24 +791,24 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
 
             STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
             STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr formname");
-            fprintf(OUTFILE,"form %d (%s) ",vshort,vcstr);
+            fprintf(ofile,"form %d (%s) ",vshort,vcstr);
 
             STRY(dwarf_whatform_direct(*attr,&vshort,&error),"getting attr form_direct");
             STRY(dwarf_get_FORM_name(vshort,&vcstr),"getting attr form_direct name");
-            fprintf(OUTFILE,"form_direct %d (%s) ",vshort,vcstr);
+            fprintf(ofile,"form_direct %d (%s) ",vshort,vcstr);
 
-            IF_OK(dwarf_formref(*attr,&voffset,&error),       fprintf(OUTFILE,"formref 0x%"        DW_PR_DSx " ",voffset));
-            IF_OK(dwarf_global_formref(*attr,&voffset,&error),fprintf(OUTFILE,"global_formref 0x%" DW_PR_DSx " ",voffset));
-            IF_OK(dwarf_formaddr(*attr,&vaddr,&error),        fprintf(OUTFILE,"addr 0x%"           DW_PR_DUx " ",vaddr));
-            IF_OK(dwarf_formflag(*attr,&vbool,&error),        fprintf(OUTFILE,"flag %"             DW_PR_DSd " ",vbool));
-            IF_OK(dwarf_formudata(*attr,&vuint,&error),       fprintf(OUTFILE,"udata %"            DW_PR_DUu " ",vuint));
-            IF_OK(dwarf_formsdata(*attr,&vint,&error),        fprintf(OUTFILE,"sdata %"            DW_PR_DSd " ",vint));
-            IF_OK(dwarf_formblock(*attr,&vblock,&error),      fprintf(OUTFILE,"block 0x%"          DW_PR_DUx " ",vblock->bl_len));
-            IF_OK(dwarf_formstring(*attr,&vstr,&error),       fprintf(OUTFILE,"string %s ",                      vstr));
-            IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        fprintf(OUTFILE,"addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
+            IF_OK(dwarf_formref(*attr,&voffset,&error),       fprintf(ofile,"formref 0x%"        DW_PR_DSx " ",voffset));
+            IF_OK(dwarf_global_formref(*attr,&voffset,&error),fprintf(ofile,"global_formref 0x%" DW_PR_DSx " ",voffset));
+            IF_OK(dwarf_formaddr(*attr,&vaddr,&error),        fprintf(ofile,"addr 0x%"           DW_PR_DUx " ",vaddr));
+            IF_OK(dwarf_formflag(*attr,&vbool,&error),        fprintf(ofile,"flag %"             DW_PR_DSd " ",vbool));
+            IF_OK(dwarf_formudata(*attr,&vuint,&error),       fprintf(ofile,"udata %"            DW_PR_DUu " ",vuint));
+            IF_OK(dwarf_formsdata(*attr,&vint,&error),        fprintf(ofile,"sdata %"            DW_PR_DSd " ",vint));
+            IF_OK(dwarf_formblock(*attr,&vblock,&error),      fprintf(ofile,"block 0x%"          DW_PR_DUx " ",vblock->bl_len));
+            IF_OK(dwarf_formstring(*attr,&vstr,&error),       fprintf(ofile,"string %s ",                      vstr));
+            IF_OK(dwarf_formsig8(*attr,&vsig8,&error),        fprintf(ofile,"addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
                                                                       vsig8.signature[0],vsig8.signature[1],vsig8.signature[2],vsig8.signature[3],
                                                                       vsig8.signature[4],vsig8.signature[5],vsig8.signature[6],vsig8.signature[7]));
-            fprintf(OUTFILE,"\n");
+            fprintf(ofile,"\n");
         done:
             return status;
         };
@@ -862,7 +862,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                 IF_OK(dwarf_formudata(*attr,(Dwarf_Unsigned *) &type_info->sig8,&error),type_info->flags|=TYPEF_SIGNATURE);
                 if (!(type_info->flags&TYPEF_SIGNATURE)) {
                     printf("sig attr (%d) with wrong form\n",vshort);
-                    dump_attr();
+                    dump_attr(stderr);
                 }
                 break;
             case DW_AT_linkage_name: // C++ mangling
@@ -912,7 +912,7 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
             case DW_AT_GNU_dwo_id: // GNU DebugFission (split dwarf)
                 break;
             default:
-                dump_attr();
+                dump_attr(stderr);
                 break;
         }
 
@@ -939,8 +939,8 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                         case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
                         case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u: // llbuf->ld_s[j].lr_number
                         case DW_OP_fbreg: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                        case DW_OP_bregx: // fprintf(OUTFILE," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                        case DW_OP_regx: // fprintf(OUTFILE," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                        case DW_OP_bregx: // printf(stdout," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                        case DW_OP_regx: // printf(stdout," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
                         case DW_OP_pick:
                         case DW_OP_plus_uconst:
                         case DW_OP_piece:
@@ -972,13 +972,13 @@ int populate_type_info(Dwarf_Debug dbg,Dwarf_Die die,TYPE_INFO_LTV *type_info,CU
                         case DW_OP_GNU_parameter_ref: // unreferenced parameter
                         case DW_OP_GNU_addr_index: // GNU DebugFission
                         case DW_OP_GNU_const_index: // GNU DebugFission
-                            // fprintf(OUTFILE," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                            // fprintf(stdout," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
                             break;
                         default:
-                            fprintf(OUTFILE," Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
-                            fprintf(OUTFILE,CODE_RED " lowpc %" DW_PR_DUx " hipc %"  DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
+                            fprintf(stderr," Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                            fprintf(stderr,CODE_RED " lowpc %" DW_PR_DUx " hipc %"  DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
                                     llbuf->ld_lopc,llbuf->ld_hipc,llbuf->ld_section_offset,llbuf->ld_from_loclist?"debug_loc":"debug_info",llbuf->ld_cents);
-                            fprintf(OUTFILE,CODE_RESET "\n");
+                            fprintf(stderr,CODE_RESET "\n");
                             break;
                     }
             }
@@ -1145,14 +1145,14 @@ int cif_curate_module(LTV *module,int bootstrap)
                         const char *already,*named;
                         named=attr_get(&sym_type_info->ltv,TYPE_NAME);
                         dwarf_get_TAG_name(sym_type_info->tag,&already);
-                        fprintf(OUTFILE,CODE_RED "conflict for \"%s\": %s (%s) \"%s\" vs. (installed)  %s (%s) \"%s\"" CODE_RESET "\n",
+                        fprintf(stderr,CODE_RED "conflict for \"%s\": %s (%s) \"%s\" vs. (installed)  %s (%s) \"%s\"" CODE_RESET "\n",
                                 sym,is,type_info->id_str,type_name,already,sym_type_info->id_str,named);
                     }
                 }
             }
 
             if (!deduped) {
-                DEBUG(fprintf(OUTFILE,"installing symbolic type_info %s (%s)\n",sym,type_info->id_str));
+                DEBUG(fprintf(stdout,"installing symbolic type_info %s (%s)\n",sym,type_info->id_str));
                 LT_put(module,sym,HEAD,&type_info->ltv);
             }
 
@@ -1254,9 +1254,9 @@ int cif_curate_module(LTV *module,int bootstrap)
                             if ((addr=dlsym(dlhandle,linkage_symbol)))
                                 LT_put(module,type_name,TAIL,cif_create_cvar(&cvar_type->ltv,addr,NULL));
                             else
-                                DEBUG(fprintf(ERRFILE,"dlsym error: handle %x %s (%s)\n",dlhandle,dlerror(),type_name));
+                                DEBUG(fprintf(stderr,"dlsym error: handle %x %s (%s)\n",dlhandle,dlerror(),type_name));
                         } else
-                            fprintf(ERRFILE,"no dlhandle for function %s (%s)\n",linkage_symbol,type_name);
+                            fprintf(stderr,"no dlhandle for function %s (%s)\n",linkage_symbol,type_name);
                     }
                 }
                 break;
@@ -1269,9 +1269,9 @@ int cif_curate_module(LTV *module,int bootstrap)
                             if ((addr=dlsym(dlhandle,type_name)))
                                 LT_put(module,type_name,TAIL,cif_create_cvar(&base_info->ltv,addr,NULL));
                             else
-                                DEBUG(fprintf(ERRFILE,"dlsym error: handle %x %s\n",dlhandle,dlerror()));
+                                DEBUG(fprintf(stderr,"dlsym error: handle %x %s\n",dlhandle,dlerror()));
                         } else
-                            fprintf(ERRFILE,"no dlhandle for variable %s\n",type_name);
+                            fprintf(stderr,"no dlhandle for variable %s\n",type_name);
                     }
                 }
                 break;
@@ -1336,15 +1336,15 @@ int cif_curate_module(LTV *module,int bootstrap)
                         advance(namelen);
                         advance(series(macro,len,WHITESPACE,NULL,NULL));
                         if (len) {
-                            //fprintf(OUTFILE,name[namelen-1]!=')'?CODE_BLUE:CODE_GREEN);
-                            //fprintf(OUTFILE,"%s" CODE_RED " %s" CODE_RESET " (%d) \n",name,macro,len);
+                            //fprintf(stdout,name[namelen-1]!=')'?CODE_BLUE:CODE_GREEN);
+                            //fprintf(stdout,"%s" CODE_RED " %s" CODE_RESET " (%d) \n",name,macro,len);
                             if (name[namelen-1]!=')' && !LT_get(module,name,TAIL,KEEP))
                                 LT_put(module,name,TAIL,LTV_init(NEW(LTV),macro,len,LT_DUP));
                         }
                     }
                 };
 
-                void macro_undefine(char *macro) { /* fprintf(OUTFILE,"undefine %s\n",macro); */ };
+                void macro_undefine(char *macro) { /* fprintf(stdout,"undefine %s\n",macro); */ };
 
                 int lres = 0;
                 Dwarf_Unsigned version = 0;
@@ -1406,7 +1406,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                                 break;
                             case DW_MACRO_import_sup:
                                 STRY(DW_DLV_OK!=dwarf_get_macro_import(macro_context,k,&offset,&err),"calling dwarf_get_macro_import");
-                                fprintf(OUTFILE,"import_sup(?)\n");
+                                fprintf(stderr,"import_sup(?)\n");
                                 break;
                             default:
                                 break;
@@ -1490,12 +1490,12 @@ int cif_curate_module(LTV *module,int bootstrap)
                     STRY(!attr_own(&type_info->ltv,TYPE_NAME,name),"naming type info");
 
                 if (type_info->tag) {
-                    DEBUG(fprintf(OUTFILE,"%*c",MAX(0,depth*4-2),' '));
-                    DEBUG(print_type_info(OUTFILE,type_info));
-                    DEBUG(fprintf(OUTFILE," [%s]\n",name));
+                    DEBUG(fprintf(stdout, "%*c", MAX(0, depth * 4 - 2), ' '));
+                    DEBUG(print_type_info(stdout, type_info));
+                    DEBUG(fprintf(stdout, " [%s]\n", name));
                 }
                 else
-                    DEBUG(fprintf(OUTFILE,"disqualified die %s\n",type_info->id_str));
+                    DEBUG(fprintf(stdout,"disqualified die %s\n",type_info->id_str));
 
                 if (type_info->tag!=DW_TAG_compile_unit || LT_get(module,name,HEAD,KEEP)) { // only traverse listed CU's siblings
                     STRY(link2parent(name),"linking die to parent");
@@ -1506,7 +1506,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                             static char alias[32];
                             DWARF_ALIAS(alias,cu_data.sig8);
                             STRY(!LT_put(aliases,alias,TAIL,&type_info->ltv),"aliasing type info %s with %s",type_info->id_str,alias);
-                            DEBUG(fprintf(OUTFILE,"--- aliasing %s with %s\n",type_info->id_str,alias));
+                            DEBUG(fprintf(stdout,"--- aliasing %s with %s\n",type_info->id_str,alias));
                         }
                     }
 
@@ -1514,7 +1514,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                         static char alias[32];
                         DWARF_ALIAS(alias,type_info->sig8);
                         STRY(!LT_put(aliases,alias,TAIL,&type_info->ltv),"aliasing type info %s with %s",type_info->id_str,alias);
-                        DEBUG(fprintf(OUTFILE,"--- aliasing %s sig %s\n",type_info->id_str,alias));
+                        DEBUG(fprintf(stdout,"--- aliasing %s sig %s\n",type_info->id_str,alias));
                     }
 
                     STRY(traverse_child(dbg,die,child_op,flags|RDW_traverse_sibs),"traversing child and its siblings");
@@ -1551,7 +1551,7 @@ int cif_curate_module(LTV *module,int bootstrap)
                     if (base) // we can link base immediately
                         LT_put(&type_info->ltv,TYPE_BASE,HEAD,base);
                     else
-                        DEBUG(fprintf(OUTFILE,CODE_RED " >>>>  failed base/alias lookup for %s" CODE_RESET "\n",type_info->id_str));
+                        DEBUG(fprintf(stdout,CODE_RED " >>>>  failed base/alias lookup for %s" CODE_RESET "\n",type_info->id_str));
                 }
             }
         }
@@ -1588,7 +1588,7 @@ int cif_curate_module(LTV *module,int bootstrap)
     int resolve_symbols(char *filename) {
         char *f=bootstrap?NULL:filename;
         if (!(dlhandle = dlopen(f, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
-            fprintf(OUTFILE,"failed while dlopen'ing %s; continuing without resolving global functions/variables\n",dlerror());
+            fprintf(stderr,"failed while dlopen'ing %s; continuing without resolving global functions/variables\n",dlerror());
 
         STRY(ltv_traverse(index[1],resolve_types,resolve_types)!=NULL,"linking symbolic type info names"); // links symbols on pre- and post-passes
         STRY(ltv_traverse(index[0],resolve_types,resolve_types)!=NULL,"linking symbolic compile unit names"); // links symbols on pre- and post-passes
@@ -1832,17 +1832,6 @@ int is_readable(LTV *type)
     return false;
 }
 
-// convert interpreter params into something FFI can use
-extern void print_type(LTV *ltv,char *prefix)
-{
-    int old_show_ref=show_ref;
-    show_ref=1;
-    if (prefix)
-        fprintf(OUTFILE,"%s",prefix);
-    print_ltv(OUTFILE,NULL,ltv,NULL,2);
-    show_ref=old_show_ref;
-}
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1958,7 +1947,7 @@ LTV *cif_ffi_prep(LTV *lambda)
             *count=CLL_len(&children->ltvs);
 
         DEBUG(TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (ltv));
-        DEBUG(fprintf(OUTFILE,"ffi_prep child for %s tag %d name %s children %x count %d\n",type_info->id_str,tag,name,children,*count));
+        DEBUG(fprintf(stdout,"ffi_prep child for %s tag %d name %s children %x count %d\n",type_info->id_str,tag,name,children,*count));
 
         (*child_types)=calloc(sizeof(ffi_type *),(*count)+1);
         if (*count) {
@@ -1970,7 +1959,7 @@ LTV *cif_ffi_prep(LTV *lambda)
                 char *child_name=attr_get(child_type,TYPE_SYMB);
                 TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) child_type->data;
 
-                DEBUG(fprintf(OUTFILE,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
+                DEBUG(fprintf(stdout,"ffi_prep child %s(%s)\n",child_name,type_info->id_str));
 
                 LTV *child_ffi_ltv=cvar_ffi_ltv(child_type,&size);
                 STRY(!child_ffi_ltv,"validating child ffi ltv %s(%s)",child_name,type_info->id_str);
@@ -2008,7 +1997,7 @@ LTV *cif_ffi_prep(LTV *lambda)
                 char *name=attr_get((*ltv),TYPE_SYMB);
                 if ((*ltv)->flags&LT_TYPE) {
                     TYPE_INFO_LTV *type_info=(TYPE_INFO_LTV *) (*ltv);
-                    DEBUG(fprintf(OUTFILE,"ffi_prep pre %s(%s)\n",name,type_info->id_str));
+                    DEBUG(fprintf(stdout,"ffi_prep pre %s(%s)\n",name,type_info->id_str));
                     int size=0;
                     switch (type_info->tag) {
                         case DW_TAG_union_type:
@@ -2048,7 +2037,7 @@ LTV *cif_ffi_prep(LTV *lambda)
                 //if (!(type_info->flags&TYPEF_HAS_NAME))
                 //    goto done;
 
-                DEBUG(fprintf(OUTFILE,"ffi_prep post %s(%s)\n",name,type_info->id_str));
+                DEBUG(fprintf(stdout,"ffi_prep post %s(%s)\n",name,type_info->id_str));
                 if (!LT_get((*ltv),FFI_TYPE,HEAD,KEEP)) {
                     switch (type_info->tag) {
                         case DW_TAG_union_type:
@@ -2236,10 +2225,10 @@ LTV *cif_coerce_i2c(LTV *ltv,LTV *type)
     /*
       int old_show_ref=show_ref;
       show_ref=1;
-      fprintf(OUTFILE,"coercing ltv\n");
-      print_ltv(OUTFILE,NULL,cvar,NULL,2);
-      fprintf(OUTFILE,"into type\n");
-      print_ltv(OUTFILE,NULL,type,NULL,2);
+      fprintf(stdout,"coercing ltv\n");
+      print_ltv(stdout,NULL,cvar,NULL,2);
+      fprintf(stdout,"into type\n");
+      print_ltv(stdout,NULL,type,NULL,2);
       show_ref=old_show_ref;
     */
 
@@ -2294,10 +2283,10 @@ LTV *cif_coerce_c2i(LTV *ltv)
     /*
       int old_show_ref=show_ref;
       show_ref=1;
-      fprintf(OUTFILE,"coercing ltv\n");
-      print_ltv(OUTFILE,NULL,cvar,NULL,2);
-      fprintf(OUTFILE,"into type\n");
-      print_ltv(OUTFILE,NULL,type,NULL,2);
+      fprintf(stdout,"coercing ltv\n");
+      print_ltv(stdout,NULL,cvar,NULL,2);
+      fprintf(stdout,"into type\n");
+      print_ltv(stdout,NULL,type,NULL,2);
       show_ref=old_show_ref;
     */
 

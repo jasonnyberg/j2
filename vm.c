@@ -67,7 +67,6 @@ enum {
       VMRES_COUNT,
 } VM_LISTRES;
 
-static char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_EXCP","VMRES_CODE" };
 
 enum {
       VM_YIELD    = 0x01,
@@ -78,22 +77,26 @@ enum {
 } VM_STATE;
 
 typedef struct {
-    LTV ltv[VMRES_COUNT];
-    LTV *code_ltv;
-    LTVR *code_ltvr;
-    LTV *ext;
-    char *ext_data;
+    LTV      ltv[VMRES_COUNT];
+    LTV *    code_ltv;
+    LTVR *   code_ltvr;
+    LTV *    ext;
+    char *   ext_data;
     unsigned ext_length;
     unsigned ext_flags;
     unsigned state;
     unsigned skipdepth;
+    FILE *   outfile;
+    FILE *   errfile;
 } VM_ENV;
+
+static char *res_name[] = { "VMRES_DICT","VMRES_STACK","VMRES_FUNC","VMRES_EXCP","VMRES_CODE" };
 
 __thread VM_ENV *vm_env=NULL; // every thread can have an active vm environment
 
-static LTV *vm_ltv_container=NULL; // holds LTVs we don't want garbage-collected
-static LTV *fun_pop_bc      = NULL;
-static LTV *vm_exception    = NULL;
+static LTV *vm_ltv_container = NULL; // holds LTVs we don't want garbage-collected
+static LTV *fun_pop_bc       = NULL;
+static LTV *vm_exception     = NULL;
 
 __attribute__((constructor))
 static void init(void) {
@@ -116,6 +119,11 @@ void debug(const char *fromwhere) { return; }
 
 //////////////////////////////////////////////////
 // Basic Utillties
+extern FILE *outfile() { return vm_env && vm_env->outfile ? vm_env->outfile : stdout; }
+extern FILE *errfile() { return vm_env && vm_env->errfile ? vm_env->errfile : stdout; }
+
+extern void set_outfile(FILE *fp) { vm_env->outfile=fp; }
+extern void set_errfile(FILE *fp) { vm_env->errfile=fp; }
 
 #define ENV_LIST(res) LTV_list(&vm_env->ltv[res])
 
@@ -170,7 +178,7 @@ static void vm_code_push(LTV *ltv) {
     THROW(!ltv,vm_exception);
     LTV *opcode_ltv=LTV_init(NEW(LTV),ltv->data,ltv->len,LT_BIN|LT_LIST|LT_BC);
     THROW(!opcode_ltv,vm_exception);
-    DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_push %x" CODE_RESET "\n",opcode_ltv->data));
+    DEBUG(fprintf(errfile(),CODE_RED "  vm_code_push %x" CODE_RESET "\n",opcode_ltv->data));
     THROW(!LTV_enq(LTV_list(opcode_ltv),ltv,HEAD),vm_exception); // encaps code ltv within tracking ltv
     THROW(!vm_enq(VMRES_CODE,opcode_ltv),vm_exception);
  done:
@@ -182,13 +190,13 @@ static void vm_code_peek() {
     TSTART(vm_env->state,"");
     vm_env->code_ltvr=NULL;
     THROW(!(vm_env->code_ltv=LTV_get(ENV_LIST(VMRES_CODE),KEEP,HEAD,NULL,&vm_env->code_ltvr)),vm_exception);
-    DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_peek %x" CODE_RESET "\n",vm_env->code_ltv->data));
+    DEBUG(fprintf(errfile(),CODE_RED "  vm_code_peek %x" CODE_RESET "\n",vm_env->code_ltv->data));
  done:
     TFINISH(vm_env->state,"");
     return;
 }
 
-static void vm_code_pop() { DEBUG(fprintf(ERRFILE,CODE_RED "  vm_code_pop %x" CODE_RESET "\n",vm_env->code_ltv->data));
+static void vm_code_pop() { DEBUG(fprintf(errfile(),CODE_RED "  vm_code_pop %x" CODE_RESET "\n",vm_env->code_ltv->data));
     TSTART(vm_env->state,"");
     if (vm_env->code_ltvr)
         LTVR_release(&vm_env->code_ltvr->lnk);
@@ -216,8 +224,8 @@ LTV *vm_resolve(LTV *ref) {
 void vm_dump_ltv(LTV *ltv,char *label) {
     TSTART(vm_env->state,"");
     char *filename;
-    fprintf(OUTFILE,"%s\n",label);
-    print_ltv(OUTFILE,CODE_RED,ltv,CODE_RESET "\n",0);
+    fprintf(outfile(),"%s\n",label);
+    print_ltv(outfile(),CODE_RED,ltv,CODE_RESET "\n",0);
     graph_ltv_to_file(FORMATA(filename,32,"/tmp/%s.dot",label),ltv,0,label);
  done:
     TFINISH(vm_env->state,"");
@@ -385,7 +393,7 @@ extern void dup() {
 // Opcode Handlers
 //////////////////////////////////////////////////
 
-#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(ERRFILE,"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
+#define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(errfile(),"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
 #define SKIP_IF_STATE() do { if (vm_env->state) { goto done; }} while(0);
 
 static void vmop_RESET() { VMOP_DEBUG();
@@ -521,7 +529,7 @@ static void vmop_REMOVE() { VMOP_DEBUG();
 }
 
 static void vmop_CTX_PUSH() { VMOP_DEBUG();
-    if (vm_env->state) { DEBUG(fprintf(ERRFILE,"  (skipping %s)\n",__func__));
+    if (vm_env->state) { DEBUG(fprintf(errfile(),"  (skipping %s)\n",__func__));
         vm_env->skipdepth++;
     } else {
         THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),vm_exception);
@@ -531,7 +539,7 @@ static void vmop_CTX_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_CTX_POP() { VMOP_DEBUG();
-    if (vm_env->skipdepth>0) { DEBUG(fprintf(ERRFILE,"  (deskipping %s)\n",__func__));
+    if (vm_env->skipdepth>0) { DEBUG(fprintf(errfile(),"  (deskipping %s)\n",__func__));
         vm_env->skipdepth--;
     } else {
         vm_listcat(VMRES_STACK);
@@ -541,7 +549,7 @@ static void vmop_CTX_POP() { VMOP_DEBUG();
 }
 
 static void vmop_FUN_PUSH() { VMOP_DEBUG();
-    if (vm_env->state) { DEBUG(fprintf(ERRFILE,"  (skipping %s)\n",__func__));
+    if (vm_env->state) { DEBUG(fprintf(errfile(),"  (skipping %s)\n",__func__));
         vm_env->skipdepth++;
     } else {
         THROW(!vm_enq(VMRES_FUNC,vm_stack_deq(POP)),vm_exception);
@@ -552,7 +560,7 @@ static void vmop_FUN_PUSH() { VMOP_DEBUG();
 }
 
 static void vmop_FUN_EVAL() { VMOP_DEBUG();
-    if (vm_env->skipdepth>0) { DEBUG(fprintf(ERRFILE,"  (deskipping %s)\n",__func__));
+    if (vm_env->skipdepth>0) { DEBUG(fprintf(errfile(),"  (deskipping %s)\n",__func__));
         vm_env->skipdepth--;
     } else {
         vm_code_push(fun_pop_bc); // stack signal to CTX_POP and REMOVE after eval
@@ -623,10 +631,10 @@ static void vmop_EXT() { VMOP_DEBUG();
     vm_env->ext_flags=ntohl(*(unsigned *)  vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
     vm_env->ext_data=vm_env->code_ltv->data;                        vm_env->code_ltv->data += vm_env->ext_length;
     TOPEXT(vm_env->ext_data,vm_env->ext_length,vm_env->ext_flags,vm_env->state);
-    DEBUG(fprintf(ERRFILE,CODE_BLUE " ");
-          fprintf(ERRFILE,"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
-          fstrnprint(ERRFILE,vm_env->ext_data,vm_env->ext_length);
-          fprintf(ERRFILE,CODE_RESET "\n"));
+    DEBUG(fprintf(errfile(),CODE_BLUE " ");
+          fprintf(errfile(),"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
+          fstrnprint(errfile(),vm_env->ext_data,vm_env->ext_length);
+          fprintf(errfile(),CODE_RESET "\n"));
  done: return;
 }
 
@@ -752,6 +760,6 @@ extern int vm_bootstrap(char *bootstrap) {
     cif_init(0); // must dlopen as lib name when running from library
     LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
-        print_ltv(OUTFILE,"",rval,"\n",0);
+        print_ltv(outfile(),"",rval,"\n",0);
     return !rval;
 }

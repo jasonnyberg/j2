@@ -47,11 +47,10 @@ int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) b
 #include <dlfcn.h>  // dlopen/dlsym/dlclose
 
 const char *bootstrap =
-    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
+    "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n"  // define repl
     "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
 
-int
-main(int argc, char *argv[]) {
+int main(int argc, char *argv[]) {
     int   status   = 0;
     void *dlhandle = NULL;
 
@@ -59,7 +58,7 @@ main(int argc, char *argv[]) {
     if (dlhandle = dlopen("libreflect.so", RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)) {
         dlerror();  // reset
         int *(*vm_bootstrap)(char *) = dlsym(dlhandle, "vm_bootstrap");
-        if (vm_bootstrap) vm_bootstrap(argc > 1 ? argv[1] : (char *)bootstrap);
+        if (vm_bootstrap) vm_bootstrap(argc > 1 ? argv[1] : (char *) bootstrap);
         dlclose(dlhandle);
     } else {
         printf("dlopen libreflect.so failed, error %s\n", dlerror());

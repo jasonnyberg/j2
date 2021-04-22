@@ -48,6 +48,7 @@ int jit_asm(EMITTER emit,void *data,int len)
     VM_CMD *cmd=(VM_CMD *) data;
     for (int i=0;i<len;i++)
         emit(cmd+i);
+    EMIT(YIELD);
 }
 
 #define EDICT_OPS "@/!&|^"
@@ -131,6 +132,7 @@ int jit_edict(EMITTER emit,void *data,int len)
 
     STRY(!tdata,"testing source code");
     while (skip_whitespace() && len && compile_term());
+    EMIT(YIELD);
 
  done:
     return status;
@@ -301,7 +303,7 @@ LTV *compile_ltv(COMPILER compiler,LTV *ltv)
     return bc;
 }
 
-char *opcode_name[] = { "RESET","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP",
+char *opcode_name[] = { "RESET","YIELD","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP",
                         "S2S","D2S","E2S","F2S","S2D","S2E","S2F" };
 
 void disassemble(FILE *ofile,LTV *ltv)
@@ -309,7 +311,7 @@ void disassemble(FILE *ofile,LTV *ltv)
     TSTART(0,"disassemble");
     unsigned char *data,*code=(unsigned char *) ltv->data;
     int i=0,length=0,flags=0;
-    fprintf(ofile,"BYTECODE:");
+    fprintf(ofile,"BYTECODE: ");
     while (i<ltv->len) {
         unsigned char opcode=code[i++];
         switch(opcode) {
@@ -317,13 +319,13 @@ void disassemble(FILE *ofile,LTV *ltv)
                 length=ntohl(*(unsigned *) (code+i)); i+=sizeof(unsigned);
                 flags=ntohl(*(unsigned *)  (code+i)); i+=sizeof(unsigned);
                 data=code+i;                          i+=length;
-                fprintf(ofile,"\n" CODE_BLUE);
-                fprintf(ofile,"%d/%x [",length,flags);
+                //fprintf(ofile, "\n" CODE_BLUE);
+                fprintf(ofile, CODE_BLUE);
                 fstrnprint(ofile,data,length);
-                fprintf(ofile,CODE_RESET "] ");
+                fprintf(ofile, ":%x " CODE_RESET, flags);
                 break;
             case VMOP_RESET:
-                fprintf(ofile,"\n");
+                //fprintf(ofile,"\n");
             default:
                 fprintf(ofile,"%s ",opcode_name[opcode]);
         }

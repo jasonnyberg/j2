@@ -53,6 +53,7 @@ typedef std::function<int(EMITTER emit,void *data,int len)> COMPILER;
 
 enum {
     VMOP_RESET,
+    VMOP_YIELD,
     VMOP_EXT,
     VMOP_THROW,
     VMOP_CATCH,

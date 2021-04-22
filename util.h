@@ -100,12 +100,6 @@ typedef unsigned long long ull;
 #define NON_NULL (NULL-1)
 #define PTR_OP(x,op,y) ((typeof(x)) (((uintptr_t) x) op ((uintptr_t) y)))
 
-extern __thread FILE *OUTFILE_VAR;
-extern __thread FILE *ERRFILE_VAR;
-
-#define OUTFILE (OUTFILE_VAR?OUTFILE_VAR:stdout)
-#define ERRFILE (ERRFILE_VAR?ERRFILE_VAR:stderr)
-
 extern int Gmymalloc;
 
 static inline int minint(int a,int b) { return MIN(a,b); }
@@ -134,7 +128,7 @@ typedef struct TRY_CONTEXT
     TRY_STRING errstr;
 } TRY_CONTEXT;
 
-extern __thread TRY_CONTEXT try_context;
+TRY_CONTEXT *try_context();
 
 extern int try_init();
 extern void try_seterr(int eid,const char *estr);
@@ -144,40 +138,39 @@ extern void try_logerror(const char *func,const char *cond,int status);
 
 #define TRY_ERR -1
 
-/* run sequential steps without nesting, with error reporting, and with support for unrolling */
+/* run sequential steps without nesting, with error reporting, and with support
+ * for unrolling */
 #pragma GCC diagnostic ignored "-Wformat-zero-length"
-#define TRY(_cond_,_msg_...)                                            \
-    do {                                                                \
-        if (try_context.depth<try_depth) {                              \
-            snprintf(try_context.msgstr,TRY_STRLEN,_msg_);              \
-            try_loginfo(__func__,#_cond_);                              \
-        }                                                               \
-        try_context.depth++;                                            \
-        status=(_cond_);                                                \
-        try_context.depth--;                                            \
+#define TRY(_cond_, _msg_...)                                   \
+    do {                                                        \
+        if (try_context()->depth < try_depth) {                 \
+            snprintf(try_context()->msgstr, TRY_STRLEN, _msg_); \
+            try_loginfo(__func__, #_cond_);                     \
+        }                                                       \
+        try_context()->depth++;                                 \
+        status = (_cond_);                                      \
+        try_context()->depth--;                                 \
     } while (0)
 
-#define CATCH(_cond_,_fail_status_,_todo_,_msg_...)                     \
-    do {                                                                \
-        if (_cond_) {                                                   \
-            status=(_fail_status_);                                     \
-            if (status) {                                               \
-                snprintf(try_context.msgstr,TRY_STRLEN,_msg_);          \
-                try_seterr((int) status,try_context.msgstr);            \
-                try_logerror((__func__),#_cond_,(int) status);          \
-            } else {                                                    \
-                try_reset();                                            \
-            }                                                           \
-            _todo_;                                                     \
-        }                                                               \
+#define CATCH(_cond_, _fail_status_, _todo_, _msg_...)              \
+    do {                                                            \
+        if (_cond_) {                                               \
+            status = (_fail_status_);                               \
+            if (status) {                                           \
+                snprintf(try_context()->msgstr, TRY_STRLEN, _msg_); \
+                try_seterr((int)status, try_context()->msgstr);     \
+                try_logerror((__func__), #_cond_, (int)status);     \
+            } else {                                                \
+                try_reset();                                        \
+            }                                                       \
+            _todo_;                                                 \
+        }                                                           \
     } while (0)
 
-#define SCATCH(_msg_...) CATCH(status!=0,status,goto done,_msg_);
+#define SCATCH(_msg_...) CATCH(status != 0, status, goto done, _msg_);
 
 #define TRYCATCH(_cond_,_fail_status_,_exit_,_msg_...) do { TRY(_cond_,_msg_); CATCH(status!=0,_fail_status_,goto _exit_,_msg_); } while (0)
 #define STRY(_cond_,_msg_...) TRYCATCH(_cond_,status,done,_msg_)
-
-#define SETENUM(type,var,val) { if (validate_##type(val) var=(type) (val); else { fprintf(ERRFILE,CODE_RED "Invalid value: select from: " CODE_RESET "\n"); list_##type(); }
 
 #define PRINTA(p,len,buf) (p=alloca(len+1),snprintf(p,len+1,"%s",buf),p)
 #define FORMATA(p,len,fmt,args...) (p=alloca(strlen(fmt)+len+1),snprintf(p,strlen(fmt)+len+1,fmt,args),p)
@@ -238,7 +231,7 @@ extern int fnmatch_len(char *pat,int plen,char *str,int slen);
  *         node[i].i=i, STACK_PUSH(&head,&node[i]); // add 20 nodes to a stack/list
  *
  *     for(item=STACK_NEWITER(iter,&head);item;item=STACK_ITERATE(iter))
- *         fprintf(OUTFILE,"%d\n",item->i); // display the nodes
+ *         fprintf(stdout,"%d\n",item->i); // display the nodes
  *
  *     while(item=STACK_NEWITER(iter,&head)) // don't iterate while popping, just reset iter
  *         STACK_POP(iter); // pop the nodes off of the list
@@ -259,7 +252,6 @@ extern int hexdump(FILE *ofile,char *buf,int size);
 
 extern int series(char *buf,int len,char *include,char *exclude,char *balance);
 extern char *balanced_readline(FILE *ifile, char *open, char *close, int *length);
-
 
 // Coroutine tool... wrap function with crBegin and crFinish, and use crReturn to return after saving location at which to resume execution (must not be used within a switch()
 #define crBegin static int _crstate=0; switch(_crstate) { case 0:

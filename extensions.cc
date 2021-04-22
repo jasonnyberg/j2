@@ -51,19 +51,12 @@
 
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
-extern int string(char *s) { fprintf(OUTFILE,"%s\n",s); }
-extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(stdout,CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
+extern int string(char *s) { fprintf(outfile(),"%s\n",s); }
+extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(outfile(),CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
 
-extern FILE *get_stdin() { return stdin; }
-
+extern FILE *get_stdin()  { return stdin;  }
 extern FILE *get_stdout() { return stdout; }
 extern FILE *get_stderr() { return stderr; }
-
-extern FILE *get_OUTFILE() { return OUTFILE; }
-extern FILE *get_ERRFILE() { return ERRFILE; }
-
-extern void set_OUTFILE(FILE *fp) { OUTFILE_VAR=fp; }
-extern void set_ERRFILE(FILE *fp) { ERRFILE_VAR=fp; }
 
 extern LTV *brl(FILE *fp) {
     int len; char *data=NULL;
@@ -77,7 +70,7 @@ extern void file_close(FILE *fp) { fclose(fp); }
 extern void pinglib(char *filename) {
     void *dlhandle=dlopen(filename,RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND);
     if (!dlhandle)
-        fprintf(OUTFILE,"dlopen error: handle %x %s\n",dlhandle,dlerror());
+        fprintf(outfile(),"dlopen error: handle %x %s\n",dlhandle,dlerror());
     else
         dlclose(dlhandle);
 }
@@ -90,7 +83,7 @@ extern LTV *ltvenv(char *var) {
         len=strlen(val);
     for (int i=0;buf<(val+len);buf+=i+1) {
         i=series(buf,len,NULL,":",NULL);
-        fstrnprint(stdout,buf,i);
+        fstrnprint(outfile(),buf,i);
     }
     return LTV_init(NEW(LTV),val,-1,LT_DUP);
 }
@@ -138,7 +131,7 @@ LTV *get_separated_debug_filename(char *filename)
                     buf+=sprintf(buf,".debug");
                     buildid_filename->len=buf-(char *) (buildid_filename->data);
                     LT_put(debug_filename,"buildid",TAIL,buildid_filename);
-                    fprintf(OUTFILE,CODE_BLUE "debug filename candidates: %s %s" CODE_RESET "\n",debug_filename->data,buildid_filename->data);
+                    fprintf(outfile(),CODE_BLUE "debug filename candidates: %s %s" CODE_RESET "\n",debug_filename->data,buildid_filename->data);
                 }
                 elf_end(elf);
             }
@@ -164,12 +157,12 @@ extern int int_mul(int a,int b) { return a*b; }
 extern int int_inc(int a) { return ++a; }
 extern int int_dec(int a) { return --a; }
 
-extern void int_to_ascii(int i) { fprintf(OUTFILE,"%c\n",i); }
+extern void int_to_ascii(int i) { fprintf(outfile(),"%c\n",i); }
 
 int benchint=0;
 extern void bench() {
     if (--benchint<0) {
-        fprintf(OUTFILE,"                                          done!\n");
+        fprintf(outfile(),"                                          done!\n");
         benchint=0;
         throw(LTV_NULL);
     }

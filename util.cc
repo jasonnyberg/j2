@@ -43,9 +43,6 @@
 
 #include "trace.h" // lttng
 
-__thread FILE *OUTFILE_VAR=NULL;
-__thread FILE *ERRFILE_VAR=NULL;
-
 int Gmymalloc=0;
 
 int try_depth=0;
@@ -53,81 +50,70 @@ int try_loglev=2;
 int try_infolev=1;
 int try_edepth=2;
 
-__thread TRY_CONTEXT try_context;
+__thread TRY_CONTEXT _try_context = {};
+TRY_CONTEXT *        try_context() { return &_try_context; }
 
-void try_seterr(int eid,const char *estr)
-{
+void try_seterr(int eid,const char *estr) {
     char str[TRY_STRLEN];
 
-    if (try_context.edepth++<try_edepth)
-    {
-        if (!try_context.eid)
-        {
-            try_context.eid=eid;
-            snprintf(try_context.errstr,TRY_STRLEN,"Failed while %s",estr);
-        }
-        else
-        {
-            snprintf(str,TRY_STRLEN,"%s, while %s",try_context.errstr,estr);
-            snprintf(try_context.errstr,TRY_STRLEN,"%s",str);
+    if (_try_context.edepth++<try_edepth) {
+        if (!_try_context.eid) {
+            _try_context.eid=eid;
+            snprintf(_try_context.errstr,TRY_STRLEN,"Failed while %s",estr);
+        } else {
+            snprintf(str,TRY_STRLEN,"%s, while %s",_try_context.errstr,estr);
+            snprintf(_try_context.errstr,TRY_STRLEN,"%s",str);
         }
     }
 }
 
-void try_loginfo(const char *func,const char *cond)
-{
+void try_loginfo(const char *func,const char *cond) {
     char logstr[TRY_STRLEN];
-    int indent=try_context.depth;
+    int indent=_try_context.depth;
     if (indent<0) indent=0;
     if (indent>TRY_STRLEN-1) indent=TRY_STRLEN-1;
 
     memset(logstr,' ',TRY_STRLEN);
-    switch (try_infolev)
-    {
-        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,try_context.msgstr); break;
-        case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",try_context.msgstr); break;
+    switch (try_infolev) {
+        case 3: snprintf(logstr+indent,TRY_STRLEN,"%s:%s:" CODE_UL "%s",func,cond,_try_context.msgstr); break;
+        case 2: snprintf(logstr+indent,TRY_STRLEN,"%s:" CODE_UL "%s",func,_try_context.msgstr); break;
+        case 1: snprintf(logstr+indent,TRY_STRLEN,"%s",_try_context.msgstr); break;
         case 0: snprintf(logstr+indent,TRY_STRLEN,"%s",""); break;
     }
 
-    fprintf(ERRFILE,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr);
-    fflush(ERRFILE);
+    fprintf(stderr,CODE_GREEN "%s" CODE_RESET NEWLINE,logstr);
+    fflush(stderr);
 }
 
-void try_logerror(const char *func,const char *cond,int status)
-{
+void try_logerror(const char *func,const char *cond,int status) {
     char errstr[TRY_STRLEN];
-    switch (try_loglev)
-    {
-        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed %s",func,cond,try_context.msgstr); break;
-        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed %s",func,try_context.msgstr); break;
-        case 1: snprintf(errstr,TRY_STRLEN,"Failed %s",try_context.msgstr); break;
+    switch (try_loglev) {
+        case 3: snprintf(errstr,TRY_STRLEN,"%s:%s:Failed to %s",func,cond,_try_context.msgstr); break;
+        case 2: snprintf(errstr,TRY_STRLEN,"%s:Failed to %s",func,_try_context.msgstr); break;
+        case 1: snprintf(errstr,TRY_STRLEN,"Failed to %s",_try_context.msgstr); break;
         case 0: snprintf(errstr,TRY_STRLEN,"%s",""); break;
     }
 
-    fprintf(ERRFILE,CODE_RED "%s" CODE_RESET NEWLINE,errstr);
-    fflush(ERRFILE);
+    fprintf(stderr,CODE_RED "%s" CODE_RESET NEWLINE,errstr);
+    fflush(stderr);
 }
 
-void try_reset()
-{
-    try_context.eid=0;
-    try_context.edepth=0;
-    try_context.msgstr[0]=0;
-    try_context.errstr[0]=0;
+void try_reset() {
+    _try_context.eid=0;
+    _try_context.edepth=0;
+    _try_context.msgstr[0]=0;
+    _try_context.errstr[0]=0;
 }
 
 
-void *mymalloc(int size)
-{
+void *mymalloc(int size) {
     void *r=calloc(size,1);
     if (r) Gmymalloc+=1;
     TALLOC(r,size,"");
     return r;
 }
 
-void *myrealloc(void *buf, int newsize)
-{
+void *myrealloc(void *buf, int newsize) {
     void *r=realloc(buf,newsize);
     if (r) Gmymalloc+=1;
     TDEALLOC(buf,"");
@@ -135,23 +121,17 @@ void *myrealloc(void *buf, int newsize)
     return r;
 }
 
-void myfree(void *p,int size)
-{
+void myfree(void *p,int size) {
     if (p) Gmymalloc-=1;
     free(p);
     TDEALLOC(p,"");
 }
 
-void *mybzero(void *buf,int size)
-{
-    return buf?memset(buf,0,size):NULL;
-}
+void *mybzero(void *buf,int size) { return buf?memset(buf,0,size):NULL; }
 
-char *strstrip(char *buf,int *len)
-{
+char *strstrip(char *buf,int *len) {
     int i,offset;
-    for (i=offset=0;(i+offset)<(*len);i++)
-    {
+    for (i=offset=0;(i+offset)<(*len);i++) {
         if (buf[i+offset]=='\\') offset++;
         if (offset) buf[i]=buf[i+offset];
     }
@@ -159,16 +139,13 @@ char *strstrip(char *buf,int *len)
     return buf;
 }
 
-int fstrnprint(FILE *ofile,char *str,int len)
-{
+int fstrnprint(FILE *ofile,char *str,int len) {
     char *buf;
     if (len==-1) len=strlen(str);
     if (!len) return 0;
     buf=STRIPDUPA(str,&len);
-    do
-    {
-        switch(*buf)
-        {
+    do {
+        switch(*buf) {
             case '\\': fputs("\\",ofile); break;
             case '\t': fputs("\\t",ofile); break;
             case '\r': fputs("\\r",ofile); break;
@@ -181,8 +158,7 @@ int fstrnprint(FILE *ofile,char *str,int len)
     return len;
 }
 
-char *bufdup(const char *buf,int len)
-{
+char *bufdup(const char *buf,int len) {
     // always null terminate whether string or not
     void *newbuf;
     if (len<0) len=strlen((char *) buf);
@@ -192,29 +168,23 @@ char *bufdup(const char *buf,int len)
     return (char *) newbuf;
 }
 
-char *stripdup(char *buf,int *len)
-{
-    return strstrip(bufdup(buf,*len),len);
-}
+char *stripdup(char *buf,int *len) { return strstrip(bufdup(buf,*len),len); }
 
-int strtou(char *str,int len,unsigned *val)
-{
+int strtou(char *str,int len,unsigned *val) {
     char *tail;
     if (!str) return 0;
     *val=strtoul(str,&tail,0);
     return str+len==tail;
 }
 
-int strton(char *str,int len,long double *val)
-{
+int strton(char *str,int len,long double *val) {
     char *tail;
     if (!str) return 0;
     *val=strtold(str,&tail);
     return str+len==tail;
 }
 
-int strnncmp(char *a,int alen,char *b,int blen)
-{
+int strnncmp(char *a,int alen,char *b,int blen) {
     int mismatch;
     alen=(alen<0)?(int) strlen(a):alen;
     blen=(blen<0)?(int) strlen(b):blen;
@@ -223,8 +193,7 @@ int strnncmp(char *a,int alen,char *b,int blen)
     return mismatch?mismatch:alen-blen; // if !mismatch, then longer > shorter (any char is greater than "virtual null")
 }
 
-int strnspn(char *str,int len,char *accept)
-{
+int strnspn(char *str,int len,char *accept) {
     int result;
     char eos=str[len];
     str[len]=0;
@@ -233,8 +202,7 @@ int strnspn(char *str,int len,char *accept)
     return result;
 }
 
-int strncspn(char *str,int len,char *reject)
-{
+int strncspn(char *str,int len,char *reject) {
     int result;
     char eos=str[len];
     str[len]=0;
@@ -243,8 +211,7 @@ int strncspn(char *str,int len,char *reject)
     return result;
 }
 
-int fnmatch_len(char *pat,int plen,char *str,int slen)
-{
+int fnmatch_len(char *pat,int plen,char *str,int slen) {
     int result;
     if (plen==-1)
         plen=strlen(pat);
@@ -257,10 +224,8 @@ int fnmatch_len(char *pat,int plen,char *str,int slen)
     return result;
 }
 
-int shexdump(FILE *ofile,char *buf,int size,int width,int opts)
-{
+int shexdump(FILE *ofile,char *buf,int size,int width,int opts) {
     int i=0;
-    //int o(int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; } // reversible offset
     auto o = [&](int i) { return opts&SHEXDUMP_OPT_REVERSE?(size-1-i):i; }; // reversible offset
     int pad=!(opts&SHEXDUMP_OPT_UNPADDED);
     const char *sep=opts&SHEXDUMP_OPT_NOSPACE?"":" ";
@@ -279,8 +244,7 @@ void escape_buf(char *buf,int len) {
     char *src = buf;
     int escape = 0;
 
-    auto hex = [&](char c) // return -1 if not a hex digit, else hex value
-    {
+    auto hex = [&](char c) { // return -1 if not a hex digit, else hex value
         return (c >= 48 && c <= 57)?  c-48: /* 0-9 */
                (c >= 65 && c <= 70)?  c-55: /* A-F */
                (c >= 97 && c <= 102)? c-87: /* a-f */
@@ -340,8 +304,7 @@ int series(char *buf,int len,char *include,char *exclude,char *balance) {
     return i;
 }
 
-int balanced_string(char *line, int linelen, char *open, char *close, int *length /*in:out*/, char *stack /*in:out*/)
-{
+int balanced_string(char *line, int linelen, char *open, char *close, int *length /*in:out*/, char *stack /*in:out*/) {
     int depth = strlen(stack);
     int dels = strlen(open);
     int i;
@@ -355,7 +318,7 @@ int balanced_string(char *line, int linelen, char *open, char *close, int *lengt
             if (depth && c == stack[depth - 1]) // balanced, pop
                 stack[--depth]=0;
             else {
-                fprintf(ERRFILE, "Sequence misbalanced at \"%c\", offset %d, stack %s\n", c, *length,stack);
+                fprintf(stderr, "Sequence misbalanced at \"%c\", offset %d, stack %s\n", c, *length,stack);
                 *length = -1;
                 break;
             }

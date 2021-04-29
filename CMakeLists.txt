@@ -21,8 +21,8 @@ target_link_libraries(${PROJECT_NAME} "-pie -Wl,-E")
 
 target_link_libraries(${PROJECT_NAME} dwarf elf dw dl ffi pthread)
 
-add_definitions(-DLTTNG)
-target_link_libraries(${PROJECT_NAME} urcu urcu-bp urcu-common lttng-ust lttng-ctl lttng-ust-tracepoint)
+#add_definitions(-DLTTNG)
+#target_link_libraries(${PROJECT_NAME} urcu urcu-bp urcu-common lttng-ust lttng-ctl lttng-ust-tracepoint)
 
 install(TARGETS ${PROJECT_NAME}
         RUNTIME DESTINATION bin COMPONENT ${PROJECT_NAME}

@@ -111,7 +111,7 @@ static LTI *aa_find(LTI **t,char *name,int len,int *insert) {
     }
     if ((*insert)&INSERT) { // rebalance if necessary
         aa_skew(t);
-        aa_split(t); 
+        aa_split(t);
     }
     return lti;
 }
@@ -362,12 +362,9 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
     int depth=0,cleanup=0;
     void *rval=NULL;
 
-    std::function<void *(LTI *,LTVR *,LTV *)> descend_ltv =
-        [&](LTI *parent_lti,LTVR *parent_ltvr,LTV *ltv) -> void *{
-            auto descend_lti=
-                [&](LTI *lti) -> void *{
-                    auto descend_ltvr=
-                        [&](CLL *lnk) -> void *{ // for normal-form (ltv->lti->ltvr) form ltv
+    std::function<void *(LTI *,LTVR *,LTV *)> descend_ltv = [&](LTI *parent_lti,LTVR *parent_ltvr,LTV *ltv) -> void *{
+            auto descend_lti= [&](LTI *lti) -> void *{
+                    auto descend_ltvr= [&](CLL *lnk) -> void *{ // for normal-form (ltv->lti->ltvr) form ltv
                             LTVR *ltvr=(LTVR *) lnk;
                             return descend_ltv(lti,ltvr,ltvr->ltv);
                         };
@@ -384,8 +381,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
                     return rval;
                 };
 
-            auto descend_ltvr=
-                [&](CLL *lnk) -> void *{ // for list-form ltv
+            auto descend_ltvr= [&](CLL *lnk) -> void *{ // for list-form ltv
                     LTVR *ltvr=(LTVR *) lnk;
                     return descend_ltv(NULL,ltvr,ltvr->ltv); // LTI is null in this case
                 };
@@ -528,8 +524,7 @@ LTV *LTV_copy(LTV *ltv,int maxdepth)
 {
     LTV *index=LTV_NULL,*dupes=LTV_NULL;
     char buf[32];
-    auto index_ltv =
-        [&](LTV *ltv) {
+    auto index_ltv = [&](LTV *ltv) {
             LTV *dup=NULL;
             sprintf(buf,"%p",ltv);
             if (!LT_get(index,buf,HEAD,KEEP)) {
@@ -541,8 +536,7 @@ LTV *LTV_copy(LTV *ltv,int maxdepth)
             }
         };
 
-    auto index_ltvs =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto index_ltvs = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             if (!((*flags)&LT_TRAVERSE_HALT) && ((*flags)&LT_TRAVERSE_LTV) && depth<=maxdepth) {
                 index_ltv(*ltv);
@@ -556,21 +550,18 @@ LTV *LTV_copy(LTV *ltv,int maxdepth)
 
     ltv_traverse(ltv,index_ltvs,NULL)!=NULL,LTV_NULL;
 
-    auto new_or_used =
-        [&](LTV *ltv) {
+    auto new_or_used = [&](LTV *ltv) {
             char buf[32];
             sprintf(buf,"%p",ltv);
             LTV *rval=NULL;
             return ((rval=LT_get(dupes,buf,HEAD,KEEP)))?rval:ltv;
         };
 
-    auto descend_lti =
-        [&](LTI *lti) {
+    auto descend_lti = [&](LTI *lti) {
             LTV *orig=LTV_peek(&lti->ltvs,HEAD);
             LTV *dupe=LT_get(dupes,lti->name,HEAD,KEEP);
 
-            auto copy_children =
-                [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+            auto copy_children = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
                     if (((*flags)&LT_TRAVERSE_LTV) && depth==1 && (*lti)) {
                         LT_put(dupe,(*lti)->name,TAIL,new_or_used(*ltv));
                         (*flags)|=LT_TRAVERSE_HALT;
@@ -624,8 +615,7 @@ int LTV_hide(LTV *ltv) { return !show_ref && ((ltv->flags&LT_TYPE)); }
 
 void print_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
 {
-    auto preop =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto preop = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             switch ((*flags)&LT_TRAVERSE_TYPE) {
                 case LT_TRAVERSE_LTI:
@@ -681,30 +671,26 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
 
-    auto lnk2dot =
-        [&](CLL *lnk) {
+    auto lnk2dot = [&](CLL *lnk) {
             fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown penwidth=2.0]\n",lnk);
             if (lnk->lnk[TAIL]!=lnk)
                 fprintf(ofile,"\"%x\" -> \"%x\" [color=brown penwidth=2.0]\n",lnk->lnk[TAIL],lnk);
             return (void *) NULL;
         };
 
-    auto ltvr2dot =
-        [&](CLL *lnk) {
+    auto ltvr2dot = [&](CLL *lnk) {
             LTVR *ltvr=(LTVR *) lnk;
             fprintf(ofile,"\"%x\" -> \"LTV%x\" [color=purple len=0.1]\n",lnk,ltvr->ltv);
             return lnk2dot(lnk);
         };
 
-    auto cll2dot =
-        [&](CLL *cll,char *label) {
+    auto cll2dot = [&](CLL *cll,char *label) {
             if (label)
                 fprintf(ofile,"\"%1$s_%2$x\" [label=\"%1$s\" shape=ellipse style=filled fillcolor=gray]\n\"%1$s_%2$x\" -> \"%2$x\"\n",label,cll);
             lnk2dot(cll);
         };
 
-    auto lti2dot =
-        [&](LTV *ltv,LTI *lti) {
+    auto lti2dot = [&](LTV *ltv,LTI *lti) {
             fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse]\n",lti,lti->name);
             fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,lti);
             fprintf(ofile,"\"LTI%x\" -> \"%x\"\n",lti,&lti->ltvs);
@@ -714,8 +700,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     auto lti_ltvr2dot = [&](LTI *lti,LTVR *ltvr) { ltvr2dot(&ltvr->lnk); };
     auto ltv_ltvr2dot = [&](LTV *ltv,LTVR *ltvr) { ltvr2dot(&ltvr->lnk); };
 
-    auto ltv_descend =
-        [&](LTV *ltv) {
+    auto ltv_descend = [&](LTV *ltv) {
             if (!LTV_empty(ltv)) {
                 if (ltv->flags&LT_LIST) {
                     if (ltv->flags&LT_REFS)
@@ -732,8 +717,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             }
         };
 
-    auto ltv2dot =
-        [&](LTVR *ltvr,LTV *ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto ltv2dot = [&](LTVR *ltvr,LTV *ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             char *color=ltv->flags&LT_RO?"red":"black";
             if (ltv->len && !(ltv->flags&LT_NSTR)) {
                 fprintf(ofile,"\"LTV%x\" [shape=box style=filled fillcolor=lightsteelblue color=%s label=\"",ltv,color);
@@ -754,8 +738,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 fprintf(ofile,"\"LTV%x\" [label=\"\" shape=box style=filled height=.1 width=.3 fillcolor=gray color=%s]\n",ltv,color);
         };
 
-    auto preop =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto preop = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             if ((*flags)&LT_TRAVERSE_LTI) {
                 if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
@@ -787,8 +770,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     int i=0;
 
-    auto lti2dot =
-        [&](LTV *ltv,LTI *lti) {
+    auto lti2dot = [&](LTV *ltv,LTI *lti) {
             fprintf(ofile,"\"LTI%x\" [label=\"%s\" shape=ellipse color=red4]\n",lti,lti->name);
             fprintf(ofile,"\"LTV%x\" -> \"LTI%x\" [color=blue]\n",ltv,lti);
         };
@@ -796,8 +778,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     auto lti_ltvr2dot = [&](LTI *lti,LTVR *ltvr) { fprintf(ofile,"\"LTI%x\" -> \"LTV%x\" [color=purple]\n",lti,ltvr->ltv); };
     auto ltv_ltvr2dot = [&](LTV *ltv,LTVR *ltvr) { fprintf(ofile,"\"LTV%x\" -> \"LTV%x\" [color=red]\n",ltv,ltvr->ltv); };
 
-    auto ltv_descend =
-        [&](LTV *ltv) {
+    auto ltv_descend = [&](LTV *ltv) {
             if (!LTV_empty(ltv) && !(ltv->flags&LT_LIST)) {
                 fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
                 for (LTI *lti=LTI_first(ltv);!LTI_invalid(lti);lti=LTI_iter(ltv,lti,FWD))
@@ -806,8 +787,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             }
         };
 
-    auto ltv2dot =
-        [&](LTVR *ltvr,LTV *ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto ltv2dot = [&](LTVR *ltvr,LTV *ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             if (ltv->len && !(ltv->flags&LT_NSTR)) {
                 fprintf(ofile,"\"LTV%x\" [shape=box style=filled fillcolor=tan label=\"",ltv);
                 fstrnprint(ofile,ltv->data,ltv->len);
@@ -827,8 +807,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 fprintf(ofile,"\"LTV%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
         };
 
-    auto preop =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto preop = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             if ((*flags)&LT_TRAVERSE_LTI) {
                 if (maxdepth && depth>=maxdepth || LTI_hide(*lti))
@@ -881,8 +860,7 @@ void graph_ltv_to_file(char *filename,LTV *ltv,int maxdepth,char *label) {
 
 int pickle_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
 {
-    auto write_data =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto write_data = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             switch ((*flags)&LT_TRAVERSE_TYPE) {
                 case LT_TRAVERSE_LTI:
@@ -914,8 +892,7 @@ int pickle_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
             return (void *) NULL;
         };
 
-    auto write_links =
-        [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
+    auto write_links = [&](LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
             listree_acyclic(lti,ltvr,ltv,depth,flags);
             switch ((*flags)&LT_TRAVERSE_TYPE) {
                 case LT_TRAVERSE_LTI:
@@ -1036,8 +1013,7 @@ LTV *REF_reset(REF *ref,LTV *newroot)
     if (root==newroot)
         goto done;
     if (root && ref->lti) {
-        auto prune_placeholders =
-            [&](CLL *lnk) {
+        auto prune_placeholders = [&](CLL *lnk) {
                 LTVR *ltvr=(LTVR *) lnk;
                 if (ltvr->ltv->flags==LT_NULL && LTV_empty(ltvr->ltv)) //////// no flags at all?????
                     LTVR_release(lnk);
@@ -1133,8 +1109,7 @@ int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
     REF *ref=NULL;
     int placeholder=0;
 
-    auto resolve =
-        [&](CLL *lnk) {
+    auto resolve = [&](CLL *lnk) {
             int status=0;
             ref=(REF *) lnk;
             placeholder=0;
@@ -1190,8 +1165,7 @@ int REF_iterate(LTV *refs,int pop)
     STRY(!refs || !(refs->flags&LT_REFS),"validating params");
     CLL *cll=LTV_list(refs);
 
-    auto iterate =
-        [&](CLL *lnk) { // return null if there is no next
+    auto iterate = [&](CLL *lnk) { // return null if there is no next
             REF *ref=(REF *) lnk;
 
             LTVR *name_ltvr=NULL,*ref_ltvr=ref->ltvr;
@@ -1316,8 +1290,7 @@ void REF_dot(FILE *ofile,LTV *refs,char *label)
     if (!refs || !(refs->flags&LT_REFS))
         return;
     CLL *cll=LTV_list(refs);
-    auto op =
-        [&](CLL *lnk) {
+    auto op = [&](CLL *lnk) {
             REF *ref=(REF *) lnk;
             fprintf(ofile,"\"%x\" [label=\"\" shape=box label=\"",ref);
             fprintf(ofile,"%s",ref->reverse?"REV":"FWD");

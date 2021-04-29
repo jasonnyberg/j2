@@ -7,7 +7,8 @@ SHELL:=bash
 all: compile
 
 # makefile version of reflection-as-plugin demo
-jj: jj_plugin.c ; gcc -g jj_plugin.c -o jj -ldl
+jj: compile jj_plugin.c ; gcc -g jj_plugin.c -o jj -ldl
+runjj: jj; MALLOC_CHECK=1 LD_LIBRARY_PATH=build rlwrap -S "[]/ " ./jj
 
 switch-compiler:; sudo update-alternatives --config c++
 build:; mkdir build
@@ -15,7 +16,7 @@ cmake: build; cd build && cmake ..
 compile: cmake; make -C build
 clean: cmake; make -C build clean
 distclean: ; rm -rf build
-run: compile; MALLOC_CHECK=1 ./jj.sh
+run: compile; MALLOC_CHECK=1 LD_LIBRARY_PATH=build rlwrap -S "[]/ " build/libreflect.so
 compilerun: compile run
 install: cmake; sudo make -C build install
 fastbench: cmake; rm callgrind.out.*; echo "fastbench!" | (valgrind --tool=callgrind build/jj)

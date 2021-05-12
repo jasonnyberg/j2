@@ -262,10 +262,15 @@ int dot_cu_data(FILE *ofile,CU_DATA *cu_data)
 }
 
 
-int print_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
+int print_type_info(FILE *ofile,LTV *ltv)
 {
     int status=0;
-    fprintf(ofile,"TYPE_INFO %s",type_info->id_str);
+    if (!(ltv->flags & LT_TYPE))
+        goto done;
+
+    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
+
+    fprintf(ofile, "|TYPE_INFO %s", type_info->id_str);
     const char *str=NULL;
     static char alias[32];
     DWARF_ALIAS(alias,type_info->sig8);
@@ -288,41 +293,46 @@ int print_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
     if (type_info->flags&TYPEF_IS_INFO)    fprintf(ofile,"|info");
     if (type_info->flags&TYPEF_IS_DECL)    fprintf(ofile,"|decl");
     if (type_info->flags&TYPEF_SIGNATURE)  fprintf(ofile,"|sig %s",         alias);
+
+done:
     return status;
 }
 
-int dot_type_info(FILE *ofile,TYPE_INFO_LTV *type_info)
-{
-    int status=0;
-    fprintf(ofile,CVAR_FORMAT " [shape=record label=\"{",type_info);
-    print_type_info(ofile,type_info);
-    fprintf(ofile,"}\"");
-    if (type_info->flags&TYPEF_UPPERBOUND)
-        fprintf(ofile," color=white");
-    switch (type_info->tag) {
-        case DW_TAG_compile_unit:     fprintf(ofile," style=filled fillcolor=red rank=max"); break;
-        case DW_TAG_subprogram:       fprintf(ofile," style=filled fillcolor=orange"); break;
-        case DW_TAG_subroutine_type:  fprintf(ofile," style=filled fillcolor=darkorange"); break;
-        case DW_TAG_formal_parameter: fprintf(ofile," style=filled fillcolor=gold"); break;
-        case DW_TAG_variable:         fprintf(ofile," style=filled fillcolor=cyan"); break;
-        case DW_TAG_typedef:          fprintf(ofile," style=filled fillcolor=green"); break;
-        case DW_TAG_structure_type:   fprintf(ofile," style=filled fillcolor=blue"); break;
-        case DW_TAG_class_type:       fprintf(ofile," style=filled fillcolor=blue"); break;
-        case DW_TAG_union_type:       fprintf(ofile," style=filled fillcolor=violet"); break;
-        case DW_TAG_member:           fprintf(ofile," style=filled fillcolor=lightblue"); break;
-        case DW_TAG_enumeration_type: fprintf(ofile," style=filled fillcolor=magenta"); break;
-        case DW_TAG_array_type:       fprintf(ofile," style=filled fillcolor=gray80"); break;
-        case DW_TAG_pointer_type:     fprintf(ofile," style=filled fillcolor=gray90"); break;
-        case DW_TAG_base_type:        fprintf(ofile," style=filled fillcolor=yellow rank=min"); break;
-        case DW_TAG_enumerator:       fprintf(ofile," style=filled fillcolor=pink rank=min"); break;
-        case DW_TAG_subrange_type:    fprintf(ofile," style=filled fillcolor=gray80 rank=min"); break;
-        case DW_TAG_type_unit:        fprintf(ofile," style=filled fillcolor=darkred rank=min"); break;
+int dot_type_info(FILE *ofile, LTV *ltv) {
+    int status = 0;
+
+    fprintf(ofile, "shape=record color=%s style=filled label=\"{{CVAR(%x)", ltv->flags & LT_RO ? "red" : "black", ltv->data);
+    print_type_info(ofile, ltv);
+    fprintf(ofile, "}}\"");
+
+    if (!(ltv->flags & LT_TYPE)) {
+        fprintf(ofile, " fillcolor=beige");
+        goto done;
     }
-    fprintf(ofile,"]\n");
- done:
+
+    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
+    switch (type_info->tag) {
+        case DW_TAG_compile_unit:     fprintf(ofile, " fillcolor=red rank=max"); break;
+        case DW_TAG_subprogram:       fprintf(ofile, " fillcolor=orange"); break;
+        case DW_TAG_subroutine_type:  fprintf(ofile, " fillcolor=darkorange"); break;
+        case DW_TAG_formal_parameter: fprintf(ofile, " fillcolor=gold"); break;
+        case DW_TAG_variable:         fprintf(ofile, " fillcolor=cyan"); break;
+        case DW_TAG_typedef:          fprintf(ofile, " fillcolor=green"); break;
+        case DW_TAG_structure_type:   fprintf(ofile, " fillcolor=blue"); break;
+        case DW_TAG_class_type:       fprintf(ofile, " fillcolor=blue"); break;
+        case DW_TAG_union_type:       fprintf(ofile, " fillcolor=violet"); break;
+        case DW_TAG_member:           fprintf(ofile, " fillcolor=lightblue"); break;
+        case DW_TAG_enumeration_type: fprintf(ofile, " fillcolor=magenta"); break;
+        case DW_TAG_array_type:       fprintf(ofile, " fillcolor=gray80"); break;
+        case DW_TAG_pointer_type:     fprintf(ofile, " fillcolor=gray90"); break;
+        case DW_TAG_base_type:        fprintf(ofile, " fillcolor=yellow rank=min"); break;
+        case DW_TAG_enumerator:       fprintf(ofile, " fillcolor=pink rank=min"); break;
+        case DW_TAG_subrange_type:    fprintf(ofile, " fillcolor=gray80 rank=min"); break;
+        case DW_TAG_type_unit:        fprintf(ofile, " fillcolor=darkred rank=min"); break;
+    }
+done:
     return status;
 }
-
 
 LTV *cif_find_base(LTV *type,int tag)
 {
@@ -628,15 +638,14 @@ int cif_dump_cvar(FILE *ofile,LTV *cvar,int depth)
 }
 
 
-int cif_print_cvar(FILE *ofile,LTV *ltv,int depth)
-{
+int cif_print_cvar(FILE *ofile,LTV *ltv,int depth) {
     int status=0;
     if (ltv->flags&LT_FFI)
         fprintf(ofile,"FFI: ");
     if (ltv->flags&LT_CIF)
         fprintf(ofile,"CIF: ");
     if (ltv->flags&LT_TYPE) // special case
-        print_type_info(ofile,(TYPE_INFO_LTV *) ltv);
+        print_type_info(ofile, ltv);
     else
         cif_dump_cvar(ofile,ltv,depth); // use reflection!!!!!
  done:
@@ -644,23 +653,22 @@ int cif_print_cvar(FILE *ofile,LTV *ltv,int depth)
     return status;
 }
 
-int cif_dot_cvar(FILE *ofile,LTV *ltv)
-{
+int cif_dot_cvar(FILE *ofile,LTV *ltv) {
     int status=0;
-    if (ltv->flags&LT_TYPE)
-        dot_type_info(ofile,(TYPE_INFO_LTV *) ltv);
-    fprintf(ofile,"\"LTV%x\" -> " CVAR_FORMAT " [color=purple]\n",ltv,ltv->data); // link ltv to type_info
- done:
+    fprintf(ofile, "\"LTV%x\" [", ltv);
+    dot_type_info(ofile, ltv);
+    fprintf(ofile, "]\n");
+done:
     return status;
 }
 
 
-void graph_types_to_file(char *filename,LTV *ltv) {
+extern void graph_types_to_file(char *filename,LTV *ltv) {
     FILE *ofile=fopen(filename,"w");
     CLL ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs,ltv,HEAD);
-    fprintf(ofile,"digraph iftree\n{\ngraph [rankdir=LR /*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    fprintf(ofile,"digraph iftree\n{\ngraph [rankdir=LR, ratio=compress, concentrate=true] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile,&ltvs,0,filename);
     //ltvs2dot(ofile,&ltvs,0,filename);
     fprintf(ofile,"}\n");
@@ -1106,7 +1114,7 @@ int cif_curate_module(LTV *module,int bootstrap)
         char *base_symb=base_info && (base_info->flags&TYPEF_SYMBOLIC)? attr_get(&base_info->ltv,TYPE_SYMB):NULL;
         char *composite_name=NULL;
 
-        LTV *dedup_base(void) {
+        void dedup_base(void) {
             if (base_info && base_symb) { // dedup types; to get here, base must have already been categorized
                 TYPE_INFO_LTV *symb_base=(TYPE_INFO_LTV *) LT_get(module,base_symb,HEAD,KEEP);
                 if (symb_base && symb_base!=base_info) { // may already be correct
@@ -1131,7 +1139,7 @@ int cif_curate_module(LTV *module,int bootstrap)
             TYPE_INFO_LTV *deduped=NULL;
             if (sym) {
                 type_info->flags|=TYPEF_SYMBOLIC;
-                attr_set(&type_info->ltv,TYPE_SYMB,sym);
+                attr_set(&type_info->ltv, TYPE_SYMB, sym);
                 const char *is;
                 dwarf_get_TAG_name(type_info->tag,&is);
                 LTV *sym_ltv=LT_get(module,sym,HEAD,KEEP); // see if symbol already exists
@@ -1280,12 +1288,12 @@ int cif_curate_module(LTV *module,int bootstrap)
                     categorize_symbolic(FORMATA(composite_name,strlen(type_name),"%s",type_name));
                 break;
             case DW_TAG_member:
-                if (post && type_name)
-                    attr_set(&type_info->ltv,TYPE_SYMB,type_name); // let the member have it's own name, even if it's not a "symbolic" type
+                if (post && type_name && !attr_get(&type_info->ltv, TYPE_SYMB)) // if member not already named...
+                    attr_set(&type_info->ltv,TYPE_SYMB,type_name); // ...give it it's own name, even if it's not a "symbolic" type
                 break;
-            case DW_TAG_formal_parameter:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
+            case DW_TAG_formal_parameter: // name would be same as base, redundantly.
+                //if (post && base_symb)
+                //    categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
                 break;
 
 
@@ -1548,10 +1556,12 @@ int cif_curate_module(LTV *module,int bootstrap)
                     tried=1;
                 }
                 if (tried) {
-                    if (base) // we can link base immediately
+                    LTV *symb_base = LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP);
+                    if (base && !symb_base) // we can link base immediately
                         LT_put(&type_info->ltv,TYPE_BASE,HEAD,base);
-                    else
+                    else if (!base || base!=symb_base)
                         DEBUG(fprintf(stdout,CODE_RED " >>>>  failed base/alias lookup for %s" CODE_RESET "\n",type_info->id_str));
+                    // else base is already there
                 }
             }
         }

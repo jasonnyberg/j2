@@ -668,8 +668,6 @@ void print_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
 
 
 void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
-    int i=0;
-
     void *lnk2dot(CLL *lnk) {
         fprintf(ofile,"\"%x\" [label=\"\" shape=point color=brown penwidth=2.0]\n",lnk);
         if (lnk->lnk[TAIL]!=lnk)
@@ -707,7 +705,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
                 fprintf(ofile,"\"LTV%x\" -> \"%x\" [color=blue]\n",ltv,&ltv->sub.ltvs);
                 //  cll2dot(&ltv->sub.ltvs,NULL);
             } else {
-                fprintf(ofile,"subgraph cluster_%d { subgraph { /*rank=same*/\n",i++);
+                fprintf(ofile,"subgraph cluster_%x { subgraph { /*rank=same*/\n",ltv);
                 for (LTI *lti=LTI_first(ltv);!LTI_invalid(lti);lti=LTI_iter(ltv,lti,FWD))
                     fprintf(ofile,"\"LTI%x\"\n",lti);
                 fprintf(ofile,"}}\n");
@@ -727,8 +725,7 @@ void ltvs2dot(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
             fprintf(ofile,"\"LTV%x\" [label=\"REFS(%x)\" shape=box style=filled fillcolor=yellow color=%s]\n",ltv,ltv->data,color),
                 REF_dot(ofile,ltv,"REFS");
         else if (ltv->flags&LT_CVAR)
-            fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled fillcolor=yellow color=%s]\n",ltv,ltv->data,color),
-                cif_dot_cvar(ofile,ltv); // invoke reflection
+            cif_dot_cvar(ofile, ltv);  // invoke reflection, customize label
         else if (ltv->flags&LT_IMM)
             fprintf(ofile,"\"LTV%x\" [label=\"%x (imm)\" shape=box style=filled fillcolor=gold color=%s]\n",ltv,ltv->data,color);
         else if (ltv->flags&LT_NULL)
@@ -787,23 +784,22 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
     }
 
     void ltv2dot(LTVR *ltvr,LTV *ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
-        if (ltv->len && !(ltv->flags&LT_NSTR)) {
-            fprintf(ofile,"\"LTV%x\" [shape=box style=filled fillcolor=tan label=\"",ltv);
+        char *color = ltv->flags & LT_RO ? "red" : "black";
+        if (ltv->len && !(ltv->flags & LT_NSTR)) {
+            fprintf(ofile,"\"LTV%x\" [shape=box style=filled color=%s fillcolor=tan label=\"", ltv, color);
             fstrnprint(ofile,ltv->data,ltv->len);
             fprintf(ofile,"\"]\n");
-        }
-        else if (ltv->flags&LT_REFS)
-            fprintf(ofile,"\"LTV%x\" [label=\"REFS(%x)\" shape=box style=filled]\n",ltv,ltv->data),
-                REF_dot(ofile,ltv,"REFS");
+        } else if (ltv->flags & LT_REFS)
+            fprintf(ofile, "\"LTV%x\" [label=\"REFS(%x)\" shape=box style=filled color=%s]\n", ltv, ltv->data, color),
+                REF_dot(ofile, ltv, "REFS");
         else if (ltv->flags&LT_CVAR)
-            fprintf(ofile,"\"LTV%x\" [label=\"CVAR(%x)\" shape=box style=filled]\n",ltv,ltv->data),
-                cif_dot_cvar(ofile,ltv); // invoke reflection
+            cif_dot_cvar(ofile, ltv); // invoke reflection, customize label
         else if (ltv->flags&LT_IMM)
-            fprintf(ofile,"\"LTV%x\" [label=\"I(%x)\" shape=box style=filled]\n",ltv,ltv->data);
+            fprintf(ofile, "\"LTV%x\" [label=\"I(%x)\" shape=box style=filled color=%s]\n", ltv, ltv->data, color);
         else if (ltv->flags==LT_NULL)
-            fprintf(ofile,"\"LTV%x\" [label=\"\" shape=point style=filled color=purple]\n",ltv);
+            fprintf(ofile, "\"LTV%x\" [label=\"\" shape=point style=filled color=%s]\n", ltv, color);
         else
-            fprintf(ofile,"\"LTV%x\" [label=\"\" shape=box style=filled height=.1 width=.3]\n",ltv);
+            fprintf(ofile, "\"LTV%x\" [label=\"\" shape=box style=filled color=%s height=.1 width=.3]\n", ltv, color);
     }
 
     void *preop(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS *flags) {
@@ -834,7 +830,7 @@ void ltvs2dot_simple(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
 
 
 void graph_ltvs(FILE *ofile,CLL *ltvs,int maxdepth,char *label) {
-    fprintf(ofile,"digraph iftree\n{\ngraph [rankdir=\"LR\" /*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    fprintf(ofile,"digraph iftree\n{\ngraph [rankdir=\"LR\", ratio=compress, concentrate=true] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile,ltvs,maxdepth,label);
     fprintf(ofile,"}\n");
 }

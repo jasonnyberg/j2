@@ -394,59 +394,61 @@ extern void dup() {
 //////////////////////////////////////////////////
 
 #define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(errfile(),"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
-#define SKIP_IF_STATE() do { if (vm_env->state) { goto done; }} while(0);
 
 static void vmop_RESET() { VMOP_DEBUG();
     if (vm_env->state) return;
     vm_reset_ext();
- done: return;
+done:
+    return;
 }
 
 static void vmop_YIELD() { VMOP_DEBUG();
     vm_env->state |= VM_YIELD;
     vm_env->state &= ~VM_BYPASS;
     vm_code_pop();
-done: return;
+done:
+    return;
 }
 
 static void vmop_THROW() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext())
-        THROW(1,vm_env->ext);
+    if (vm_use_ext())  // "prefix" version
+        THROW(1, vm_env->ext);
     else
-        THROW(1,vm_exception);
- done: return;
+        THROW(1, vm_exception);
+done:
+    return;
 }
 
 static void vmop_CATCH() { VMOP_DEBUG();
-    int status=0;
+    int status = 0;
     if (!vm_env->state)
-        vm_env->state|=VM_BYPASS;
-    else if ((vm_env->state|VM_THROWING) && (!vm_env->skipdepth)) {
-        LTV *exception=NULL;
-        STRY(!(exception=vm_deq(VMRES_EXCP,KEEP)),"peeking at exception stack");
-        if (vm_use_ext()) {
-            vm_env->ext=REF_create(vm_env->ext);
+        vm_env->state |= VM_BYPASS;
+    else if ((vm_env->state | VM_THROWING) && (!vm_env->skipdepth)) {
+        LTV *exception = NULL;
+        STRY(!(exception = vm_deq(VMRES_EXCP, KEEP)), "peeking at exception stack");
+        if (vm_use_ext()) {  // "prefix" version
+            vm_env->ext = REF_create(vm_env->ext);
             vm_resolve(vm_env->ext);
-            THROW(!vm_stack_enq(REF_ltv(REF_HEAD(vm_env->ext))),vm_exception);
-            if (exception==REF_ltv(REF_HEAD(vm_env->ext))) {
-                LTV_release(vm_deq(VMRES_EXCP,POP));
-                if (!vm_deq(VMRES_EXCP,KEEP)) // if no remaining exceptions
-                    vm_env->state&=~VM_THROWING;
+            THROW(!vm_stack_enq(REF_ltv(REF_HEAD(vm_env->ext))), vm_exception);
+            if (exception == REF_ltv(REF_HEAD(vm_env->ext))) {
+                LTV_release(vm_deq(VMRES_EXCP, POP));
+                if (!vm_deq(VMRES_EXCP, KEEP))  // if no remaining exceptions
+                    vm_env->state &= ~VM_THROWING;
             }
-        }
-        else { // catch all
-            while (exception=vm_deq(VMRES_EXCP,POP)) // empty remaining exceptions
+        } else {                                         // catch all
+            while (exception = vm_deq(VMRES_EXCP, POP))  // empty remaining exceptions
                 LTV_release(exception);
-            vm_env->state&=~VM_THROWING;
+            vm_env->state &= ~VM_THROWING;
         }
     }
- done: return;
+done:
+    return;
 }
 
 static void vmop_PUSHEXT() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext()) {
+    if (vm_use_ext()) {  // "prefix" version
         vm_stack_enq(vm_env->ext);
         if (vm_env->ext->flags&LT_REFS)
             vm_resolve(vm_env->ext);
@@ -473,17 +475,17 @@ static void vmop_EVAL() { VMOP_DEBUG();
 
 static void vmop_REF() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext())
+    if (vm_use_ext())  // "prefix" version
         vm_env->ext=REF_create(vm_env->ext);
  done: return;
 }
 
 static void vmop_DEREF() { VMOP_DEBUG();
     if (vm_env->state) return;
-    vm_resolve(vm_use_ext());
+    vm_resolve(vm_use_ext());  // "prefix" version (maybe)
     LTV *ltv=REF_ltv(REF_HEAD(vm_env->ext));
     if (!ltv)
-        ltv=LTV_dup(vm_env->ext);
+        ltv=LTV_dup(vm_env->ext); // unresolvable refs are treated as literals(!)
     if (ltv->flags&LT_REFS) {
         LTV *ref=ltv;
         THROW(!(ltv=REF_ltv(REF_HEAD(ref))),vm_exception);
@@ -496,36 +498,47 @@ static void vmop_DEREF() { VMOP_DEBUG();
 static void vmop_ASSIGN() { VMOP_DEBUG();
     if (vm_env->state) return;
     LTV *val;
-    THROW(!(val=vm_stack_deq(POP)),vm_exception);
-    if (!vm_use_ext()) { // assign to TOS
+    THROW(!(val = vm_stack_deq(POP)), vm_exception);  // pop top of stack
+    if (vm_use_ext()) {                               // "prefix" version
+        REF_resolve(vm_deq(VMRES_DICT, KEEP), vm_env->ext, TRUE);
+        THROW(REF_assign(vm_env->ext, val), vm_exception);
+    } else {  // treat TOS as a ref and assign to it(!)
         LTV *var;
-        THROW(!(var=vm_stack_deq(POP)),vm_exception);
-        if (var->flags&LT_CVAR) { // if TOS is a cvar
-            THROW(!vm_stack_enq(cif_assign_cvar(var,val)),vm_exception); // assign directly to it.
+        THROW(!(var = vm_stack_deq(POP)), vm_exception);
+        if (var->flags & LT_CVAR) {                                         // if TOS is a cvar
+            THROW(!vm_stack_enq(cif_assign_cvar(var, val)), vm_exception);  // assign directly to it.
         } else {
-            vm_env->ext=REF_create(var); // otherwise treat TOS as a reference...
-            REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
-            if (REF_ltv(REF_HEAD(vm_env->ext))) // ...and it already exists...
-                THROW(REF_replace(vm_env->ext,val),vm_exception); // ...REPLACE its value
+            vm_env->ext = REF_create(var);  // otherwise treat TOS as a reference...
+            REF_resolve(vm_deq(VMRES_DICT, KEEP), vm_env->ext, TRUE);
+            if (REF_ltv(REF_HEAD(vm_env->ext)))                      // ...and it already exists...
+                THROW(REF_replace(vm_env->ext, val), vm_exception);  // ...REPLACE its value (to behave like cvar)
             else
-                THROW(REF_assign(vm_env->ext,val),vm_exception); // ...else install it
+                THROW(REF_assign(vm_env->ext, val), vm_exception);  // ...else install it
         }
-    } else {
-        REF_resolve(vm_deq(VMRES_DICT,KEEP),vm_env->ext,TRUE);
-        THROW(REF_assign(vm_env->ext,val),vm_exception);
     }
- done: return;
+done:
+    return;
 }
 
 static void vmop_REMOVE() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext()) {
+    LTV *ltv;
+    if (vm_use_ext()) {  // "prefix" version
         vm_resolve(vm_env->ext);
+        if (ltv = REF_ltv(REF_HEAD(vm_env->ext))) {  // mini deref
+            if (ltv->flags & LT_REFS) {
+                LTV *ref = ltv;
+                THROW(!(ltv = REF_ltv(REF_HEAD(ref))), vm_exception);
+                REF_iterate(ref, 0);
+            }
+            THROW(!vm_stack_enq(ltv), vm_exception);
+        }
         REF_remove(vm_env->ext);
     } else {
         LTV_release(vm_stack_deq(POP));
     }
- done: return;
+done:
+    return;
 }
 
 static void vmop_CTX_PUSH() { VMOP_DEBUG();
@@ -620,9 +633,6 @@ static void vmop_S2F() { VMOP_DEBUG();
 
 //////////////////////////////////////////////////
 
-typedef void (*VMOP_CALL)();
-extern VMOP_CALL vmop_call[];
-
 static void vmop_EXT() { VMOP_DEBUG();
     if (vm_env->ext) // slimmed reset_ext()
         LTV_release(vm_env->ext);
@@ -640,7 +650,8 @@ static void vmop_EXT() { VMOP_DEBUG();
 
 //////////////////////////////////////////////////
 
-VMOP_CALL vmop_call[] = {
+typedef void (*VMOP_CALL)();
+static VMOP_CALL vmop_call[] = {
     vmop_RESET,   vmop_YIELD,    vmop_EXT,     vmop_THROW,    vmop_CATCH,
     vmop_PUSHEXT, vmop_EVAL,     vmop_REF,     vmop_DEREF,    vmop_ASSIGN,
     vmop_REMOVE,  vmop_CTX_PUSH, vmop_CTX_POP, vmop_FUN_PUSH, vmop_FUN_EVAL,

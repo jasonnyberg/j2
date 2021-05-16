@@ -131,7 +131,7 @@ static LTV *vm_enq(int res,LTV *tos) { return LTV_put(ENV_LIST(res),tos,HEAD,NUL
 static LTV *vm_deq(int res,int pop)  { return LTV_get(ENV_LIST(res),pop,HEAD,NULL,NULL); }
 
 LTV *vm_stack_enq(LTV *ltv) { return LTV_enq(LTV_list(vm_deq(VMRES_STACK,KEEP)),ltv,HEAD); }
-LTV *vm_stack_deq(int pop) {
+LTV *vm_stack_deq(int pop) { // walk stack hierarchy, getting/popping first TOS it finds
     void *op(CLL *lnk) { return LTV_get(LTV_list(((LTVR *) lnk)->ltv),pop,HEAD,NULL,NULL); }
     LTV *rval=CLL_map(ENV_LIST(VMRES_STACK),FWD,op);
     return rval;
@@ -155,7 +155,7 @@ void vm_throw(LTV *ltv) {
 // Specialized Utillties
 
 static LTV *vm_use_ext() {
-    if (vm_env->ext_data && !vm_env->ext)
+    if (!vm_env->ext && vm_env->ext_data)
         vm_env->ext=LTV_init(NEW(LTV),vm_env->ext_data,vm_env->ext_length,vm_env->ext_flags);
     return vm_env->ext;
 }
@@ -446,6 +446,7 @@ done:
     return;
 }
 
+// tricky... [^x^](1 2 3)
 static void vmop_PUSHEXT() { VMOP_DEBUG();
     if (vm_env->state) return;
     if (vm_use_ext()) {  // "prefix" version
@@ -454,9 +455,9 @@ static void vmop_PUSHEXT() { VMOP_DEBUG();
             vm_resolve(vm_env->ext);
     } else {
         LTV *stack;
-        THROW(!(stack=vm_deq(VMRES_STACK,KEEP)),vm_exception);
+        THROW(!(stack=vm_deq(VMRES_STACK,KEEP)),vm_exception); // get top layer of stack hierarchy
         LTV *dest=NULL;
-        if ((dest=vm_stack_deq(KEEP)) && (dest->flags&LT_REFS) && (dest=vm_stack_deq(POP))) { // merge stack into ref
+        if ((dest=vm_stack_deq(KEEP)) && (dest->flags&LT_REFS) && (dest=vm_stack_deq(POP))) { // splice stack frame contents into ref
             if (!REF_lti(REF_HEAD(dest))) // create LTI if it's not already resolved
                 REF_resolve(vm_deq(VMRES_DICT,KEEP),dest,TRUE);
             CLL_MERGE(&(REF_lti(REF_HEAD(dest))->ltvs),LTV_list(stack),REF_HEAD(dest)->reverse);
@@ -482,7 +483,8 @@ static void vmop_REF() { VMOP_DEBUG();
 
 static void vmop_DEREF() { VMOP_DEBUG();
     if (vm_env->state) return;
-    vm_resolve(vm_use_ext());  // "prefix" version (maybe)
+    THROW(!vm_use_ext(),vm_exception);
+    vm_resolve(vm_env->ext);
     LTV *ltv=REF_ltv(REF_HEAD(vm_env->ext));
     if (!ltv)
         ltv=LTV_dup(vm_env->ext); // unresolvable refs are treated as literals(!)
@@ -522,17 +524,8 @@ done:
 
 static void vmop_REMOVE() { VMOP_DEBUG();
     if (vm_env->state) return;
-    LTV *ltv;
     if (vm_use_ext()) {  // "prefix" version
         vm_resolve(vm_env->ext);
-        if (ltv = REF_ltv(REF_HEAD(vm_env->ext))) {  // mini deref
-            if (ltv->flags & LT_REFS) {
-                LTV *ref = ltv;
-                THROW(!(ltv = REF_ltv(REF_HEAD(ref))), vm_exception);
-                REF_iterate(ref, 0);
-            }
-            THROW(!vm_stack_enq(ltv), vm_exception);
-        }
         REF_remove(vm_env->ext);
     } else {
         LTV_release(vm_stack_deq(POP));
@@ -545,8 +538,8 @@ static void vmop_CTX_PUSH() { VMOP_DEBUG();
     if (vm_env->state) { DEBUG(fprintf(errfile(),"  (skipping %s)\n",__func__));
         vm_env->skipdepth++;
     } else {
-        THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),vm_exception);
         THROW(!vm_enq(VMRES_STACK,LTV_NULL_LIST),vm_exception);
+        THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),vm_exception);
     }
  done: return;
 }
@@ -582,7 +575,7 @@ static void vmop_FUN_EVAL() { VMOP_DEBUG();
  done: return;
 }
 
-// never skip fun_pop_bc
+// never skip fun_pop
 static void vmop_FUN_POP() { VMOP_DEBUG();
     vm_listcat(VMRES_STACK);
     LTV_release(vm_deq(VMRES_DICT,POP));
@@ -615,19 +608,19 @@ static void vmop_F2S() { VMOP_DEBUG();
 
 static void vmop_S2D() { VMOP_DEBUG();
     if (vm_env->state) return;
-    THROW(!vm_stack_enq(vm_deq(VMRES_DICT,POP)),vm_exception);
+    THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),vm_exception);
  done: return;
 }
 
 static void vmop_S2E() { VMOP_DEBUG();
     if (vm_env->state) return;
-    THROW(!vm_stack_enq(vm_deq(VMRES_EXCP,POP)),vm_exception);
+    THROW(!vm_enq(VMRES_EXCP,vm_stack_deq(POP)),vm_exception);
  done: return;
 }
 
 static void vmop_S2F() { VMOP_DEBUG();
     if (vm_env->state) return;
-    THROW(!vm_stack_enq(vm_deq(VMRES_FUNC,POP)),vm_exception);
+    THROW(!vm_enq(VMRES_FUNC,vm_stack_deq(POP)),vm_exception);
  done: return;
 }
 
@@ -638,7 +631,7 @@ static void vmop_EXT() { VMOP_DEBUG();
         LTV_release(vm_env->ext);
     vm_env->ext=NULL;
     vm_env->ext_length=ntohl(*(unsigned *) vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
-    vm_env->ext_flags=ntohl(*(unsigned *)  vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
+    vm_env->ext_flags =ntohl(*(unsigned *) vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
     vm_env->ext_data=vm_env->code_ltv->data;                        vm_env->code_ltv->data += vm_env->ext_length;
     TOPEXT(vm_env->ext_data,vm_env->ext_length,vm_env->ext_flags,vm_env->state);
     DEBUG(fprintf(errfile(),CODE_BLUE " ");

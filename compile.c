@@ -99,9 +99,7 @@ int jit_edict(EMITTER emit,void *data,int len)
                     case 'F': EMIT(S2F); advance(ref_len); goto done; // stack -> TOS[func]
                     default: break;
                 }
-            }
-
-            if (ref_len) {
+            } else if (ref_len) {
                 EMIT_EXT(tdata,ref_len,LT_DUP);
                 advance(ref_len);
             } else

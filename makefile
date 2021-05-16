@@ -3,11 +3,7 @@ SHELL:=bash
 .ONESHELL:=true
 .DELETE_ON_ERROR:=true
 
-
 all: compile
-
-# makefile version of reflection-as-plugin demo
-jj: jj_plugin.c ; gcc -g jj_plugin.c -o jj -ldl
 
 switch-compiler:; sudo update-alternatives --config c++
 build:; mkdir build
@@ -15,7 +11,7 @@ cmake: build; cd build && cmake ..
 compile: cmake; make -C build
 clean: cmake; make -C build clean
 distclean: ; rm -rf build
-run: compile; MALLOC_CHECK=1 ./jj.sh
+run: compile; MALLOC_CHECK=1 rlwrap -S "[]/ " build/jj
 compilerun: compile run
 install: cmake; sudo make -C build install
 fastbench: cmake; rm callgrind.out.*; echo "fastbench!" | (valgrind --tool=callgrind build/jj)

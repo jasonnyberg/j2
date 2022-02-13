@@ -33,7 +33,8 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-/*
+#ifdef DIRECT_VM // see CMakeLists.txt: prelink, no bootstrap script
+
 #include "vm.h"
 
 const char *bootstrap=
@@ -41,7 +42,8 @@ const char *bootstrap=
     "ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
 
 int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) bootstrap); }
-*/
+
+#else // link w/dlopen and dynamically load reflection module, and run via bootstrap script
 
 #include <stdio.h>
 #include <dlfcn.h>  // dlopen/dlsym/dlclose
@@ -56,6 +58,7 @@ main(int argc, char *argv[]) {
     void *dlhandle = NULL;
 
     dlerror();  // reset
+    printf("Running J2 via plugin, dynamically linking libreflect.so...\n");
     if (dlhandle = dlopen("libreflect.so", RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)) {
         dlerror();  // reset
         int *(*vm_bootstrap)(char *) = dlsym(dlhandle, "vm_bootstrap");
@@ -67,3 +70,5 @@ main(int argc, char *argv[]) {
 
     return status;
 }
+
+#endif // DIRECT_VM

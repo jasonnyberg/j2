@@ -635,7 +635,7 @@ static void vmop_EXT() { VMOP_DEBUG();
     vm_env->ext_data=vm_env->code_ltv->data;                        vm_env->code_ltv->data += vm_env->ext_length;
     TOPEXT(vm_env->ext_data,vm_env->ext_length,vm_env->ext_flags,vm_env->state);
     DEBUG(fprintf(errfile(),CODE_BLUE " ");
-          fprintf(errfile(),"len %d flags %x state %x; -----> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
+          fprintf(errfile(),"len %d flags %x state %x; --> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
           fstrnprint(errfile(),vm_env->ext_data,vm_env->ext_length);
           fprintf(errfile(),CODE_RESET "\n"));
  done: return;

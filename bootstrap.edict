@@ -21,7 +21,12 @@
 [int! @limit limit@ int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
 
 [square(3)]@square3
-[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [square3!]) stack!]@async_test1
+[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@] [square(3)]) stack!]@async_test1
+
+[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@] [square3!]) stack!]@async_test2 [fails, can't inherit parent dict]/
+
+[ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@]@std_thunk
+[vm_eval(ROOT std_thunk [square3!]) stack!]@async_test3 [fails, can't inherit parent dict]/
 
 [[]<@thunk @root @sig encaps(vm_continuation(encaps(sig) root thunk))>/]@continuation
 [[]<@continuation @arg vm_async(continuation arg)@thread>]@async
@@ -34,7 +39,7 @@
  [square(3)] async(C) @T2
  minus(await(T2) await(T1))
  stack!
- ]@async_test7
+]@async_test7
 
 [vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [testimport3!]) stack!]@async_test8
 

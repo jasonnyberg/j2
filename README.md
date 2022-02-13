@@ -2,8 +2,6 @@
 
 **NOTE: The “cpp” branch contains a “dumb” port of this project from C to C++, which I did for several reasons:**
 
-
-
 *   **Obviously, it greases the skids towards expanding its runtime reflection capabilities into C++.**
 *   **I wanted to eliminate the dependency on the GCC-only “nested functions” extension, using “standard” C++ lambdas instead…**
 *   **...so it can be compiled with Clang/LLVM…**
@@ -11,16 +9,13 @@
 
 -------------------------------------------------------------------------------------------------------------------------
 
-
 ## The Elevator Pitch...
 
 J2 is a system that combines a minimalist programming language (“Edict”, for “executable dictionary”) with a C reflection/FFI system. It allows you to easily import shared libraries and use the datatypes, variables, and functions within it (at least the ones in global scope) _directly_, without needing to write any “glue” code.
 
-For example, if I have a file “inc.c” containing:
-
+For example, if I have a file “inc.c” containing:						
 
 ```
-
 typedef struct mystruct { int i; float f; } mystruct;
 extern mystruct increment(mystruct x) { x.i+=1; x.f+=1; return x; }
 ```
@@ -28,14 +23,11 @@ extern mystruct increment(mystruct x) { x.i+=1; x.f+=1; return x; }
 
 ...and I make a shared library out of it:
 
-
 ```
 gcc --shared -g inc.c -o inc.so
 ```
 
-
 ...then I can import that shared library into the edict interpreter and get right to using it:
-
 
 ```
 e> loadlib([inc.so]) @mylib
@@ -53,22 +45,17 @@ VMRES_STACK
 
 It looks simple, but there’s a _lot_ going on here under the covers here...
 
-
 ## Language Overview
 
 “Edict” is a minimalist programming language that makes up for its simplicity by having the built-in ability to understand and dynamically bind with C libraries, providing "native" access to C types, variables, and methods, of arbitrary complexity, without writing wrappers or glue code. Alternatively, you can look at it as a reflection library for C programs that allows them to expose dynamic access to their own internals at runtime.
 
 The language is built upon a foundation of three elements:
 
-
-
 *   Data Structure: All data (the entire state of the system) resides in a "Listree" structure, a recursively-defined hierarchical dictionary.
 *   Reflection: C type, function, and variable definitions/declarations from C libraries are imported and curated via libraries’ DWARF (debugging) information.
 *   Interpreter(s): A simple bytecode VM (with accompanying interpreters/jit-compilers) provides a unified method of accessing and exploiting instructions and data.
 
 These three elements assemble themselves at runtime into a multi-purpose programmable environment. The system bootstraps itself by:
-
-
 
 *   Importing its own library, so it can reflect upon itself
 *   Compiling a kernel for the VM; by default, it compiles an Edict REPL (itself defined in Edict), using C building blocks imported from its own library
@@ -77,12 +64,9 @@ These three elements assemble themselves at runtime into a multi-purpose program
 
 The evolution of Edict has been influenced by Forth, Lisp, Joy, Factor, Tcl, Mathematica, and others.
 
-
 ## The Language
 
 Key Points:
-
-
 
 *   Edict is a “stack” language: Work is performed by popping data from the top of the data stack, operating on it, and pushing results back onto the stack.
 *   Edict has a dictionary which contains… well, everything, including the data stack.
@@ -100,12 +84,11 @@ Key Points:
     *   Prefix-style “function call” operators 
     *   Exceptions
 
-
 ## Listree (“List Tree”)
 
+(NOTE: I found this "ZigZag" structure that is _very_ similar (and predates) my Listree: https://www.nongnu.org/gzz/gi/gi.html)
+
 The “Listree” is the core data structure of Edict and the VM which implements it. An instance of a Listree consists simply of a Listree Value, which contains:
-
-
 
 *   Zero or one buffers(s) of “arbitrary” data, and
 *   Zero or more _labeled_ _references_ to other Listree Values*.
@@ -118,55 +101,43 @@ As mentioned, the VM maintains all of its state within a Listree Value, includin
 
 In Edict, there are two types of data values, but values of both types are stored using Listree Values which exist either on the VM’s Data Stack or within its Dictionary.
 
-
 ## Literals
 
 The simplest type of value is a "literal". Literals are just text, delineated by square brackets:
-
 
 ```
 [This is a literal]
 ```
 
-
 If you come from a LISP background, you might think that the interpreter breaks literals down into s-expressions, but this is not the case. Everything between the brackets is represented “literally” in a Listree Value’s “data buffer”.
 
 The Edict interpreter keeps track of nested square brackets, so:
-
 
 ```
 [This is a [nested] literal]
 ```
 
-
 is interpreted as a single literal with the value "This is a [nested] literal".
 
 A "\" character appearing in the definition of a literal "escapes" the next character, allowing the interpreter to create literals containing (for instance) unbalanced square brackets:
-
 
 ```
 [This is a literal containing an unbalanced \[ bracket]
 ```
 
-
 When the interpreter comes across one, literal values (or rather, _references_ to the value -- an important distinction) are simply placed on the data stack.
 
 OTOH, the interpreter does a little more processing on anything that’s _not_ a literal. (There are other kinds of values that are _not_ literals, which I’ll discuss in a later section…)
-
 
 ## The (Hierarchical) Dictionary
 
 The Edict programmer can assign names to values on the stack, and subsequently refer to those values by those names. Assignment looks simply like this:
 
-
 ```
 @mylabel
 ```
 
-
 Assignment of a name to a value actually does several things:
-
-
 
 *   It adds a “Listree Item” to the top frame* of the dictionary with that name, if it doesn’t already exist, and
 *   adds to it a reference to the value, and
@@ -174,12 +145,9 @@ Assignment of a name to a value actually does several things:
 
 When the interpreter sees a reference to a label, that reference is replaced by a reference to the value associated with that label… In other words:
 
-
-
 *   You can name things
 *   You can then reference those things by name
 *   (It’s not rocket science)
-
 
 ## Evaluation
 
@@ -187,11 +155,9 @@ Edict is different from other languages in one important way. Many languages are
 
 A basic “function-like” thing in Edict might look like:
 
-
 ```
 [1@x]
 ```
-
 
 (Assign the label “x” to the value “1”.)
 
@@ -199,34 +165,26 @@ Note that _it is just a literal_.
 
 To _invoke_ it, the _evaluation operator_ is used:
 
-
 ```
 [1@x]!
 ```
 
-
 The outcome of this is exactly the same as if the interpreter had just directly read the following:
-
 
 ```
 1@x
 ```
 
-
 All the evaluation operator does is feed the contents of the top of the top of the stack to the interpreter.
 
 Now: recall that labels can be assigned to values, and that labels can be invoked to recall their values, and those values are pushed to the stack, and that the evaluation operator feeds the contents of the stack back into the interpreter:
-
 
 ```
 [1@x]@f
 f!
 ```
 
-
 This little sequence does the following:
-
-
 
 *   Pushes the literal value “[1@x]” to the stack
 *   Applies the label “f” to the TOS value (removing it from the stack in the process)
@@ -235,12 +193,9 @@ This little sequence does the following:
     *   Pushes the literal value “1” to the stack
     *   Assigns the label “x” to the TOS value (removing it in the process)
 
-
 ## Library Import/Reflection
 
 Edict can import C library types and global variable/function information via the debugging section (DWARF) of a library, if it’s available. The DWARF information is processed and stored in the dictionary, and the VM can “understand” this information and present it within the Edict interpreter using the same simple “native” syntax that operates on literal values.
-
-
 
 *   Instances of a type can be allocated (and placed on the stack, of course) by simply “evaluating the name of the type
     *   `int! @x`
@@ -252,7 +207,6 @@ Edict can import C library types and global variable/function information via th
     *   `x y Multiply!`
 
 (WIP BELOW…)
-
 
 <table>
   <tr>
@@ -329,8 +283,6 @@ Edict can import C library types and global variable/function information via th
   </tr>
 </table>
 
-
-
 ## Examples
 
 A simple reflective program:
@@ -338,7 +290,6 @@ A simple reflective program:
     int! [3]@ square! stack!
 
 Breakdown:
-
 
 <table>
   <tr>
@@ -391,7 +342,6 @@ Breakdown:
   </tr>
 </table>
 
-
 You'll see int 0x9, i.e. 3 squared.
 
 The explicit creation and assignment of a C integer is shown only for the example; a simpler version would be:
@@ -401,7 +351,6 @@ The explicit creation and assignment of a C integer is shown only for the exampl
 The same coercion would have been performed automatically during the marshalling of FFI arguments.
 
 Note that "code" does not evaluate automatically; Evaluation is invoked _explicitly_ via "!". Code is just data until you decide to "run" it:
-
 
 <table>
   <tr>
@@ -418,21 +367,17 @@ Note that "code" does not evaluate automatically; Evaluation is invoked _explici
   </tr>
 </table>
 
-
 Factorial:
 
     [@n int_iszero(n) 1 | int_mul(fact(int_dec(n)) n)]@fact
-
 
 ## Listree
 
 In a Listree, a VALUE contains a dictionary of KEY/CLL pairs, where each CLL ("circularly-linked-list", implementing a double-ended queue) contains one or more references to VALUEs, each of which contains a dictionary of... And so on. The KEY/DEQ component of a listree is a BST implementation based on Arne Andersson's "simple" rbtree variation. (http://user.it.uu.se/~arnea/ps/simp.pdf)
 
-
 ## The VM
 
 The VM is very simple; It evaluates bytecodes, each of which is an index into an array of C methods that implements the bytecode.
-
 
 <table>
   <tr>
@@ -527,17 +472,13 @@ The VM is very simple; It evaluates bytecodes, each of which is an index into an
   </tr>
 </table>
 
-
 *Exceptions are how both VM errors and conditionals are implemented, and they fiddle with the state of the VM a little more than the average operation, deserving their own paragraph.
 
 This simple suite of operations is sufficient to interact with the dictionary, recursively evaluate language constructs (the VM is a stackless implementation), and most importantly, exploit C types, functions, and data. It is a bare-bones framework that relies on its tight coupling to C in order to extend its capabilities effortlessly. 
 
-
 ## Dependencies
 
 (Any GNU/Linux distro worth its salt has these:
-
-
 
 *   gcc, cmake
 *   libdwarf, libdw, libelf (to read elf/dwarf debug section)
@@ -549,10 +490,7 @@ This simple suite of operations is sufficient to interact with the dictionary, r
 
 To run: Assuming gcc, cmake, and libraries are not too ancient, simply run "make" to build and get into the REPL.
 
-
 ## TODO
-
-
 
 *   Symbolic ffi parameters
 *   Do something with “comma” operator

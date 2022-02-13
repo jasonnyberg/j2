@@ -10,6 +10,7 @@ add_definitions(-fdebug-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}/=)
 add_definitions(-ftls-model=local-dynamic)
 
 include_directories(.)
+link_directories(${CMAKE_SOURCE_DIR}/build)
 
 #add_definitions(-O3)
 #add_definitions(-gdwarf-4)
@@ -26,7 +27,13 @@ target_link_libraries(${PROJECT_NAME} urcu urcu-bp urcu-common lttng-ust lttng-c
 
 # build a demo executable that dynamically links reflection as a plugin
 add_executable(jj jj_plugin.c)
-target_link_libraries(jj dl)
+#set(DIRECT_VM "TRUE")
+if (DIRECT_VM)
+    add_definitions(-DDIRECT_VM)
+    target_link_libraries(jj reflect)
+else()
+    target_link_libraries(jj dl)
+endif()
 
 install(TARGETS ${PROJECT_NAME} jj
         RUNTIME DESTINATION bin COMPONENT j2

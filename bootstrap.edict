@@ -20,6 +20,8 @@
 [a b int_add! a@ limit int_nequal! slowloop!]@slowloop
 [int! @limit limit@ int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
 
+[encaps! <RETURN>@]@return_tos
+
 [square(3)]@square3
 [vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@] [square(3)]) stack!]@async_test1
 
@@ -48,3 +50,5 @@
 [[[repl(get_stdin!)|]! repeat!]@repeat repeat!]/
 
 repl(get_stdin!)
+
+[goodbye!] return_tos!

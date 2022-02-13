@@ -765,5 +765,6 @@ extern int vm_bootstrap(char *bootstrap) {
     LTV *rval=vm_eval(cif_module,LTV_init(NEW(LTV),bootstrap,-1,LT_NONE),LTV_NULL);
     if (rval)
         print_ltv(outfile(),"",rval,"\n",0);
-    return !rval;
+    printf("exiting...\n");
+    return 0;
 }

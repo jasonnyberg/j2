@@ -84,10 +84,12 @@ extern void disassemble(FILE *ofile,LTV *ltv);
 extern int jit_asm(EMITTER emit,void *data,int len);
 extern int jit_edict(EMITTER emit,void *data,int len);
 extern int jit_xml(EMITTER emit,void *data,int len);
-extern int jit_json(EMITTER emit,void *data,int len);
-extern int jit_yaml(EMITTER emit,void *data,int len);
-extern int jit_swagger(EMITTER emit,void *data,int len);
-extern int jit_lisp(EMITTER emit,void *data,int len);
-extern int jit_massoc(EMITTER emit,void *data,int len); // mathematica association
+extern int jit_edict2(EMITTER emit, void *data, int len);
+
+//extern int jit_json(EMITTER emit,void *data,int len);
+//extern int jit_yaml(EMITTER emit,void *data,int len);
+//extern int jit_swagger(EMITTER emit,void *data,int len);
+//extern int jit_lisp(EMITTER emit,void *data,int len);
+//extern int jit_massoc(EMITTER emit,void *data,int len); // mathematica association
 
 #endif // COMPILE_H

@@ -218,8 +218,6 @@ extern int fnmatch_len(char *pat,int plen,char *str,int slen);
  * "iter": A pointer to a "struct X" object that trails one node behind the "active" node during a traversal.
  * "elem": A pointer to a "struct X" object that is to be pushed onto a stack.
  *
- * Example uses: reverse a stack's elements:
- *
  * main()
  * {
  *     int i;
@@ -237,10 +235,10 @@ extern int fnmatch_len(char *pat,int plen,char *str,int slen);
  *         STACK_POP(iter); // pop the nodes off of the list
  * }
  */
-#define STACK_NEWITER(iter,head) (((iter)=(__typeof__(iter))(head))?(iter)->next:NULL) ///< setup an iterator, return first list item
-#define STACK_ITERATE(iter)      (((iter) && ((iter)=(iter)->next))?(iter)->next:NULL) ///< step iterator, return next list item
-#define STACK_PUSH(iter,item)    ((iter) && (item) && ((item)->next=(iter)->next, (iter)->next=(item))) ///< push item onto stack, returning true on success and false on failure
-#define STACK_POP(iter)          ((iter) && ((!(iter)->next) || (((iter)->next=(iter)->next->next),TRUE))) ///< pop item associated with iter off of stack returning true on success and false on failure
+#define STACK_NEWITER(iter,head) (((iter)=(__typeof__(iter))(head))?(iter)->next:NULL) ///< setup an iterator, return first list item or NULL if there isn't one
+#define STACK_ITERATE(iter)      (((iter) && ((iter)=(iter)->next))?(iter)->next:NULL) ///< iterate iterator, returns next list item or NULL if there isn't one
+#define STACK_PUSH(iter,item)    ((iter) && (item) && ((item)->next=(iter)->next, (iter)->next=(item))) ///< push item onto stack, returning item on success, NULL otherwise
+#define STACK_POP(iter)          ((iter) && ((!(iter)->next) || (((iter)->next=(iter)->next->next),TRUE))) ///< pop item associated with iter off of stack returning TRUE on success, FALSE otherwise
 
 
 #define SHEXDUMP_OPT_UNPADDED 0x1

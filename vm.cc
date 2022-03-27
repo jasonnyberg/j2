@@ -97,7 +97,8 @@ static LTV *vm_ltv_container = NULL;  // holds LTVs we don't want garbage-collec
 static LTV *fun_pop_bc       = NULL;
 static LTV *vm_exception     = NULL;
 
-__attribute__((constructor)) static void init(void) {
+__attribute__((constructor))
+static void init(void) {
     static int initialized = 0;
     if (!initialized) {
         VM_CMD fun_pop_asm[] = {{VMOP_FUN_POP}};
@@ -128,7 +129,7 @@ static LTV *vm_enq(int res, LTV *tos) { return LTV_put(ENV_LIST(res), tos, HEAD,
 static LTV *vm_deq(int res, int pop) { return LTV_get(ENV_LIST(res), pop, HEAD, NULL, NULL); }
 
 LTV *vm_stack_enq(LTV *ltv) { return LTV_enq(LTV_list(vm_deq(VMRES_STACK, KEEP)), ltv, HEAD); }
-LTV *vm_stack_deq(int pop) {
+LTV *vm_stack_deq(int pop) { // walk stack hierarchy, getting/popping first TOS it finds
     auto op   = [&](CLL *lnk) { return LTV_get(LTV_list(((LTVR *) lnk)->ltv), pop, HEAD, NULL, NULL); };
     LTV *rval = CLL_map(ENV_LIST(VMRES_STACK), FWD, op);
     return rval;
@@ -152,7 +153,7 @@ void vm_throw(LTV *ltv) {
 // Specialized Utillties
 
 static LTV *vm_use_ext() {
-    if (vm_env->ext_data && !vm_env->ext)
+    if (!vm_env->ext && vm_env->ext_data)
         vm_env->ext = LTV_init(NEW(LTV), vm_env->ext_data, vm_env->ext_length, vm_env->ext_flags);
     return vm_env->ext;
 }
@@ -393,22 +394,25 @@ done:
 //////////////////////////////////////////////////
 
 #define VMOP_DEBUG() DEBUG(debug(__func__); fprintf(errfile(),"%d %d %s\n",vm_env->state,vm_env->skipdepth,__func__)); TOPCODE(vm_env->state);
-#define SKIP_IF_STATE() do { if (vm_env->state) { goto done; }} while(0);
 
 static void vmop_RESET() { VMOP_DEBUG();
     if (vm_env->state) return;
     vm_reset_ext();
+done:
+    return;
 }
 
 static void vmop_YIELD() { VMOP_DEBUG();
     vm_env->state |= VM_YIELD;
     vm_env->state &= ~VM_BYPASS;
     vm_code_pop();
+done:
+    return;
 }
 
 static void vmop_THROW() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext())
+    if (vm_use_ext())  // "prefix" version
         THROW(1, vm_env->ext);
     else
         THROW(1, vm_exception);
@@ -423,7 +427,7 @@ static void vmop_CATCH() { VMOP_DEBUG();
     else if ((vm_env->state | VM_THROWING) && (!vm_env->skipdepth)) {
         LTV *exception = NULL;
         STRY(!(exception = vm_deq(VMRES_EXCP, KEEP)), "peeking at exception stack");
-        if (vm_use_ext()) {
+        if (vm_use_ext()) {  // "prefix" version
             vm_env->ext = REF_create(vm_env->ext);
             vm_resolve(vm_env->ext);
             THROW(!vm_stack_enq(REF_ltv(REF_HEAD(vm_env->ext))), vm_exception);
@@ -442,17 +446,18 @@ done:
     return;
 }
 
+// tricky... [^x^](1 2 3)
 static void vmop_PUSHEXT() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext()) {
+    if (vm_use_ext()) {  // "prefix" version
         vm_stack_enq(vm_env->ext);
         if (vm_env->ext->flags & LT_REFS)
             vm_resolve(vm_env->ext);
     } else {
         LTV *stack;
-        THROW(!(stack = vm_deq(VMRES_STACK, KEEP)), vm_exception);
+        THROW(!(stack=vm_deq(VMRES_STACK,KEEP)),vm_exception); // get top layer of stack hierarchy
         LTV *dest = NULL;
-        if ((dest = vm_stack_deq(KEEP)) && (dest->flags & LT_REFS) && (dest = vm_stack_deq(POP))) {  // merge stack into ref
+        if ((dest=vm_stack_deq(KEEP)) && (dest->flags&LT_REFS) && (dest=vm_stack_deq(POP))) { // splice stack frame contents into ref
             if (!REF_lti(REF_HEAD(dest)))                                                            // create LTI if it's not already resolved
                 REF_resolve(vm_deq(VMRES_DICT, KEEP), dest, TRUE);
             CLL_MERGE(&(REF_lti(REF_HEAD(dest))->ltvs), LTV_list(stack), REF_HEAD(dest)->reverse);
@@ -466,21 +471,24 @@ done:
 static void vmop_EVAL() { VMOP_DEBUG();
     if (vm_env->state) return;
     vm_eval_ltv(vm_stack_deq(POP));
+ done: return;
 }
 
 
 static void vmop_REF() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext())
+    if (vm_use_ext())  // "prefix" version
         vm_env->ext = REF_create(vm_env->ext);
+ done: return;
 }
 
 static void vmop_DEREF() { VMOP_DEBUG();
     if (vm_env->state) return;
-    vm_resolve(vm_use_ext());
+    THROW(!vm_use_ext(),vm_exception);
+    vm_resolve(vm_env->ext);
     LTV *ltv = REF_ltv(REF_HEAD(vm_env->ext));
     if (!ltv)
-        ltv = LTV_dup(vm_env->ext);
+        ltv=LTV_dup(vm_env->ext); // unresolvable refs are treated as literals(!)
     if (ltv->flags & LT_REFS) {
         LTV *ref = ltv;
         THROW(!(ltv = REF_ltv(REF_HEAD(ref))), vm_exception);
@@ -494,8 +502,11 @@ done:
 static void vmop_ASSIGN() { VMOP_DEBUG();
     if (vm_env->state) return;
     LTV *val;
-    THROW(!(val = vm_stack_deq(POP)), vm_exception);
-    if (!vm_use_ext()) {  // assign to TOS
+    THROW(!(val = vm_stack_deq(POP)), vm_exception);  // pop top of stack
+    if (vm_use_ext()) {                               // "prefix" version
+        REF_resolve(vm_deq(VMRES_DICT, KEEP), vm_env->ext, TRUE);
+        THROW(REF_assign(vm_env->ext, val), vm_exception);
+    } else {  // treat TOS as a ref and assign to it(!)
         LTV *var;
         THROW(!(var = vm_stack_deq(POP)), vm_exception);
         if (var->flags & LT_CVAR) {                                         // if TOS is a cvar
@@ -504,13 +515,10 @@ static void vmop_ASSIGN() { VMOP_DEBUG();
             vm_env->ext = REF_create(var);  // otherwise treat TOS as a reference...
             REF_resolve(vm_deq(VMRES_DICT, KEEP), vm_env->ext, TRUE);
             if (REF_ltv(REF_HEAD(vm_env->ext)))                      // ...and it already exists...
-                THROW(REF_replace(vm_env->ext, val), vm_exception);  // ...REPLACE its value
+                THROW(REF_replace(vm_env->ext, val), vm_exception);  // ...REPLACE its value (to behave like cvar)
             else
                 THROW(REF_assign(vm_env->ext, val), vm_exception);  // ...else install it
         }
-    } else {
-        REF_resolve(vm_deq(VMRES_DICT, KEEP), vm_env->ext, TRUE);
-        THROW(REF_assign(vm_env->ext, val), vm_exception);
     }
 done:
     return;
@@ -518,7 +526,7 @@ done:
 
 static void vmop_REMOVE() { VMOP_DEBUG();
     if (vm_env->state) return;
-    if (vm_use_ext()) {
+    if (vm_use_ext()) {  // "prefix" version
         vm_resolve(vm_env->ext);
         REF_remove(vm_env->ext);
     } else {
@@ -532,8 +540,8 @@ static void vmop_CTX_PUSH() { VMOP_DEBUG();
     if (vm_env->state) { DEBUG(fprintf(errfile(),"  (skipping %s)\n",__func__));
         vm_env->skipdepth++;
     } else {
-        THROW(!vm_enq(VMRES_DICT, vm_stack_deq(POP)), vm_exception);
         THROW(!vm_enq(VMRES_STACK, LTV_NULL_LIST), vm_exception);
+        THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),vm_exception);
     }
 done:
     return;
@@ -571,7 +579,7 @@ static void vmop_FUN_EVAL() { VMOP_DEBUG();
     }
 }
 
-// never skip fun_pop_bc
+// never skip fun_pop
 static void vmop_FUN_POP() { VMOP_DEBUG();
     vm_listcat(VMRES_STACK);
     LTV_release(vm_deq(VMRES_DICT, POP));
@@ -607,32 +615,26 @@ done:
 
 static void vmop_S2D() { VMOP_DEBUG();
     if (vm_env->state) return;
-    THROW(!vm_stack_enq(vm_deq(VMRES_DICT, POP)), vm_exception);
-done:
-    return;
+    THROW(!vm_enq(VMRES_DICT,vm_stack_deq(POP)),vm_exception);
+ done: return;
 }
 
 static void vmop_S2E() { VMOP_DEBUG();
     if (vm_env->state) return;
-    THROW(!vm_stack_enq(vm_deq(VMRES_EXCP, POP)), vm_exception);
-done:
-    return;
+    THROW(!vm_enq(VMRES_EXCP,vm_stack_deq(POP)),vm_exception);
+ done: return;
 }
 
 static void vmop_S2F() { VMOP_DEBUG();
     if (vm_env->state) return;
-    THROW(!vm_stack_enq(vm_deq(VMRES_FUNC, POP)), vm_exception);
-done:
-    return;
+    THROW(!vm_enq(VMRES_FUNC,vm_stack_deq(POP)),vm_exception);
+ done: return;
 }
 
 //////////////////////////////////////////////////
 
-typedef void (*VMOP_CALL)();
-extern VMOP_CALL vmop_call[];
-
 static void vmop_EXT() { VMOP_DEBUG();
-    if (vm_env->ext)
+    if (vm_env->ext) // slimmed reset_ext()
         LTV_release(vm_env->ext);
     vm_env->ext        = NULL;
     vm_env->ext_length=ntohl(*(unsigned *) vm_env->code_ltv->data); vm_env->code_ltv->data += sizeof(unsigned);
@@ -640,14 +642,16 @@ static void vmop_EXT() { VMOP_DEBUG();
     vm_env->ext_data=vm_env->code_ltv->data;                        vm_env->code_ltv->data += vm_env->ext_length;
     TOPEXT(vm_env->ext_data, vm_env->ext_length, vm_env->ext_flags, vm_env->state);
     DEBUG(fprintf(errfile(), CODE_BLUE " ");
-          fprintf(errfile(), "len %d flags %x state %x; -----> ", vm_env->ext_length, vm_env->ext_flags, vm_env->state);
+          fprintf(errfile(),"len %d flags %x state %x; --> ",vm_env->ext_length,vm_env->ext_flags,vm_env->state);
           fstrnprint(errfile(), vm_env->ext_data, vm_env->ext_length);
           fprintf(errfile(), CODE_RESET "\n"));
+ done: return;
 }
 
 //////////////////////////////////////////////////
 
-VMOP_CALL vmop_call[] = {
+typedef void (*VMOP_CALL)();
+static VMOP_CALL vmop_call[] = {
     vmop_RESET,   vmop_YIELD,    vmop_EXT,     vmop_THROW,    vmop_CATCH,
     vmop_PUSHEXT, vmop_EVAL,     vmop_REF,     vmop_DEREF,    vmop_ASSIGN,
     vmop_REMOVE,  vmop_CTX_PUSH, vmop_CTX_POP, vmop_FUN_PUSH, vmop_FUN_EVAL,
@@ -656,11 +660,11 @@ VMOP_CALL vmop_call[] = {
 };
 
 /* no conditionals(!!) */
-static int vm_run() {
+static int vm_run(LTV *bytecode) {
     void *outer[] = {&&outer_exit, &&outer_loop};
     void *inner[] = {&&inner_exit, &&inner_loop};
 
-    vm_code_push(compile(jit_edict, "CODE!", -1));
+    vm_code_push(bytecode);
     goto *outer[!(vm_env->state & (VM_COMPLETE | VM_ERROR))];  // 1st iteration
 outer_loop:
     vm_reset_ext();
@@ -678,6 +682,35 @@ outer_exit:
 //////////////////////////////////////////////////
 // Processor
 //////////////////////////////////////////////////
+void init_vm(LTV *dict) {
+    int   status = 0;
+    char *argid  = NULL;
+
+    LTV *vm_env_stack = LTV_NULL_LIST;
+    LTV *env_cvar = cif_create_cvar(cif_type_info("VM_ENV"), NEW(VM_ENV), NULL);
+    STRY(!env_cvar, "validating creation of env cvar");
+
+    LTV_put(LTV_list(vm_env_stack), env_cvar, HEAD, NULL);
+    vm_env = (VM_ENV *) env_cvar->data;
+
+    {
+        vm_env->state = 0;
+
+        for (int i = 0; i < VMRES_COUNT; i++)
+            LTV_init(&vm_env->ltv[i], NULL, 0, LT_NULL | LT_LIST);
+
+        STRY(!vm_enq(VMRES_STACK, LTV_NULL_LIST), "initializing env stack");
+        STRY(!vm_enq(VMRES_DICT, env_cvar), "adding vm's env to it's own dict");
+        STRY(!vm_enq(VMRES_DICT, dict), "adding user dict to vm env's dict");
+    }
+
+    LTV_release(LTV_get(LTV_list(vm_env_stack), POP, HEAD, NULL, NULL));
+    if ((env_cvar = LTV_get(LTV_list(vm_env_stack), KEEP, HEAD, NULL, NULL)))
+        vm_env = (VM_ENV *) env_cvar->data;
+
+done:
+    return;
+}
 
 // Translate a prepared C callback into an edict function/environment and evaluate it
 static void vm_closure_thunk(ffi_cif *CIF, void *RET, void **ARGS, void *USER_DATA) {
@@ -701,8 +734,8 @@ static void vm_closure_thunk(ffi_cif *CIF, void *RET, void **ARGS, void *USER_DA
             LTV_init(&vm_env->ltv[i], NULL, 0, LT_NULL | LT_LIST);
 
         STRY(!vm_enq(VMRES_STACK, LTV_NULL_LIST), "initializing env stack");
-        STRY(!vm_enq(VMRES_DICT, env_cvar), "adding continuation to env");
-        STRY(!vm_enq(VMRES_DICT, continuation), "adding continuation to env");
+        STRY(!vm_enq(VMRES_DICT, env_cvar), "adding vm's env to it's own dict");
+        STRY(!vm_enq(VMRES_DICT, continuation), "adding continuation (w/ROOT,CODE) to env");
 
         LTV *locals = LTV_init(NEW(LTV), "THUNK_LOCALS", -1, LT_NONE);
         STRY(!vm_enq(VMRES_DICT, locals), "pushing locals into dict");
@@ -719,7 +752,7 @@ static void vm_closure_thunk(ffi_cif *CIF, void *RET, void **ARGS, void *USER_DA
         STRY(cif_args_marshal(ffi_type_info, REV, marshaller), "marshalling ffi args");
         LT_put(locals, "RETURN", HEAD, cif_rval_create(ffi_type_info, RET));  // embed return val cvar in environment; ok if it fails
 
-        vm_run();
+        vm_run(compile(jit_edict, "CODE!", -1));
     }
 
     LTV_release(LTV_get(LTV_list(vm_env_stack), POP, HEAD, NULL, NULL));
@@ -752,6 +785,7 @@ extern LTV *vm_continuation(LTV *ffi_sig, LTV *root, LTV *code) {
 
     LTV *continuation = NULL;
     THROW(!(continuation = cif_create_closure(ffi_sig, vm_closure_thunk)), vm_exception);
+    // just transports initial code and dictionary into vm
     LT_put(continuation, "CODE", HEAD, code);
     LT_put(continuation, "ROOT", HEAD, root);
 done:
@@ -762,12 +796,11 @@ extern LTV *vm_eval(LTV *root, LTV *code, LTV *arg) {
     return vm_await(vm_async(vm_continuation(cif_type_info("(LTV)*(*)((LTV)*)"), root, code), arg));
 }
 
-extern "C" {
 extern int vm_bootstrap(char *bootstrap) {
     cif_init(0);  // must dlopen as lib name when running from library
     LTV *rval = vm_eval(cif_module, LTV_init(NEW(LTV), bootstrap, -1, LT_NONE), LTV_NULL);
     if (rval)
         print_ltv(outfile(), "", rval, "\n", 0);
-    return !rval;
-}
+    printf("exiting...\n");
+    return 0;
 }

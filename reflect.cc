@@ -57,9 +57,9 @@
 #include "vm.h"
 #include "extensions.h"
 
-LTV *cif_module = NULL;  // initialized/populated during bootstrap
+static int cif_curate_module(LTV *module, int bootstrap);
 
-int cif_curate_module(LTV *module, int bootstrap);
+LTV *cif_module = NULL;  // initialized/populated during bootstrap
 
 void cif_init(int bootstrap) {
     if (!cif_module) {
@@ -72,9 +72,9 @@ void cif_init(int bootstrap) {
         print_ltv(stderr, CODE_RED, cif_module, CODE_RESET "\n", 0);
         cif_curate_module(cif_module, bootstrap);
     }
-}
+}                                                                                                                               
 
-char *       Type_pushUVAL(TYPE_UVALUE *uval, char *buf);
+char        *Type_pushUVAL(TYPE_UVALUE *uval, char *buf);
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval, char *buf);
 TYPE_UTYPE   Type_getUVAL(LTV *cvar, TYPE_UVALUE *uval);
 int          Type_putUVAL(LTV *cvar, TYPE_UVALUE *uval);
@@ -84,8 +84,8 @@ LTV *attr_set(LTV *ltv, char *attr, char *val) { return LT_put(ltv, attr, TAIL, 
 LTV *attr_own(LTV *ltv, char *attr, char *val) { return LT_put(ltv, attr, TAIL, LTV_init(NEW(LTV), val, -1, LT_OWN)); }
 LTV *attr_imm(LTV *ltv, char *attr, long long imm) { return LT_put(ltv, attr, TAIL, LTV_init(NEW(LTV), (void *) imm, 0, LT_IMM)); }
 
-//extern char *attr_get(LTV *ltv,char *attr);
-//extern void attr_del(LTV *ltv,char *attr);
+// extern char *attr_get(LTV *ltv,char *attr);
+// extern void attr_del(LTV *ltv,char *attr);
 
 extern char *attr_get(LTV *ltv, char *attr) {
     LTV *attr_ltv = LT_get(ltv, attr, TAIL, KEEP);
@@ -124,10 +124,10 @@ iterate:
         STRY(op(dbg, die, flags), "operating on die");
     // else get first die
 
-    TRY(dwarf_siblingof_b(dbg, die, (flags & RDW_is_info) != 0, &sibling, &error), "retrieving dwarf_sibling");
-    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "checking for DW_DLV_NO_ENTRY"); /* Done at this level. */
-    CATCH(dwarf_errno(error) == DW_DLE_DBG_NO_CU_CONTEXT, 1, goto done, "checking for DW_DLE_DBG_NO_CU_CONTEX %s", dwarf_errmsg(error));
-    SCATCH("checking dwarf_siblingof");
+    TRY(dwarf_siblingof_b(dbg, die, (flags & RDW_is_info) != 0, &sibling, &error), "retrieve dwarf_sibling");
+    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "check for DW_DLV_NO_ENTRY"); /* Done at this level. */
+    CATCH(dwarf_errno(error) == DW_DLE_DBG_NO_CU_CONTEXT, 1, goto done, "check for DW_DLE_DBG_NO_CU_CONTEX %s", dwarf_errmsg(error));
+    SCATCH("check dwarf_siblingof");
 
     if (die)
         dwarf_dealloc(dbg, die, DW_DLA_DIE);
@@ -143,10 +143,10 @@ int traverse_child(Dwarf_Debug dbg, Dwarf_Die die, DIE_OP op, DIEWALK_FLAGS flag
     int         status = 0;
     Dwarf_Error error  = 0;
     Dwarf_Die   child  = 0;
-    TRY(dwarf_child(die, &child, &error), "retrieving dwarf_child");
-    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "checking dwarf child's existence");
-    SCATCH("checking dwarf_child for error");
-    STRY(traverse_siblings(dbg, child, op, flags), "processing %s", flags & RDW_traverse_sibs ? "children" : "child");
+    TRY(dwarf_child(die, &child, &error), "retrieve dwarf_child");
+    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "check dwarf child's existence");
+    SCATCH("check dwarf_child for error");
+    STRY(traverse_siblings(dbg, child, op, flags), "process %s", flags & RDW_traverse_sibs ? "children" : "child");
 done:
     return status;
 }
@@ -185,17 +185,17 @@ int traverse_cus(char *filename, DIE_OP op, CU_DATA *cu_data, DIEWALK_FLAGS flag
                                        &cu_data->next_cu_header_offset,
                                        &cu_data->header_cu_type,
                                        &error),
-                "reading next cu header");
+                "read next cu header");
             DWARF_ID(cu_data->next_cu_header_offset_str, cu_data->next_cu_header_offset);
-            CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "checking for no next cu header");
-            CATCH(status != DW_DLV_OK, status, goto done, "checking error dwarf_next_cu_header");
+            CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "check for no next cu header");
+            CATCH(status != DW_DLV_OK, status, goto done, "check error dwarf_next_cu_header");
 
             static char alias[32];
             DWARF_ALIAS(alias, cu_data->sig8);
             DEBUG(fprintf(stdout, CODE_BLUE "Read a CU header, offset 0x%x sig8 %s cu_type %s" CODE_RESET "\n",
                           cu_data->offset, alias, DW_IDX_STRING[cu_data->header_cu_type]));
 
-            STRY(traverse_siblings(dbg, NULL, op, flags), "processing cu die and sibs");
+            STRY(traverse_siblings(dbg, NULL, op, flags), "process cu die and sibs");
         }
     done:
         return status;
@@ -208,11 +208,11 @@ int traverse_cus(char *filename, DIE_OP op, CU_DATA *cu_data, DIEWALK_FLAGS flag
     }
 
     int filedesc = -1;
-    STRY((filedesc = open(filename, O_RDONLY)) < 0, "opening dwarf2edict input file %s", filename);
-    TRYCATCH(dwarf_init(filedesc, DW_DLC_READ, NULL, NULL, &dbg, &error), status, close_file, "initializing dwarf reader");
-    TRYCATCH(read_cu_list(), status, close_dwarf, "reading cu list");
+    STRY((filedesc = open(filename, O_RDONLY)) < 0, "open dwarf2edict input file %s", filename);
+    TRYCATCH(dwarf_init(filedesc, DW_DLC_READ, NULL, NULL, &dbg, &error), status, close_file, "initialize dwarf reader");
+    TRYCATCH(read_cu_list(), status, close_dwarf, "read cu list");
 close_dwarf:
-    STRY(dwarf_finish(dbg, &error), "finalizing dwarf reader");
+    STRY(dwarf_finish(dbg, &error), "finalize dwarf reader");
 close_file:
     close(filedesc);
 done:
@@ -225,7 +225,7 @@ done:
 
 int print_cu_data(FILE *ofile, CU_DATA *cu_data) {
     int status = 0;
-    STRY(!cu_data, "validating cu data");
+    STRY(!cu_data, "validate cu data");
     fprintf(ofile, "CU DATA");
 #define output_cu_field(fmt, field) fprintf(ofile, "|" #field fmt, cu_data->field)
     output_cu_field("%s", offset_str);
@@ -244,7 +244,7 @@ done:
 
 int dot_cu_data(FILE *ofile, CU_DATA *cu_data) {
     int status = 0;
-    STRY(!cu_data, "validating cu data");
+    STRY(!cu_data, "validate cu data");
     fprintf(ofile, CVAR_FORMAT " [shape=record label=\"{");
     print_cu_data(ofile, cu_data);
     fprintf(ofile, "}\"");
@@ -253,9 +253,14 @@ done:
     return status;
 }
 
-int print_type_info(FILE *ofile, TYPE_INFO_LTV *type_info) {
+int print_type_info(FILE *ofile, LTV *ltv) {
     int status = 0;
-    fprintf(ofile, "TYPE_INFO %s", type_info->id_str);
+    if (!(ltv->flags & LT_TYPE))
+        goto done;
+
+    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
+
+    fprintf(ofile, "|TYPE_INFO %s", type_info->id_str);
     const char *str = NULL;
     static char alias[32];
     DWARF_ALIAS(alias, type_info->sig8);
@@ -278,36 +283,43 @@ int print_type_info(FILE *ofile, TYPE_INFO_LTV *type_info) {
     if (type_info->flags & TYPEF_IS_INFO) fprintf(ofile, "|info");
     if (type_info->flags & TYPEF_IS_DECL) fprintf(ofile, "|decl");
     if (type_info->flags & TYPEF_SIGNATURE) fprintf(ofile, "|sig %s", alias);
+
+done:
     return status;
 }
 
-int dot_type_info(FILE *ofile, TYPE_INFO_LTV *type_info) {
+int dot_type_info(FILE *ofile, LTV *ltv) {
     int status = 0;
-    fprintf(ofile, CVAR_FORMAT " [shape=record label=\"{", type_info);
-    print_type_info(ofile, type_info);
-    fprintf(ofile, "}\"");
-    if (type_info->flags & TYPEF_UPPERBOUND)
-        fprintf(ofile, " color=white");
-    switch (type_info->tag) {
-        case DW_TAG_compile_unit:     fprintf(ofile," style=filled fillcolor=red rank=max"); break;
-        case DW_TAG_subprogram:       fprintf(ofile," style=filled fillcolor=orange"); break;
-        case DW_TAG_subroutine_type:  fprintf(ofile," style=filled fillcolor=darkorange"); break;
-        case DW_TAG_formal_parameter: fprintf(ofile," style=filled fillcolor=gold"); break;
-        case DW_TAG_variable:         fprintf(ofile," style=filled fillcolor=cyan"); break;
-        case DW_TAG_typedef:          fprintf(ofile," style=filled fillcolor=green"); break;
-        case DW_TAG_structure_type:   fprintf(ofile," style=filled fillcolor=blue"); break;
-        case DW_TAG_class_type:       fprintf(ofile," style=filled fillcolor=blue"); break;
-        case DW_TAG_union_type:       fprintf(ofile," style=filled fillcolor=violet"); break;
-        case DW_TAG_member:           fprintf(ofile," style=filled fillcolor=lightblue"); break;
-        case DW_TAG_enumeration_type: fprintf(ofile," style=filled fillcolor=magenta"); break;
-        case DW_TAG_array_type:       fprintf(ofile," style=filled fillcolor=gray80"); break;
-        case DW_TAG_pointer_type:     fprintf(ofile," style=filled fillcolor=gray90"); break;
-        case DW_TAG_base_type:        fprintf(ofile," style=filled fillcolor=yellow rank=min"); break;
-        case DW_TAG_enumerator:       fprintf(ofile," style=filled fillcolor=pink rank=min"); break;
-        case DW_TAG_subrange_type:    fprintf(ofile," style=filled fillcolor=gray80 rank=min"); break;
-        case DW_TAG_type_unit:        fprintf(ofile," style=filled fillcolor=darkred rank=min"); break;
+
+    fprintf(ofile, "shape=record color=%s style=filled label=\"{{CVAR(%x)", ltv->flags & LT_RO ? "red" : "black", ltv->data);
+    print_type_info(ofile, ltv);
+    fprintf(ofile, "}}\"");
+
+    if (!(ltv->flags & LT_TYPE)) {
+        fprintf(ofile, " fillcolor=beige");
+        goto done;
     }
-    fprintf(ofile, "]\n");
+
+    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
+    switch (type_info->tag) {
+        case DW_TAG_compile_unit: fprintf(ofile, " fillcolor=red rank=max"); break;
+        case DW_TAG_subprogram: fprintf(ofile, " fillcolor=orange"); break;
+        case DW_TAG_subroutine_type: fprintf(ofile, " fillcolor=darkorange"); break;
+        case DW_TAG_formal_parameter: fprintf(ofile, " fillcolor=gold"); break;
+        case DW_TAG_variable: fprintf(ofile, " fillcolor=cyan"); break;
+        case DW_TAG_typedef: fprintf(ofile, " fillcolor=green"); break;
+        case DW_TAG_structure_type: fprintf(ofile, " fillcolor=blue"); break;
+        case DW_TAG_class_type: fprintf(ofile, " fillcolor=blue"); break;
+        case DW_TAG_union_type: fprintf(ofile, " fillcolor=violet"); break;
+        case DW_TAG_member: fprintf(ofile, " fillcolor=lightblue"); break;
+        case DW_TAG_enumeration_type: fprintf(ofile, " fillcolor=magenta"); break;
+        case DW_TAG_array_type: fprintf(ofile, " fillcolor=gray80"); break;
+        case DW_TAG_pointer_type: fprintf(ofile, " fillcolor=gray90"); break;
+        case DW_TAG_base_type: fprintf(ofile, " fillcolor=yellow rank=min"); break;
+        case DW_TAG_enumerator: fprintf(ofile, " fillcolor=pink rank=min"); break;
+        case DW_TAG_subrange_type: fprintf(ofile, " fillcolor=gray80 rank=min"); break;
+        case DW_TAG_type_unit: fprintf(ofile, " fillcolor=darkred rank=min"); break;
+    }
 done:
     return status;
 }
@@ -402,7 +414,7 @@ LTV *cif_get_element(LTV *type, int index) {
 
 LTV *cif_create_cvar(LTV *type, void *data, char *member) {
     int            status     = 0;
-    LTV *          basic_type = NULL, *member_type = NULL, *cvar = NULL;
+    LTV           *basic_type = NULL, *member_type = NULL, *cvar = NULL;
     TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
     basic_type               = member ? cif_find_indexable(type) : cif_find_concrete(type);
     int size                 = 0;
@@ -441,7 +453,7 @@ LTV *cif_create_cvar(LTV *type, void *data, char *member) {
                     int   index = strtol(member, &end, 0);
                     if (errno || (end == member))
                         return NULL;  // failed to find member, but we don't need to STRY/report it so just return right here
-                    STRY(!(basic_type = cif_find_concrete(LT_get(basic_type, TYPE_BASE, HEAD, KEEP))), "dereferencing pointer type");
+                    STRY(!(basic_type = cif_find_concrete(LT_get(basic_type, TYPE_BASE, HEAD, KEEP))), "dereference pointer type");
                     basic_type_info = (TYPE_INFO_LTV *) basic_type->data;
                     int offset      = index * basic_type_info->bytesize;
                     if (!is_array)  // data points to location of a pointer
@@ -461,9 +473,9 @@ LTV *cif_create_cvar(LTV *type, void *data, char *member) {
     }
 
     if (data)
-        STRY(!(cvar = LTV_init(NEW(LTV), data, size, LT_BIN | LT_CVAR | is_array)), "creating reference cvar");
+        STRY(!(cvar = LTV_init(NEW(LTV), data, size, LT_BIN | LT_CVAR | is_array)), "create reference cvar");
     else
-        STRY(!(cvar = LTV_init(NEW(LTV), (void *) mymalloc(size), size, LT_OWN | LT_BIN | LT_CVAR | is_array)), "creating allocated cvar");
+        STRY(!(cvar = LTV_init(NEW(LTV), (void *) mymalloc(size), size, LT_OWN | LT_BIN | LT_CVAR | is_array)), "create allocated cvar");
     LT_put(cvar, TYPE_BASE, HEAD, type);
 done:
     return status ? NULL : cvar;
@@ -471,9 +483,9 @@ done:
 
 LTV *cif_assign_cvar(LTV *dst, LTV *src) {
     int         status   = 0;
-    LTV *       type     = NULL;
+    LTV        *type     = NULL;
     TYPE_UVALUE dst_uval = {}, src_uval = {};
-    STRY(!Type_getUVAL(dst, &dst_uval), "testing cvar dest compatibility");
+    STRY(!Type_getUVAL(dst, &dst_uval), "test cvar dest compatibility");
     if (Type_getUVAL(src, &src_uval))
         Type_putUVAL(dst, &src_uval);
     else
@@ -485,14 +497,15 @@ done:
 int cif_dump_cvar(FILE *ofile, LTV *cvar, int depth) {
     int  status = 0;
     LTV *type;
-    STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "validating cvar via type");
+    TRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "validate cvar via type");
+    CATCH(status, 0, goto done, "not descendable");
     CLL queue;
     CLL_init(&queue);
     LTV_enq(&queue, cif_create_cvar(type, cvar->data, NULL), TAIL);  // copy cvar so we don't mess with it
 
     auto traverse_array = [&](LTV *cvar, int count) {
         int status = 0;
-        STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "looking up cvar type");
+        STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "look up cvar type");
         TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
         for (int i = 0; i < count; i++) {
             cif_dump_cvar(ofile, cvar, depth + 4);
@@ -507,7 +520,7 @@ int cif_dump_cvar(FILE *ofile, LTV *cvar, int depth) {
         LTV *type   = NULL;
 
         auto type_info_op = [&](CLL *lnk) {
-            LTV *          ltv       = ((LTVR *) lnk)->ltv;
+            LTV           *ltv       = ((LTVR *) lnk)->ltv;
             TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
             switch (type_info->tag) {
                 case DW_TAG_member:
@@ -521,7 +534,7 @@ int cif_dump_cvar(FILE *ofile, LTV *cvar, int depth) {
             return status ? (void *) NON_NULL : (void *) NULL;
         };
 
-        STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "looking up cvar type");
+        STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "look up cvar type");
         TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
 
         char *name = attr_get(type, TYPE_SYMB);
@@ -550,10 +563,10 @@ int cif_dump_cvar(FILE *ofile, LTV *cvar, int depth) {
                 case DW_TAG_array_type: {
                     TYPE_INFO_LTV *base_info = NULL;
                     if (type_info->flags & TYPEF_BASE)  // link to base type
-                        STRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "looking up base die for %s", type_info->id_str);
+                        STRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "look up base die for %s", type_info->id_str);
                     char *base_symb = base_info && (base_info->flags & TYPEF_SYMBOLIC) ? attr_get(&base_info->ltv, TYPE_SYMB) : NULL;
                     if (base_symb) {
-                        LTV *          subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
+                        LTV           *subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
                         TYPE_INFO_LTV *subrange     = subrange_ltv ? (TYPE_INFO_LTV *) subrange_ltv->data : NULL;
                         if (subrange && (subrange->flags & TYPEF_UPPERBOUND)) {
                             fprintf(ofile, "\n");
@@ -607,11 +620,11 @@ done:
 int cif_print_cvar(FILE *ofile, LTV *ltv, int depth) {
     int status = 0;
     if (ltv->flags & LT_FFI)
-        fprintf(ofile, "FFI: ");
+        fprintf(ofile,"FFI ");
     if (ltv->flags & LT_CIF)
-        fprintf(ofile, "CIF: ");
+        fprintf(ofile,"CIF ");
     if (ltv->flags & LT_TYPE)  // special case
-        print_type_info(ofile, (TYPE_INFO_LTV *) ltv);
+        print_type_info(ofile, ltv);
     else
         cif_dump_cvar(ofile, ltv, depth);  // use reflection!!!!!
 done:
@@ -621,21 +634,21 @@ done:
 
 int cif_dot_cvar(FILE *ofile, LTV *ltv) {
     int status = 0;
-    if (ltv->flags & LT_TYPE)
-        dot_type_info(ofile, (TYPE_INFO_LTV *) ltv);
-    fprintf(ofile, "\"LTV%x\" -> " CVAR_FORMAT " [color=purple]\n", ltv, ltv->data);  // link ltv to type_info
+    fprintf(ofile, "\"LTV%x\" [", ltv);
+    dot_type_info(ofile, ltv);
+    fprintf(ofile, "]\n");
 done:
     return status;
 }
 
-void graph_types_to_file(char *filename, LTV *ltv) {
+extern void graph_types_to_file(char *filename, LTV *ltv) {
     FILE *ofile = fopen(filename, "w");
     CLL   ltvs;
     CLL_init(&ltvs);
     LTV_enq(&ltvs, ltv, HEAD);
-    fprintf(ofile, "digraph iftree\n{\ngraph [rankdir=LR /*ratio=compress, concentrate=true*/] node [shape=record] edge []\n");
+    fprintf(ofile, "digraph iftree\n{\ngraph [rankdir=LR, ratio=compress, concentrate=true] node [shape=record] edge []\n");
     ltvs2dot_simple(ofile, &ltvs, 0, filename);
-    //ltvs2dot(ofile,&ltvs,0,filename);
+    // ltvs2dot(ofile,&ltvs,0,filename);
     fprintf(ofile, "}\n");
     LTV_deq(&ltvs, HEAD);
     fclose(ofile);
@@ -644,14 +657,15 @@ void graph_types_to_file(char *filename, LTV *ltv) {
 int cif_die_offset(Dwarf_Die die, Dwarf_Off *offset, Dwarf_Error *error) {
     int       status    = 0;
     Dwarf_Off cu_offset = 0, die_offset = 0;
-    STRY(dwarf_CU_dieoffset_given_die(die, &cu_offset, error), "getting cu offset");
-    STRY(dwarf_die_CU_offset(die, &cu_offset, error), "getting cu offset");
+    STRY(dwarf_CU_dieoffset_given_die(die, &cu_offset, error), "get cu offset");
+    STRY(dwarf_die_CU_offset(die, &cu_offset, error), "get cu offset");
     *offset = cu_offset + die_offset;
 done:
     return status;
 }
 
-#define IF_OK(cond,followup) if (cond==DW_DLV_OK) followup
+#define IF_OK(cond, followup) \
+    if (cond == DW_DLV_OK) followup
 
 int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info, CU_DATA *cu_data) {
     int         status = 0;
@@ -659,14 +673,14 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
 
     char *diename = NULL;
 
-    STRY(!type_info || !cu_data, "validating params");
+    STRY(!type_info || !cu_data, "validate params");
 
-    STRY(die == NULL, "testing for null die");
-    STRY(dwarf_die_CU_offset(die, &type_info->offset, &error), "getting CU-relative die offset");
+    STRY(die == NULL, "test for null die");
+    STRY(dwarf_die_CU_offset(die, &type_info->offset, &error), "get CU-relative die offset");
     Dwarf_Off goff;
-    STRY(dwarf_dieoffset(die, &goff, &error), "getting global die offset");
+    STRY(dwarf_dieoffset(die, &goff, &error), "get global die offset");
     DWARF_ID(type_info->id_str, goff);
-    STRY(dwarf_tag(die, &type_info->tag, &error), "getting die tag");
+    STRY(dwarf_tag(die, &type_info->tag, &error), "get die tag");
 
     if (dwarf_get_die_infotypes_flag(die))
         type_info->flags |= TYPEF_IS_INFO;
@@ -728,9 +742,9 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
 
     Dwarf_Signed     atcnt  = 0;
     Dwarf_Attribute *atlist = NULL;
-    TRY(dwarf_attrlist(die, &atlist, &atcnt, &error), "getting die attrlist");
-    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "checking for DW_DLV_NO_ENTRY in dwarf_attrlist");
-    SCATCH("getting die attrlist");
+    TRY(dwarf_attrlist(die, &atlist, &atcnt, &error), "get die attrlist");
+    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "check for DW_DLV_NO_ENTRY in dwarf_attrlist");
+    SCATCH("get die attrlist");
 
     Dwarf_Attribute *attr = NULL;
     while (atcnt--) {
@@ -738,15 +752,15 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
         attr = &atlist[atcnt];
 
         Dwarf_Half vshort;
-        STRY(dwarf_whatattr(*attr, &vshort, &error), "getting attr type");
+        STRY(dwarf_whatattr(*attr, &vshort, &error), "get attr type");
         Dwarf_Off  voffset;
         Dwarf_Sig8 vsig8;
-        char *     vstr;
+        char      *vstr;
 
         auto dump_attr = [&](FILE *ofile) {
             int status = 0;
 
-            fprintf(ofile, CODE_RED "dumping attr 0x%x\n", vshort);
+            fprintf(ofile, CODE_RED "dump attr 0x%x\n", vshort);
             Dwarf_Signed   vint;
             Dwarf_Unsigned vuint;
             Dwarf_Addr     vaddr;
@@ -754,17 +768,17 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
             Dwarf_Half     vshort;
             Dwarf_Bool     vbool;
             Dwarf_Ptr      vptr;
-            Dwarf_Block *  vblock;
+            Dwarf_Block   *vblock;
             Dwarf_Sig8     vsig8;
-            char *         vstr;
-            const char *   vcstr;
+            char          *vstr;
+            const char    *vcstr;
 
-            STRY(dwarf_whatform(*attr, &vshort, &error), "getting attr form");
-            STRY(dwarf_get_FORM_name(vshort, &vcstr), "getting attr formname");
+            STRY(dwarf_whatform(*attr, &vshort, &error), "get attr form");
+            STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr formname");
             fprintf(ofile, "form %d (%s) ", vshort, vcstr);
 
-            STRY(dwarf_whatform_direct(*attr, &vshort, &error), "getting attr form_direct");
-            STRY(dwarf_get_FORM_name(vshort, &vcstr), "getting attr form_direct name");
+            STRY(dwarf_whatform_direct(*attr, &vshort, &error), "get attr form_direct");
+            STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr form_direct name");
             fprintf(ofile, "form_direct %d (%s) ", vshort, vcstr);
 
             IF_OK(dwarf_formref(*attr, &voffset, &error), fprintf(ofile, "formref 0x%" DW_PR_DSx " ", voffset));
@@ -788,7 +802,7 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
                 type_info->flags |= TYPEF_HAS_NAME;
                 break;
             case DW_AT_type:  // global_formref
-                //STRY(dwarf_whatform(*attr,&vshort,&error),"getting attr form");
+                // STRY(dwarf_whatform(*attr,&vshort,&error),"get attr form");
                 IF_OK(dwarf_global_formref(*attr, &type_info->base, &error), type_info->flags |= TYPEF_BASE);
                 DWARF_ID(type_info->base_str, type_info->base);
                 IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= (TYPEF_BASE | TYPEF_SIGNATURE));
@@ -827,7 +841,7 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
                 type_info->flags |= TYPEF_VECTOR;  // an attribute of an array
                 break;
             case DW_AT_signature:
-                //case DW_AT_GNU_odr_signature: // One Definition Rule
+                // case DW_AT_GNU_odr_signature: // One Definition Rule
                 IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
                 IF_OK(dwarf_formudata(*attr, (Dwarf_Unsigned *) &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
                 if (!(type_info->flags & TYPEF_SIGNATURE)) {
@@ -890,11 +904,12 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
             int            status = 0;
             Dwarf_Locdesc *llbuf;
             Dwarf_Signed   listlen;
-            STRY(dwarf_loclist_from_expr(dbg, exprloc, exprlen, &llbuf, &listlen, &error), "getting exprloc");
-            for (int j = 0; j < llbuf->ld_cents; j++) {
-                if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31);
-                else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31);
-                else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31);
+            STRY(dwarf_loclist_from_expr(dbg, exprloc, exprlen, &llbuf, &listlen, &error), "get exprloc");
+            for (int j=0;j<llbuf->ld_cents;j++)
+            {
+                if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ;
+                else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ;
+                else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31) ;
                 else
                     switch (llbuf->ld_s[j].lr_atom) {
                         case DW_OP_addr:
@@ -988,8 +1003,8 @@ done:
 char *get_diename(Dwarf_Debug dbg, Dwarf_Die die) {
     int         status  = 0;
     Dwarf_Error error   = 0;
-    char *      diename = NULL;
-    STRY(dwarf_diename(die, &diename, &error) == DW_DLV_ERROR, "checking dwarf_diename");
+    char       *diename = NULL;
+    STRY(dwarf_diename(die, &diename, &error) == DW_DLV_ERROR, "check dwarf_diename");
     char *type_info_name = diename ? bufdup(diename, -1) : NULL;
     dwarf_dealloc(dbg, diename, DW_DLA_STRING);
 done:
@@ -1002,11 +1017,11 @@ int cif_preview_module(LTV *module)  // just put the cu name under module
     auto    op = [&](Dwarf_Debug dbg, Dwarf_Die die, DIEWALK_FLAGS flags) {
         int         status  = 0;
         Dwarf_Error error   = 0;
-        char *      cu_name = NULL;
+        char       *cu_name = NULL;
         Dwarf_Off   offset;
-        STRY(dwarf_CU_dieoffset_given_die(die, &offset, &error), "getting global die offset");
-        STRY(!(cu_name = get_diename(dbg, die)), "looking up compile unit die name");
-        STRY(!attr_imm(module, cu_name, (long long) offset), "adding compile unit name to list of compile units");
+        STRY(dwarf_CU_dieoffset_given_die(die, &offset, &error), "get global die offset");
+        STRY(!(cu_name = get_diename(dbg, die)), "look up compile unit die name");
+        STRY(!attr_imm(module, cu_name, (long long) offset), "add compile unit name to list of compile units");
     done:
         return status;
     };
@@ -1033,7 +1048,7 @@ int cif_dump_module(char *ofilename, LTV *module) {
 
     // simple dump of just typenames linked to their base types
     fprintf(ofile, "digraph iftree\n{\ngraph [ratio=compress, concentrate=true] node [shape=record] edge []\n");
-    STRY(ltv_traverse(module, traverse_types, NULL) != NULL, "traversing module");
+    STRY(ltv_traverse(module, traverse_types, NULL) != NULL, "traverse module");
     fprintf(ofile, "}\n");
 done:
     fclose(ofile);
@@ -1048,19 +1063,19 @@ static int cif_curate_module(LTV *module, int bootstrap) {
     int     status = 0;
     CU_DATA cu_data;
 
-    LTV * type_ltvs = LTV_NULL_LIST;
-    LTV * index[]   = {LTV_NULL, LTV_NULL};  // type_units, compile_units
-    LTV * aliases   = LTV_NULL;
+    LTV  *type_ltvs = LTV_NULL_LIST;
+    LTV  *index[]   = {LTV_NULL, LTV_NULL};  // type_units, compile_units
+    LTV  *aliases   = LTV_NULL;
     void *dlhandle  = NULL;
 
     auto derive_symbolic_name = [&](TYPE_INFO_LTV *type_info, int post) {
         int status = 0;
         if (!type_info->tag) return 0;
 
-        TRYCATCH(type_info->flags & TYPEF_SYMBOLIC, 0, done, "checking if symbolic name already derived");
+        TRYCATCH(type_info->flags & TYPEF_SYMBOLIC, 0, done, "check if symbolic name already derived");
         TYPE_INFO_LTV *base_info = NULL;
         if (type_info->flags & TYPEF_BASE) {  // link to base type
-            TRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "looking up base die for %s", type_info->id_str);
+            TRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "look up base die for %s", type_info->id_str);
             CATCH(status, 0, goto done, "");
         }
 
@@ -1085,7 +1100,8 @@ static int cif_curate_module(LTV *module, int bootstrap) {
         auto categorize_symbolic = [&](char *sym) {
             auto tag_category = [&](TYPE_INFO_LTV *type) {
                 switch (type->tag) {
-                    case DW_TAG_subprogram: case DW_TAG_subroutine_type: return (int) DW_TAG_subprogram;
+                    case DW_TAG_subprogram:
+                    case DW_TAG_subroutine_type: return (int) DW_TAG_subprogram;
                     default: return (int) type->tag;
                 }
             };
@@ -1114,7 +1130,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
             }
 
             if (!deduped) {
-                DEBUG(fprintf(stdout, "installing symbolic type_info %s (%s)\n", sym, type_info->id_str));
+                DEBUG(fprintf(stdout, "install symbolic type_info %s (%s)\n", sym, type_info->id_str));
                 LT_put(module, sym, HEAD, &type_info->ltv);
             }
 
@@ -1153,7 +1169,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                 break;
             case DW_TAG_array_type:
                 if (post && base_symb) {
-                    LTV *          subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
+                    LTV           *subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
                     TYPE_INFO_LTV *subrange     = subrange_ltv ? (TYPE_INFO_LTV *) subrange_ltv->data : NULL;
                     if (subrange && (subrange->flags & TYPEF_UPPERBOUND)) {
                         if (base_info && (base_info->flags & TYPEF_BYTESIZE)) {
@@ -1203,7 +1219,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                         return (int) 0;
                     };
                     bufloc += sprintf(bufloc, "%s(*)(", base_symb);
-                    STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshalling ffi args");  // pre-
+                    STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshall ffi args");  // pre-
                     bufloc += sprintf(bufloc - (count ? 1 : 0), ")");
                     TYPE_INFO_LTV *cvar_type = categorize_symbolic(signature);  // GLOBAL!
 
@@ -1241,12 +1257,12 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                     categorize_symbolic(FORMATA(composite_name, strlen(type_name), "%s", type_name));
                 break;
             case DW_TAG_member:
-                if (post && type_name)
-                    attr_set(&type_info->ltv, TYPE_SYMB, type_name);  // let the member have it's own name, even if it's not a "symbolic" type
+                if (post && type_name && !attr_get(&type_info->ltv, TYPE_SYMB))  // if member not already named...
+                    attr_set(&type_info->ltv, TYPE_SYMB, type_name);             // ...give it it's own name, even if it's not a "symbolic" type
                 break;
-            case DW_TAG_formal_parameter:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "%s", base_symb));
+            case DW_TAG_formal_parameter:  // name would be same as base, redundantly.
+                // if (post && base_symb)
+                //     categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
                 break;
 
             case DW_TAG_reference_type:  // C++?
@@ -1296,8 +1312,8 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                         advance(namelen);
                         advance(series(macro, len, WHITESPACE, NULL, NULL));
                         if (len) {
-                            //fprintf(stdout,name[namelen-1]!=')'?CODE_BLUE:CODE_GREEN);
-                            //fprintf(stdout,"%s" CODE_RED " %s" CODE_RESET " (%d) \n",name,macro,len);
+                            // fprintf(stdout,name[namelen-1]!=')'?CODE_BLUE:CODE_GREEN);
+                            // fprintf(stdout,"%s" CODE_RED " %s" CODE_RESET " (%d) \n",name,macro,len);
                             if (name[namelen - 1] != ')' && !LT_get(module, name, TAIL, KEEP))
                                 LT_put(module, name, TAIL, LTV_init(NEW(LTV), macro, len, LT_DUP));
                         }
@@ -1318,7 +1334,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
 
                 for (;;) {
                     if (is_primary) {
-                        TRY(dwarf_get_macro_context(die, &version, &macro_context, &macro_unit_offset, &number_of_ops, &ops_total_byte_len, &err), "getting primary macro context");
+                        TRY(dwarf_get_macro_context(die, &version, &macro_context, &macro_unit_offset, &number_of_ops, &ops_total_byte_len, &err), "get primary macro context");
                         is_primary = FALSE;
                     } else {
                         LTV *macro_ltv = LT_get(module, "macro context", HEAD, POP);
@@ -1326,11 +1342,11 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                             break;
                         macro_unit_offset = (Dwarf_Unsigned) macro_ltv->data;
                         LTV_release(macro_ltv);
-                        TRY(dwarf_get_macro_context_by_offset(die, macro_unit_offset, &version, &macro_context, &number_of_ops, &ops_total_byte_len, &err), "getting macro context by offset");
+                        TRY(dwarf_get_macro_context_by_offset(die, macro_unit_offset, &version, &macro_context, &number_of_ops, &ops_total_byte_len, &err), "get macro context by offset");
                     }
 
-                    CATCH(status == DW_DLV_NO_ENTRY, 0, break, "exhausting macro context");
-                    SCATCH("processing macro context");
+                    CATCH(status == DW_DLV_NO_ENTRY, 0, break, "exhaust macro context");
+                    SCATCH("process macro context");
 
                     for (k = 0; k < number_of_ops; ++k) {
                         Dwarf_Unsigned     section_offset = 0;
@@ -1340,32 +1356,32 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                         Dwarf_Unsigned     line_number    = 0;
                         Dwarf_Unsigned     index          = 0;
                         Dwarf_Unsigned     offset         = 0;
-                        const char *       macro_string   = 0;
+                        const char        *macro_string   = 0;
                         int                lres           = 0;
 
-                        STRY(DW_DLV_OK != dwarf_get_macro_op(macro_context, k, &section_offset, &macro_operator, &forms_count, &formcode_array, &err), "calling dwarf_get_macro_op");
+                        STRY(DW_DLV_OK != dwarf_get_macro_op(macro_context, k, &section_offset, &macro_operator, &forms_count, &formcode_array, &err), "call dwarf_get_macro_op");
 
                         switch (macro_operator) {
                             case DW_MACRO_define:
                             case DW_MACRO_define_strp:
                             case DW_MACRO_define_strx:
                             case DW_MACRO_define_sup:
-                                STRY(DW_DLV_OK != dwarf_get_macro_defundef(macro_context, k, &line_number, &index, &offset, &forms_count, &macro_string, &err), "calling dwarf_get_macro_defundef");
+                                STRY(DW_DLV_OK != dwarf_get_macro_defundef(macro_context, k, &line_number, &index, &offset, &forms_count, &macro_string, &err), "call dwarf_get_macro_defundef");
                                 macro_define((char *) macro_string);
                                 break;
                             case DW_MACRO_undef:
                             case DW_MACRO_undef_strp:
                             case DW_MACRO_undef_strx:
                             case DW_MACRO_undef_sup:
-                                STRY(DW_DLV_OK != dwarf_get_macro_defundef(macro_context, k, &line_number, &index, &offset, &forms_count, &macro_string, &err), "calling dwarf_get_macro_defundef");
+                                STRY(DW_DLV_OK != dwarf_get_macro_defundef(macro_context, k, &line_number, &index, &offset, &forms_count, &macro_string, &err), "call dwarf_get_macro_defundef");
                                 macro_undefine((char *) macro_string);
                                 break;
                             case DW_MACRO_import:
-                                STRY(DW_DLV_OK != dwarf_get_macro_import(macro_context, k, &offset, &err), "calling dwarf_get_macro_import");
+                                STRY(DW_DLV_OK != dwarf_get_macro_import(macro_context, k, &offset, &err), "call dwarf_get_macro_import");
                                 LT_put(module, "macro context", TAIL, LTV_init(NEW(LTV), (void *) offset, 0, LT_IMM));
                                 break;
                             case DW_MACRO_import_sup:
-                                STRY(DW_DLV_OK != dwarf_get_macro_import(macro_context, k, &offset, &err), "calling dwarf_get_macro_import");
+                                STRY(DW_DLV_OK != dwarf_get_macro_import(macro_context, k, &offset, &err), "call dwarf_get_macro_import");
                                 fprintf(stderr, "import_sup(?)\n");
                                 break;
                             default:
@@ -1390,54 +1406,54 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                         break;
                     case DW_TAG_compile_unit:
                         if (!LTV_empty(&type_info->ltv) && name)
-                            STRY(!LT_put(module, name, TAIL, &type_info->ltv), "linking cu to module");
+                            STRY(!LT_put(module, name, TAIL, &type_info->ltv), "link cu to module");
                         break;
                     case DW_TAG_subroutine_type:
                     case DW_TAG_subprogram:
                     case DW_TAG_variable:
                         if (parent && name)
-                            STRY(!LT_put(parent, name, TAIL, &type_info->ltv), "linking extern subprogram/variable to parent");
+                            STRY(!LT_put(parent, name, TAIL, &type_info->ltv), "link extern subprogram/variable to parent");
                         break;
                     case DW_TAG_subrange_type:
                         if (parent)
-                            STRY(!LT_put(parent, "subrange type", TAIL, &type_info->ltv), "linking subrange type to parent");
+                            STRY(!LT_put(parent, "subrange type", TAIL, &type_info->ltv), "link subrange type to parent");
                         break;
                     case DW_TAG_member:
                     case DW_TAG_formal_parameter:
                         if (parent) {
-                            STRY(!LT_put(parent, TYPE_LIST, TAIL, &type_info->ltv), "linking child to parent in sequence");
+                            STRY(!LT_put(parent, TYPE_LIST, TAIL, &type_info->ltv), "link child to parent in sequence");
                             if (name)
-                                STRY(!LT_put(parent, name, TAIL, &type_info->ltv), "linking type info to parent");
+                                STRY(!LT_put(parent, name, TAIL, &type_info->ltv), "link type info to parent");
                         }
                         break;
                     case DW_TAG_unspecified_parameters:  // varargs
                         if (parent)
-                            STRY(!LT_put(parent, "unspecified parameters", TAIL, &type_info->ltv), "linking unspecified parameters to parent");
+                            STRY(!LT_put(parent, "unspecified parameters", TAIL, &type_info->ltv), "link unspecified parameters to parent");
                         break;
                     default:
                         if (parent && name)
-                            STRY(!LT_put(parent, name, TAIL, &type_info->ltv), "linking type info to parent");
+                            STRY(!LT_put(parent, name, TAIL, &type_info->ltv), "link type info to parent");
                         break;
                 }
             done:
                 return status;
             };
 
-            char *    name = NULL;
+            char     *name = NULL;
             Dwarf_Off offset;
             char      offset_str[TYPE_IDLEN];
-            STRY(dwarf_dieoffset(die, &offset, &error), "getting global die offset");
+            STRY(dwarf_dieoffset(die, &offset, &error), "get global die offset");
             DWARF_ID(offset_str, offset);
             int is_cu = cu_data.header_cu_type == DW_IDX_compile_unit;
 
             if (!(type_info = (TYPE_INFO_LTV *) LT_get(index[is_cu], offset_str, HEAD, KEEP))) {  // may have been curated previously
                 // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
-                STRY(!(type_info = NEW(TYPE_INFO_LTV)), "creating a type_info item");
-                STRY(!LTV_init(&type_info->ltv, type_info, sizeof(TYPE_INFO_LTV), LT_BIN | LT_CVAR | LT_TYPE), "initializing type_info");
-                STRY(!LTV_put(LTV_list(type_ltvs), &type_info->ltv, HEAD, NULL), "putting type_ltv on gc list");  // any unused types will be garbage collected later
+                STRY(!(type_info = NEW(TYPE_INFO_LTV)), "create a type_info item");
+                STRY(!LTV_init(&type_info->ltv, type_info, sizeof(TYPE_INFO_LTV), LT_BIN | LT_CVAR | LT_TYPE), "initialize type_info");
+                STRY(!LTV_put(LTV_list(type_ltvs), &type_info->ltv, HEAD, NULL), "put type_ltv on gc list");  // any unused types will be garbage collected later
 
                 type_info->depth = depth;
-                STRY(populate_type_info(dbg, die, type_info, &cu_data), "populating die type info");
+                STRY(populate_type_info(dbg, die, type_info, &cu_data), "populate die type info");
 
                 switch (type_info->tag) {
                     case DW_TAG_subprogram:
@@ -1447,7 +1463,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                 }
 
                 if ((name = get_diename(dbg, die)))  // name is allocated from heap...
-                    STRY(!attr_own(&type_info->ltv, TYPE_NAME, name), "naming type info");
+                    STRY(!attr_own(&type_info->ltv, TYPE_NAME, name), "name type info");
 
                 if (type_info->tag) {
                     DEBUG(fprintf(stdout, "%*c", MAX(0, depth * 4 - 2), ' '));
@@ -1457,14 +1473,14 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                     DEBUG(fprintf(stdout, "disqualified die %s\n", type_info->id_str));
 
                 if (type_info->tag != DW_TAG_compile_unit || LT_get(module, name, HEAD, KEEP)) {  // only traverse listed CU's siblings
-                    STRY(link2parent(name), "linking die to parent");
-                    STRY(!LT_put(index[is_cu], type_info->id_str, TAIL, &type_info->ltv), "indexing type info");
+                    STRY(link2parent(name), "link die to parent");
+                    STRY(!LT_put(index[is_cu], type_info->id_str, TAIL, &type_info->ltv), "index type info");
 
                     if (parent_type_info && (parent_type_info->tag == DW_TAG_type_unit)) {
                         if (type_info->offset == cu_data.offset) {
                             static char alias[32];
                             DWARF_ALIAS(alias, cu_data.sig8);
-                            STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "aliasing type info %s with %s", type_info->id_str, alias);
+                            STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "alias type info %s with %s", type_info->id_str, alias);
                             DEBUG(fprintf(stdout, "--- aliasing %s with %s\n", type_info->id_str, alias));
                         }
                     }
@@ -1472,11 +1488,11 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                     if ((type_info->flags & TYPEF_IS_DECL) && (type_info->flags & TYPEF_SIGNATURE)) {
                         static char alias[32];
                         DWARF_ALIAS(alias, type_info->sig8);
-                        STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "aliasing type info %s with %s", type_info->id_str, alias);
-                        DEBUG(fprintf(stdout, "--- aliasing %s sig %s\n", type_info->id_str, alias));
+                        STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "alias type info %s with %s", type_info->id_str, alias);
+                        DEBUG(fprintf(stdout, "--- alias %s sig %s\n", type_info->id_str, alias));
                     }
 
-                    STRY(traverse_child(dbg, die, child_op, flags | RDW_traverse_sibs), "traversing child and its siblings");
+                    STRY(traverse_child(dbg, die, child_op, flags | RDW_traverse_sibs), "traverse child and its siblings");
 
                     if (type_info->tag == DW_TAG_compile_unit)
                         read_cu_macros();
@@ -1494,7 +1510,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
         if (!listree_acyclic(lti, ltvr, ltv, depth, flags)) {
             if ((*flags & LT_TRAVERSE_LTV) && (*ltv)->flags & LT_TYPE) {
                 TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) (*ltv);
-                LTV *          base      = NULL;
+                LTV           *base      = NULL;
                 int            tried     = 0;
                 if ((type_info->flags & TYPEF_BASE) && type_info->base) {  // base is offset
                     base  = LT_get(index[(type_info->flags & TYPEF_IS_INFO) != 0], type_info->base_str, HEAD, KEEP);
@@ -1507,10 +1523,12 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                     tried = 1;
                 }
                 if (tried) {
-                    if (base)  // we can link base immediately
+                    LTV *symb_base = LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP);
+                    if (base && !symb_base)  // we can link base immediately
                         LT_put(&type_info->ltv, TYPE_BASE, HEAD, base);
-                    else
+                    else if (!base || base != symb_base)
                         DEBUG(fprintf(stdout, CODE_RED " >>>>  failed base/alias lookup for %s" CODE_RESET "\n", type_info->id_str));
+                    // else base is already there
                 }
             }
         }
@@ -1528,7 +1546,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
     auto resolve_meta = [&](LTI **lti, LTVR *ltvr, LTV **ltv, int depth, LT_TRAVERSE_FLAGS *flags) {
         if ((*flags & LT_TRAVERSE_LTV) && (*ltv)->flags & LT_TYPE) {
             TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) (*ltv);
-            LTV *          base_info = NULL;
+            LTV           *base_info = NULL;
             if (type_info->tag == DW_TAG_pointer_type && (base_info = LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)))
                 LT_put(base_info, TYPE_META, TAIL, &type_info->ltv);
         }
@@ -1547,24 +1565,24 @@ static int cif_curate_module(LTV *module, int bootstrap) {
     auto resolve_symbols = [&](char *filename) {
         char *f = bootstrap ? NULL : filename;
         if (!(dlhandle = dlopen(f, RTLD_LAZY | RTLD_GLOBAL | RTLD_NODELETE | RTLD_DEEPBIND)))
-            fprintf(stderr, "failed while dlopen'ing %s; continuing without resolving global functions/variables\n", dlerror());
+            fprintf(stderr, "failed to dlopen %s; continuing without resolving global functions/variables\n", dlerror());
 
-        STRY(ltv_traverse(index[1], resolve_types, resolve_types) != NULL, "linking symbolic type info names");     // links symbols on pre- and post-passes
-        STRY(ltv_traverse(index[0], resolve_types, resolve_types) != NULL, "linking symbolic compile unit names");  // links symbols on pre- and post-passes
+        STRY(ltv_traverse(index[1], resolve_types, resolve_types) != NULL, "link symbolic type info names");     // links symbols on pre- and post-passes
+        STRY(ltv_traverse(index[0], resolve_types, resolve_types) != NULL, "link symbolic compile unit names");  // links symbols on pre- and post-passes
         if (dlhandle)
-            STRY(dlclose(dlhandle), "closing shared library");
-        //graph_types_to_file("/tmp/types.dot",types);
+            STRY(dlclose(dlhandle), "close shared library");
+        // graph_types_to_file("/tmp/types.dot",types);
     done:
         return status;
     };
 
     char *filename = FORMATA(filename, module->len, "%s", module->data);
 
-    STRY(traverse_cus(filename, curate_die, &cu_data, RDW_traverse_sibs | RDW_is_info), "traversing type info units");
-    STRY(traverse_cus(filename, curate_die, &cu_data, RDW_traverse_sibs), "traversing compile units");
+    STRY(traverse_cus(filename, curate_die, &cu_data, RDW_traverse_sibs | RDW_is_info), "traverse type info units");
+    STRY(traverse_cus(filename, curate_die, &cu_data, RDW_traverse_sibs), "traverse compile units");
 
-    STRY(ltv_traverse(index[1], resolve_bases, NULL) != NULL, "resolving type info bases");
-    STRY(ltv_traverse(index[0], resolve_bases, NULL) != NULL, "resolving compile unit bases");
+    STRY(ltv_traverse(index[1], resolve_bases, NULL) != NULL, "resolve type info bases");
+    STRY(ltv_traverse(index[0], resolve_bases, NULL) != NULL, "resolve compile unit bases");
 
     resolve_symbols(filename);
 
@@ -1573,7 +1591,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
     LTV_release(index[1]);
     LTV_release(aliases);
 
-    STRY(ltv_traverse(module, remove_die_names, resolve_meta) != NULL, "cleaning up and binding pointers to pointees");  // link X.meta to pointer-to-X
+    STRY(ltv_traverse(module, remove_die_names, resolve_meta) != NULL, "clean up and bind pointers to pointees");  // link X.meta to pointer-to-X
 
     printf("Finished curating module\n");
 
@@ -1583,19 +1601,19 @@ done:
 
 char *Type_pushUVAL(TYPE_UVALUE *uval, char *buf) {
     switch (uval->base.dutype) {
-        case TYPE_INT1S:   sprintf(buf,"0x%x",  uval->int1s.val);   break;
-        case TYPE_INT2S:   sprintf(buf,"0x%x",  uval->int2s.val);   break;
-        case TYPE_INT4S:   sprintf(buf,"0x%x",  uval->int4s.val);   break;
-        case TYPE_INT8S:   sprintf(buf,"0x%llx",uval->int8s.val);   break;
-        case TYPE_INT1U:   sprintf(buf,"0x%x",  uval->int1u.val);   break;
-        case TYPE_INT2U:   sprintf(buf,"0x%x",  uval->int2u.val);   break;
-        case TYPE_INT4U:   sprintf(buf,"0x%x",  uval->int4u.val);   break;
-        case TYPE_INT8U:   sprintf(buf,"0x%llx",uval->int8u.val);   break;
-        case TYPE_FLOAT4:  sprintf(buf,"%g",    uval->float4.val);  break;
-        case TYPE_FLOAT8:  sprintf(buf,"%g",    uval->float8.val);  break;
-        case TYPE_FLOAT16: sprintf(buf,"%Lg",   uval->float16.val); break;
-        case TYPE_ADDR:    sprintf(buf,"%p",    uval->addr.val);    break;
-        default:           buf[0]=0; break;
+        case TYPE_INT1S: sprintf(buf, "0x%x", uval->int1s.val); break;
+        case TYPE_INT2S: sprintf(buf, "0x%x", uval->int2s.val); break;
+        case TYPE_INT4S: sprintf(buf, "0x%x", uval->int4s.val); break;
+        case TYPE_INT8S: sprintf(buf, "0x%llx", uval->int8s.val); break;
+        case TYPE_INT1U: sprintf(buf, "0x%x", uval->int1u.val); break;
+        case TYPE_INT2U: sprintf(buf, "0x%x", uval->int2u.val); break;
+        case TYPE_INT4U: sprintf(buf, "0x%x", uval->int4u.val); break;
+        case TYPE_INT8U: sprintf(buf, "0x%llx", uval->int8u.val); break;
+        case TYPE_FLOAT4: sprintf(buf, "%g", uval->float4.val); break;
+        case TYPE_FLOAT8: sprintf(buf, "%g", uval->float8.val); break;
+        case TYPE_FLOAT16: sprintf(buf, "%Lg", uval->float16.val); break;
+        case TYPE_ADDR: sprintf(buf, "%p", uval->addr.val); break;
+        default: buf[0] = 0; break;
     }
     return buf;
 }
@@ -1606,36 +1624,36 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval, char *buf) {
         case TYPE_INT1S:   sscanf(buf,"%i",  &tVar);uval->int1s.val=tVar; break;
         case TYPE_INT2S:   sscanf(buf,"%i",  &tVar);uval->int2s.val=tVar; break;
         case TYPE_INT4S:   sscanf(buf,"%i",  &tVar);uval->int4s.val=tVar; break;
-        case TYPE_INT8S:   sscanf(buf,"%lli",&uval->int8s.val);           break;
+        case TYPE_INT8S: sscanf(buf, "%lli", &uval->int8s.val); break;
         case TYPE_INT1U:   sscanf(buf,"%u",  &tVar);uval->int1u.val=tVar; break;
         case TYPE_INT2U:   sscanf(buf,"%u",  &tVar);uval->int2u.val=tVar; break;
         case TYPE_INT4U:   sscanf(buf,"%u",  &tVar);uval->int4u.val=tVar; break;
-        case TYPE_INT8U:   sscanf(buf,"%llu",&uval->int8u.val);           break;
-        case TYPE_FLOAT4:  sscanf(buf,"%g",  &uval->float4.val);          break;
-        case TYPE_FLOAT8:  sscanf(buf,"%g",  &uval->float8.val);          break;
-        case TYPE_FLOAT16: sscanf(buf,"%Lg", &uval->float16.val);         break;
-        case TYPE_ADDR:    sscanf(buf,"%p",  &uval->addr.val);            break;
-        default:           buf[0]=0; break;
+        case TYPE_INT8U: sscanf(buf, "%llu", &uval->int8u.val); break;
+        case TYPE_FLOAT4: sscanf(buf, "%g", &uval->float4.val); break;
+        case TYPE_FLOAT8: sscanf(buf, "%g", &uval->float8.val); break;
+        case TYPE_FLOAT16: sscanf(buf, "%Lg", &uval->float16.val); break;
+        case TYPE_ADDR: sscanf(buf, "%p", &uval->addr.val); break;
+        default: buf[0] = 0; break;
     }
     return uval;
 }
 
-#define UVAL2VAR(uval, var)                           \
-    do {                                              \
-        switch (uval.dutype) {                        \
-            case TYPE_INT1S:   var=(typeof(var)) uval.int1s.val;   break;       \
-            case TYPE_INT2S:   var=(typeof(var)) uval.int2s.val;   break;       \
-            case TYPE_INT4S:   var=(typeof(var)) uval.int4s.val;   break;       \
-            case TYPE_INT8S:   var=(typeof(var)) uval.int8s.val;   break;       \
-            case TYPE_INT1U:   var=(typeof(var)) uval.int1u.val;   break;       \
-            case TYPE_INT2U:   var=(typeof(var)) uval.int2u.val;   break;       \
-            case TYPE_INT4U:   var=(typeof(var)) uval.int4u.val;   break;       \
-            case TYPE_INT8U:   var=(typeof(var)) uval.int8u.val;   break;       \
-            case TYPE_FLOAT4:  var=(typeof(var)) uval.float4.val;  break;       \
-            case TYPE_FLOAT8:  var=(typeof(var)) uval.float8.val;  break;       \
-            case TYPE_FLOAT16: var=(typeof(var)) uval.float16.val; break;       \
-            case TYPE_ADDR:    var=(typeof(var)) uval.addr.val;    break;       \
-        }                                             \
+#define UVAL2VAR(uval, var)                                                 \
+    do {                                                                    \
+        switch (uval.dutype) {                                              \
+            case TYPE_INT1S: var = (typeof(var)) uval.int1s.val; break;     \
+            case TYPE_INT2S: var = (typeof(var)) uval.int2s.val; break;     \
+            case TYPE_INT4S: var = (typeof(var)) uval.int4s.val; break;     \
+            case TYPE_INT8S: var = (typeof(var)) uval.int8s.val; break;     \
+            case TYPE_INT1U: var = (typeof(var)) uval.int1u.val; break;     \
+            case TYPE_INT2U: var = (typeof(var)) uval.int2u.val; break;     \
+            case TYPE_INT4U: var = (typeof(var)) uval.int4u.val; break;     \
+            case TYPE_INT8U: var = (typeof(var)) uval.int8u.val; break;     \
+            case TYPE_FLOAT4: var = (typeof(var)) uval.float4.val; break;   \
+            case TYPE_FLOAT8: var = (typeof(var)) uval.float8.val; break;   \
+            case TYPE_FLOAT16: var = (typeof(var)) uval.float16.val; break; \
+            case TYPE_ADDR: var = (typeof(var)) uval.addr.val; break;       \
+        }                                                                   \
     } while (0)
 
 #define GETUVAL(member, type, uval)                                     \
@@ -1644,23 +1662,23 @@ TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval, char *buf) {
         uval->member.val    = *(typeof(uval->member.val) *) cvar->data; \
     } while (0)
 
-#define GETUBITS(member, type, uval, bsize, boffset, issigned)                                    \
-    do {                                                                                          \
-        GETUVAL(member, type, uval);                                                              \
-        if (bsize) {                                                                              \
-            int shift                     = (sizeof(uval->member.val) * 8) - (bsize) - (boffset); \
-            typeof(uval->member.val) mask = (1 << bsize) - 1;                                     \
-            uval->member.val              = (uval->member.val >> shift) & mask;                   \
-            if (issigned && (uval->member.val & (1 << bsize - 1)))                                \
-                uval->member.val |= ~mask;                                                        \
-        }                                                                                         \
+#define GETUBITS(member, type, uval, bsize, boffset, issigned)                                     \
+    do {                                                                                           \
+        GETUVAL(member, type, uval);                                                               \
+        if (bsize) {                                                                               \
+            int                      shift = (sizeof(uval->member.val) * 8) - (bsize) - (boffset); \
+            typeof(uval->member.val) mask  = (1 << bsize) - 1;                                     \
+            uval->member.val               = (uval->member.val >> shift) & mask;                   \
+            if (issigned && (uval->member.val & (1 << bsize - 1)))                                 \
+                uval->member.val |= ~mask;                                                         \
+        }                                                                                          \
     } while (0)
 
 TYPE_UTYPE Type_getUVAL(LTV *cvar, TYPE_UVALUE *uval) {
     int  status = 0;
     LTV *type   = NULL;
-    STRY(!cvar || !uval, "validating params");
-    TRYCATCH(!(type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP))), 0, done, "retrieving cvar basic type");
+    STRY(!cvar || !uval, "validate params");
+    TRYCATCH(!(type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP))), 0, done, "retrieve cvar basic type");
     TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
 
     ull size      = type_info->bytesize;
@@ -1668,23 +1686,23 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar, TYPE_UVALUE *uval) {
     ull bitoffset = type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
-        case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
-        case DW_TAG_enumeration_type: encoding=DW_ATE_signed;       break;
-        case DW_TAG_pointer_type:     encoding=DW_ATE_unsigned;     break;
-        case DW_TAG_base_type:        encoding=type_info->encoding; break;
+        case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
+        case DW_TAG_enumeration_type: encoding = DW_ATE_signed; break;
+        case DW_TAG_pointer_type: encoding = DW_ATE_unsigned; break;
+        case DW_TAG_base_type: encoding = type_info->encoding; break;
         default: goto done;
     }
 
     BZERO(*uval);
     switch (encoding) {
         case DW_ATE_float:
-            if      (size==4)  GETUVAL(float4,TYPE_FLOAT4,uval);
+            if (size == 4) GETUVAL(float4, TYPE_FLOAT4, uval);
             else if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
             else if (size==16) GETUVAL(float16,TYPE_FLOAT16,uval);
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
-            if      (size==1)  GETUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
+            if (size == 1) GETUBITS(int1s, TYPE_INT1S, uval, bitsize, bitoffset, 1);
             else if (size==2)  GETUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
             else if (size==4)  GETUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
             else if (size==8)  GETUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
@@ -1692,7 +1710,7 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar, TYPE_UVALUE *uval) {
         case DW_ATE_boolean:
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
-            if      (size==1)  GETUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
+            if (size == 1) GETUBITS(int1u, TYPE_INT1U, uval, bitsize, bitoffset, 0);
             else if (size==2)  GETUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
             else if (size==4)  GETUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
             else if (size==8)  GETUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
@@ -1704,27 +1722,27 @@ done:
     return status ? 0 : uval->base.dutype;
 }
 
-#define PUTUVAL(member, type, uval)                                  \
-    do { *(typeof(uval->member.val) *) cvar->data = uval->member.val; } while(0)
+#define PUTUVAL(member, type, uval) \
+    do { *(typeof(uval->member.val) *) cvar->data = uval->member.val; } while (0)
 
-#define PUTUBITS(member, type, uval, bsize, boffset, issigned)                                    \
-    do {                                                                                          \
-        if (bsize) {                                                                              \
-            TYPE_UVALUE tuval;                                                                    \
-            GETUVAL(member, type, (&tuval));                                                      \
-            int shift                     = (sizeof(uval->member.val) * 8) - (bsize) - (boffset); \
-            typeof(uval->member.val) mask = ((1 << bsize) - 1) << shift;                          \
-            uval->member.val              = (uval->member.val << shift) & mask;                   \
-            uval->member.val |= tuval.member.val & ~mask;                                         \
-        }                                                                                         \
-        PUTUVAL(member, type, uval);                                                              \
+#define PUTUBITS(member, type, uval, bsize, boffset, issigned)                                     \
+    do {                                                                                           \
+        if (bsize) {                                                                               \
+            TYPE_UVALUE tuval;                                                                     \
+            GETUVAL(member, type, (&tuval));                                                       \
+            int                      shift = (sizeof(uval->member.val) * 8) - (bsize) - (boffset); \
+            typeof(uval->member.val) mask  = ((1 << bsize) - 1) << shift;                          \
+            uval->member.val               = (uval->member.val << shift) & mask;                   \
+            uval->member.val |= tuval.member.val & ~mask;                                          \
+        }                                                                                          \
+        PUTUVAL(member, type, uval);                                                               \
     } while (0)
 
 int Type_putUVAL(LTV *cvar, TYPE_UVALUE *uval) {
     int  status = 0;
     LTV *type   = NULL;
-    STRY(!cvar || !uval, "validating params");
-    STRY(!(type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP))), "retrieving cvar basic type");
+    STRY(!cvar || !uval, "validate params");
+    STRY(!(type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP))), "retrieve cvar basic type");
     TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
 
     ull size      = type_info->bytesize;
@@ -1732,22 +1750,22 @@ int Type_putUVAL(LTV *cvar, TYPE_UVALUE *uval) {
     ull bitoffset = type_info->bitoffset;
     ull encoding;
     switch (type_info->tag) {
-        case DW_TAG_member:           encoding=DW_ATE_signed;       break; // bitfield
-        case DW_TAG_enumeration_type: encoding=DW_ATE_signed;       break;
-        case DW_TAG_pointer_type:     encoding=DW_ATE_unsigned;     break;
-        case DW_TAG_base_type:        encoding=type_info->encoding; break;
+        case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
+        case DW_TAG_enumeration_type: encoding = DW_ATE_signed; break;
+        case DW_TAG_pointer_type: encoding = DW_ATE_unsigned; break;
+        case DW_TAG_base_type: encoding = type_info->encoding; break;
         default: goto done;
     }
 
     switch (encoding) {
         case DW_ATE_float:
-            if      (size==4)  PUTUVAL(float4, TYPE_FLOAT4, uval);
+            if (size == 4) PUTUVAL(float4, TYPE_FLOAT4, uval);
             else if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
             else if (size==16) PUTUVAL(float16,TYPE_FLOAT16,uval);
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
-            if      (size==1)  PUTUBITS(int1s,TYPE_INT1S,uval,bitsize,bitoffset,1);
+            if (size == 1) PUTUBITS(int1s, TYPE_INT1S, uval, bitsize, bitoffset, 1);
             else if (size==2)  PUTUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
             else if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
             else if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
@@ -1755,7 +1773,7 @@ int Type_putUVAL(LTV *cvar, TYPE_UVALUE *uval) {
         case DW_ATE_boolean:
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
-            if      (size==1)  PUTUBITS(int1u,TYPE_INT1U,uval,bitsize,bitoffset,0);
+            if (size == 1) PUTUBITS(int1u, TYPE_INT1U, uval, bitsize, bitoffset, 0);
             else if (size==2)  PUTUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
             else if (size==4)  PUTUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
             else if (size==8)  PUTUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
@@ -1774,7 +1792,7 @@ int is_readable(LTV *type) {
         TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type;
         switch (type_info->tag) {
             case DW_TAG_enumeration_type:
-                //case DW_TAG_pointer_type:
+                // case DW_TAG_pointer_type:
             case DW_TAG_base_type:
                 return true;
             default:
@@ -1824,7 +1842,7 @@ LTV *basic_ffi_ltv(LTV *type) {
     }
 
     LTV *basic_type = NULL;
-    TRYCATCH(!(basic_type = cif_find_concrete(type)), 0, done, "resolving basic type");
+    TRYCATCH(!(basic_type = cif_find_concrete(type)), 0, done, "resolve basic type");
     TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) basic_type->data;
 
     ull size      = type_info->bytesize;
@@ -1853,13 +1871,13 @@ LTV *basic_ffi_ltv(LTV *type) {
 
     switch (encoding) {
         case DW_ATE_float:
-            if      (size==4)  rval=ffi_type_ltv[FT_FLOAT];
+            if (size == 4) rval = ffi_type_ltv[FT_FLOAT];
             else if (size==8)  rval=ffi_type_ltv[FT_DOUBLE];
             else if (size==16) rval=ffi_type_ltv[FT_LONGDOUBLE];
             break;
         case DW_ATE_signed:
         case DW_ATE_signed_char:
-            if      (size==1)  rval=ffi_type_ltv[FT_SINT8];
+            if (size == 1) rval = ffi_type_ltv[FT_SINT8];
             else if (size==2)  rval=ffi_type_ltv[FT_SINT16];
             else if (size==4)  rval=ffi_type_ltv[FT_SINT32];
             else if (size==8)  rval=ffi_type_ltv[FT_SINT64];
@@ -1867,7 +1885,7 @@ LTV *basic_ffi_ltv(LTV *type) {
         case DW_ATE_boolean:
         case DW_ATE_unsigned:
         case DW_ATE_unsigned_char:
-            if      (size==1)  rval=ffi_type_ltv[FT_UINT8];
+            if (size == 1) rval = ffi_type_ltv[FT_UINT8];
             else if (size==2)  rval=ffi_type_ltv[FT_UINT16];
             else if (size==4)  rval=ffi_type_ltv[FT_UINT32];
             else if (size==8)  rval=ffi_type_ltv[FT_UINT64];
@@ -1883,7 +1901,7 @@ LTV *cvar_ffi_ltv(LTV *type, int *size) {
     int status        = 0;
     *size             = 0;
     LTV *ffi_type_ltv = NULL;
-    TRYCATCH(!(type = cif_find_concrete(type)), 0, done, "resolving basic type");
+    TRYCATCH(!(type = cif_find_concrete(type)), 0, done, "resolve basic type");
     *size        = ((TYPE_INFO_LTV *) type->data)->bytesize;
     ffi_type_ltv = LT_get(type, FFI_TYPE, HEAD, KEEP);
 done:
@@ -1896,7 +1914,7 @@ LTV *cif_ffi_prep(LTV *lambda) {
         int   status   = 0;
         int   largest  = 0;
         char *name     = attr_get(ltv, TYPE_SYMB);
-        LTI * children = LTI_resolve(ltv, TYPE_LIST, false);
+        LTI  *children = LTI_resolve(ltv, TYPE_LIST, false);
         if (!children)
             *count = 0;
         else if (tag == DW_TAG_union_type)
@@ -1913,14 +1931,14 @@ LTV *cif_ffi_prep(LTV *lambda) {
             unsigned lastloc            = 0xffffffff;
             auto     get_child_ffi_type = [&](CLL *lnk) {
                 int            status     = 0;
-                LTV *          child_type = ((LTVR *) lnk)->ltv;
-                char *         child_name = attr_get(child_type, TYPE_SYMB);
+                LTV           *child_type = ((LTVR *) lnk)->ltv;
+                char          *child_name = attr_get(child_type, TYPE_SYMB);
                 TYPE_INFO_LTV *type_info  = (TYPE_INFO_LTV *) child_type->data;
 
                 DEBUG(fprintf(stdout, "ffi_prep child %s(%s)\n", child_name, type_info->id_str));
 
                 LTV *child_ffi_ltv = cvar_ffi_ltv(child_type, &size);
-                STRY(!child_ffi_ltv, "validating child ffi ltv %s(%s)", child_name, type_info->id_str);
+                STRY(!child_ffi_ltv, "validate child ffi ltv %s(%s)", child_name, type_info->id_str);
 
                 if (tag == DW_TAG_union_type) {
                     if (largest < size) {
@@ -1970,7 +1988,7 @@ LTV *cif_ffi_prep(LTV *lambda) {
                             if (basic_type && !LT_get(basic_type, FFI_TYPE, HEAD, KEEP)) {
                                 LTV *ftl = basic_ffi_ltv(basic_type);  // only returns something for basic types
                                 if (ftl) {                             // basic types
-                                    STRY(!LT_put(basic_type, FFI_TYPE, HEAD, ftl), "installing basic ffi type");
+                                    STRY(!LT_put(basic_type, FFI_TYPE, HEAD, ftl), "install basic ffi type");
                                 }
                             }
                             break;
@@ -1991,8 +2009,8 @@ LTV *cif_ffi_prep(LTV *lambda) {
             if ((*ltv)->flags & LT_TYPE) {
                 TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) (*ltv);
 
-                //if (!(type_info->flags&TYPEF_HAS_NAME))
-                //    goto done;
+                // if (!(type_info->flags&TYPEF_HAS_NAME))
+                //     goto done;
 
                 DEBUG(fprintf(stdout, "ffi_prep post %s(%s)\n", name, type_info->id_str));
                 if (!LT_get((*ltv), FFI_TYPE, HEAD, KEEP)) {
@@ -2006,7 +2024,7 @@ LTV *cif_ffi_prep(LTV *lambda) {
                             ffi_type *ft    = (ffi_type *) ffi_type_ltv->data;
                             int       count = 0;
                             ft->type        = FFI_TYPE_STRUCT;
-                            STRY(collate_child_ffi_types((*ltv), type_info->tag, &count, &ft->elements), "collating %s child ffi types", name);
+                            STRY(collate_child_ffi_types((*ltv), type_info->tag, &count, &ft->elements), "collate %s child ffi types", name);
                             break;
                         }
                         case DW_TAG_subprogram:
@@ -2019,11 +2037,11 @@ LTV *cif_ffi_prep(LTV *lambda) {
                             LT_put((*ltv), FFI_TYPE, HEAD, return_type);
                             int        argc = 0;
                             ffi_type **argv = NULL;
-                            STRY(collate_child_ffi_types((*ltv), type_info->tag, &argc, &argv), "collating subprogram child ffi types");
+                            STRY(collate_child_ffi_types((*ltv), type_info->tag, &argc, &argv), "collate subprogram child ffi types");
 
                             LTV *cif_ltv = LTV_init(NEW(LTV), NEW(ffi_cif), sizeof(ffi_cif), LT_OWN | LT_BIN | LT_CVAR | LT_CIF);
                             LT_put((*ltv), FFI_CIF, HEAD, cif_ltv);
-                            STRY(ffi_prep_cif((ffi_cif *) cif_ltv->data, FFI_DEFAULT_ABI, argc, (ffi_type *) return_type->data, argv), "prepping cif");
+                            STRY(ffi_prep_cif((ffi_cif *) cif_ltv->data, FFI_DEFAULT_ABI, argc, (ffi_type *) return_type->data, argv), "prep cif");
                             break;
                         }
                         default:
@@ -2062,48 +2080,50 @@ int cif_args_marshal(LTV *lambda, int dir, CIF_MARSHAL_OP marshal) {
     int  status      = 0;
     auto marshal_arg = [&](CLL *lnk) {
         int   status   = 0;
-        LTV * arg      = ((LTVR *) lnk)->ltv;
-        LTV * arg_type = LT_get(arg, FFI_TYPE, HEAD, KEEP);
+        LTV  *arg      = ((LTVR *) lnk)->ltv;
+        LTV  *arg_type = LT_get(arg, FFI_TYPE, HEAD, KEEP);
         char *name     = attr_get(arg_type, TYPE_SYMB);
-        LTV * type     = cif_find_symbolic(((LTVR *) lnk)->ltv);
-        STRY(marshal(name, type), "retrieving ffi arg from environment");
+        LTV  *type     = cif_find_symbolic(((LTVR *) lnk)->ltv);
+        STRY(marshal(name, type), "retrieve ffi arg from environment");
     done:
         return status ? (void *) NON_NULL : (void *) NULL;
     };
 
     LTI *children = NULL;
-    TRYCATCH(!(children=LTI_resolve(lambda,TYPE_LIST,false)),0,done,"retrieving ffi args");
-    STRY(CLL_map(&children->ltvs, dir, marshal_arg) != NULL, "marshalling ffi args");
+    TRYCATCH(!(children = LTI_resolve(lambda, TYPE_LIST, false)), 0, done, "retrieve ffi args");
+    ;
+    STRY(CLL_map(&children->ltvs, dir, marshal_arg) != NULL, "marshall ffi args");
 done:
     return status;
 }
 
 LTV *cif_isaddr(LTV *cvar) {
     int            status    = 0;
-    LTV *          type      = NULL;
+    LTV           *type      = NULL;
     TYPE_INFO_LTV *type_info = NULL;
-    STRY(!cvar, "validating params");
+    STRY(!cvar, "validate params");
     if (type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP)))
         type_info = (TYPE_INFO_LTV *) type->data;
 done:
-    return (status|!type)?NULL:type_info->tag!=DW_TAG_pointer_type?NULL:type;
+    return (status | !type) ? NULL : type_info->tag != DW_TAG_pointer_type ? NULL
+                                                                           : type;
 }
 
 int cif_iszero(LTV *cvar) {
     TYPE_UVALUE uval = {};
     switch (Type_getUVAL(cvar, &uval)) {
-        case TYPE_INT1S:   return uval.int1s.val == 0;
-        case TYPE_INT2S:   return uval.int2s.val == 0;
-        case TYPE_INT4S:   return uval.int4s.val == 0;
-        case TYPE_INT8S:   return uval.int8s.val == 0;
-        case TYPE_INT1U:   return uval.int1u.val == 0;
-        case TYPE_INT2U:   return uval.int2u.val == 0;
-        case TYPE_INT4U:   return uval.int4u.val == 0;
-        case TYPE_INT8U:   return uval.int8u.val == 0;
-        case TYPE_FLOAT4:  return uval.float4.val == 0;
-        case TYPE_FLOAT8:  return uval.float8.val == 0;
+        case TYPE_INT1S: return uval.int1s.val == 0;
+        case TYPE_INT2S: return uval.int2s.val == 0;
+        case TYPE_INT4S: return uval.int4s.val == 0;
+        case TYPE_INT8S: return uval.int8s.val == 0;
+        case TYPE_INT1U: return uval.int1u.val == 0;
+        case TYPE_INT2U: return uval.int2u.val == 0;
+        case TYPE_INT4U: return uval.int4u.val == 0;
+        case TYPE_INT8U: return uval.int8u.val == 0;
+        case TYPE_FLOAT4: return uval.float4.val == 0;
+        case TYPE_FLOAT8: return uval.float8.val == 0;
         case TYPE_FLOAT16: return uval.float16.val == 0;
-        case TYPE_ADDR:    return uval.addr.val == NULL;
+        case TYPE_ADDR: return uval.addr.val == NULL;
         default: return -1;
     }
 }
@@ -2111,18 +2131,18 @@ int cif_iszero(LTV *cvar) {
 int cif_ispos(LTV *cvar) {
     TYPE_UVALUE uval = {};
     switch (Type_getUVAL(cvar, &uval)) {
-        case TYPE_INT1S:   return uval.int1s.val > 0;
-        case TYPE_INT2S:   return uval.int2s.val > 0;
-        case TYPE_INT4S:   return uval.int4s.val > 0;
-        case TYPE_INT8S:   return uval.int8s.val > 0;
-        case TYPE_INT1U:   return 1;
-        case TYPE_INT2U:   return 1;
-        case TYPE_INT4U:   return 1;
-        case TYPE_INT8U:   return 1;
-        case TYPE_FLOAT4:  return uval.float4.val > 0;
-        case TYPE_FLOAT8:  return uval.float8.val > 0;
+        case TYPE_INT1S: return uval.int1s.val > 0;
+        case TYPE_INT2S: return uval.int2s.val > 0;
+        case TYPE_INT4S: return uval.int4s.val > 0;
+        case TYPE_INT8S: return uval.int8s.val > 0;
+        case TYPE_INT1U: return 1;
+        case TYPE_INT2U: return 1;
+        case TYPE_INT4U: return 1;
+        case TYPE_INT8U: return 1;
+        case TYPE_FLOAT4: return uval.float4.val > 0;
+        case TYPE_FLOAT8: return uval.float8.val > 0;
         case TYPE_FLOAT16: return uval.float16.val > 0;
-        case TYPE_ADDR:    return uval.addr.val > (void *) 0;
+        case TYPE_ADDR: return uval.addr.val > (void *) 0;
         default: return -1;
     }
 }
@@ -2130,18 +2150,18 @@ int cif_ispos(LTV *cvar) {
 int cif_isneg(LTV *cvar) {
     TYPE_UVALUE uval = {};
     switch (Type_getUVAL(cvar, &uval)) {
-        case TYPE_INT1S:   return uval.int1s.val < 0;
-        case TYPE_INT2S:   return uval.int2s.val < 0;
-        case TYPE_INT4S:   return uval.int4s.val < 0;
-        case TYPE_INT8S:   return uval.int8s.val < 0;
-        case TYPE_INT1U:   return 0;
-        case TYPE_INT2U:   return 0;
-        case TYPE_INT4U:   return 0;
-        case TYPE_INT8U:   return 0;
-        case TYPE_FLOAT4:  return uval.float4.val < 0;
-        case TYPE_FLOAT8:  return uval.float8.val < 0;
+        case TYPE_INT1S: return uval.int1s.val < 0;
+        case TYPE_INT2S: return uval.int2s.val < 0;
+        case TYPE_INT4S: return uval.int4s.val < 0;
+        case TYPE_INT8S: return uval.int8s.val < 0;
+        case TYPE_INT1U: return 0;
+        case TYPE_INT2U: return 0;
+        case TYPE_INT4U: return 0;
+        case TYPE_INT8U: return 0;
+        case TYPE_FLOAT4: return uval.float4.val < 0;
+        case TYPE_FLOAT8: return uval.float8.val < 0;
         case TYPE_FLOAT16: return uval.float16.val < 0;
-        case TYPE_ADDR:    return uval.addr.val < (void *) 0;
+        case TYPE_ADDR: return uval.addr.val < (void *) 0;
         default: return -1;
     }
 }
@@ -2187,9 +2207,9 @@ LTV *cif_coerce_i2c(LTV *ltv, LTV *type) {
     auto  match     = [&](char *key) { return (int) !strcmp(key, type_name); };
     if (!(ltv->flags & LT_CVAR)) {  // first, dress a non-cvar ltv up in something appropriate
         if (match("(LTV)*"))
-            result = cif_create_cvar(cif_type_info("LTV"), ltv, NULL);                                   // encaps LTV when dest is an LTV*
-        else if (match("(char)*") || match("(unsigned char)*"))                                          // ltv data -> char array
-            STRY(!(result = cif_create_cvar(type_base, &ltv->data, NULL)), "creating string coersion");  // cvar->data=&ltv->data, i.e. cvar will point to a void*
+            result = cif_create_cvar(cif_type_info("LTV"), ltv, NULL);                                 // encaps LTV when dest is an LTV*
+        else if (match("(char)*") || match("(unsigned char)*"))                                        // ltv data -> char array
+            STRY(!(result = cif_create_cvar(type_base, &ltv->data, NULL)), "create string coersion");  // cvar->data=&ltv->data, i.e. cvar will point to a void*
         else if (is_readable(type_base)) {
             TYPE_UVALUE dst_uval = {}, src_uval = {};
             result = cif_create_cvar(type, NULL, NULL);
@@ -2198,7 +2218,7 @@ LTV *cif_coerce_i2c(LTV *ltv, LTV *type) {
         } else {
             STRY((vm_throw(LTV_NULL), 1), "no i2c coersion");
         }
-        STRY(!(LT_put(result, TYPE_CAST, HEAD, ltv)), "linking original to coersion");
+        STRY(!(LT_put(result, TYPE_CAST, HEAD, ltv)), "link original to coersion");
         ltv = result;  // may need further coersions
     }
 
@@ -2231,14 +2251,14 @@ LTV *cif_coerce_c2i(LTV *ltv) {
     /*
       int old_show_ref=show_ref;
       show_ref=1;
-      fprintf(stdout,"coercing ltv\n");
+      fprintf(stdout,"coerce ltv\n");
       print_ltv(stdout,NULL,cvar,NULL,2);
       fprintf(stdout,"into type\n");
       print_ltv(stdout,NULL,type,NULL,2);
       show_ref=old_show_ref;
     */
 
-    LTV * type      = LT_get(ltv, TYPE_BASE, HEAD, KEEP);
+    LTV  *type      = LT_get(ltv, TYPE_BASE, HEAD, KEEP);
     char *type_name = attr_get(type, TYPE_SYMB);
     if (type_name && !strcmp(type_name, "(LTV)*")) {
         result = *(LTV **) ltv->data;
@@ -2285,14 +2305,14 @@ LTV *cif_create_closure(LTV *function_type, void (*thunk)(ffi_cif *CIF, void *RE
     LTV *closure = NULL;
 
     LTV *lambda = NULL, *ffi_cif_ltv = NULL;
-    STRY(!(lambda = cif_find_function(function_type)), "finding closure type");
-    STRY(!(ffi_cif_ltv = cif_ffi_prep(lambda)), "getting closure cif");
+    STRY(!(lambda = cif_find_function(function_type)), "find closure type");
+    STRY(!(ffi_cif_ltv = cif_ffi_prep(lambda)), "get closure cif");
     ffi_cif *cif        = (ffi_cif *) ffi_cif_ltv->data;
-    void *   executable = NULL;
-    void *   writeable  = ffi_closure_alloc(sizeof(ffi_closure), &executable);
-    STRY(!(closure = cif_create_cvar(lambda, NULL, NULL)), "creating closure cvar");
-    STRY(ffi_prep_closure_loc(writeable, cif, thunk, closure, executable) != FFI_OK, "prepping closure");  // closure passes itself to callback
-    LTV_renew(closure, executable, 0, LT_NONE);                                                            // update closure with function pointer
+    void    *executable = NULL;
+    void    *writeable  = ffi_closure_alloc(sizeof(ffi_closure), &executable);
+    STRY(!(closure = cif_create_cvar(lambda, NULL, NULL)), "create closure cvar");
+    STRY(ffi_prep_closure_loc(writeable, cif, thunk, closure, executable) != FFI_OK, "prep closure");  // closure passes itself to callback
+    LTV_renew(closure, executable, 0, LT_NONE);                                                        // update closure with function pointer
     LT_put(closure, "WRITEABLE", HEAD, LTV_init(NEW(LTV), writeable, 0, LT_NONE));
 
 done:

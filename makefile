@@ -11,9 +11,9 @@ cmake: build; cd build && cmake ..
 compile: cmake; make -C build
 clean: cmake; make -C build clean
 distclean: ; rm -rf build
-run_lib: compile; MALLOC_CHECK=1 rlwrap -S "[]/ " build/libreflect.so
-run_bin: compile; MALLOC_CHECK=1 rlwrap -S "[]/ " build/jj
-run: run_lib
+runlib: compile; MALLOC_CHECK=1 rlwrap -S "[]/ " build/libreflect.so
+runbin: compile; MALLOC_CHECK=1 rlwrap -S "[]/ " build/jj
+run: runbin
 compilerun: compile run
 install: cmake; sudo make -C build install
 fastbench: cmake; rm callgrind.out.*; echo "fastbench!" | (valgrind --tool=callgrind build/jj)

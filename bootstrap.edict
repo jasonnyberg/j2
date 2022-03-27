@@ -1,54 +1,56 @@
-[
-]@newline
+ROOT <
+    [
+    ]@newline
 
-[LTV_concat!]@concat
+    [LTV_concat!]@concat
 
-[compile_ltv(@code jit_edict code)]@compile
-[[a b c] compile compile!!! stack!]@test_compile
+    [compile_ltv(@code jit_edict code)]@compile
+    [[a b c] compile compile!!! stack!]@test.compile
 
-[vm_try(cif_preview_module!)]@preview
-[vm_try(cif_import_module())]@import
-[[preview(lib) import(lib) lib](@lib)]@loadlib
+    [vm_try(cif_preview_module!)]@preview
+    [vm_try(cif_import_module())]@import
+    [[preview(lib) import(lib) lib](@lib)]@loadlib
 
-[loadlib([../test/build/libtestlib.so]) @test test.y.1 stack!]@testimport
-[loadlib([../../htm/build/libhtmlib.so]) @htm htm.htm_main(int! '((char)*)*'!)]@testimport2
-[loadlib([../../htm/build/libhtmlib.so]) <htm_main(int! '((char)*)*'!)>]@testimport3
+    [loadlib([../test/build/libtestlib.so]) @test test.y.1 stack!]@test.import1
+    [loadlib([../../htm/build/libhtmlib.so]) @htm htm.htm_main(int! '((char)*)*'!)]@test.import2
+    [loadlib([../../htm/build/libhtmlib.so]) <htm_main(int! '((char)*)*'!)>]@test.import3
 
-[bench encaps! vm_while! | locals!]@fastbench
-[bench [dup! ! loop!]@loop loop! | locals!]@midbench
+    [bench encaps! vm_while! | locals!]@fastbench
+    [bench [dup! ! loop!]@loop loop! | locals!]@midbench
 
-[a b int_add! a@ limit int_nequal! slowloop!]@slowloop
-[int! @limit limit@ int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
+    [a b int_add! a@ limit int_nequal! slowloop!]@slowloop
+    [int! @limit limit@ int! 0@ @a int! 1@ @b slowloop! | locals!]@slowbench
 
-[encaps! <RETURN>@]@return_tos
+    [encaps! <RETURN>@]@return_tos
+    [ROOT<ARG0 decaps! stack! ! return_tos!>]@std.thunk
 
-[square(3)]@square3
-[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@] [square(3)]) stack!]@async_test1
+    [square(3)]@square3
+    [minus(1)]@decrement
 
-[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@] [square3!]) stack!]@async_test2 [fails, can't inherit parent dict]/
+    [vm_eval(ROOT std.thunk [square(3)]) stack!]@test.async1
+    [vm_eval(ROOT std.thunk [square3!]) stack!]@test.async2
 
-[ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@]@std_thunk
-[vm_eval(ROOT std_thunk [square3!]) stack!]@async_test3 [fails, can't inherit parent dict]/
+    [[]<@thunk @root @sig encaps(vm_continuation(encaps(sig) root thunk))>/]@continuation
+    [[]<@continuation @arg vm_async(continuation arg)@thread>]@async
+    [<vm_await(thread)>/]@await
 
-[[]<@thunk @root @sig encaps(vm_continuation(encaps(sig) root thunk))>/]@continuation
-[[]<@continuation @arg vm_async(continuation arg)@thread>]@async
-[<vm_await(thread)>/]@await
+    [await(async([square(3)] continuation('(LTV)*(*)((LTV)*)' ROOT std.thunk))) stack!]@test.async6
 
-[await(async([square(3)] continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>]))) stack!]@async_test6
+    [async(continuation('(LTV)*(*)((LTV)*)' ROOT std.thunk))]@std.thread
 
-[continuation('(LTV)*(*)((LTV)*)' ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>])@C
- [square(2)] async(C) @T1
- [square(3)] async(C) @T2
- minus(await(T2) await(T1))
- stack!
-]@async_test7
+    [   std.thread([square(2)]) @T1
+        std.thread([square(3)]) @T2
+        minus(await(T2) await(T1))
+        stack!
+    ]@test.async7
 
-[vm_eval(ROOT [ROOT<ARG0 decaps! stack! ! encaps! <RETURN>@>] [testimport3!]) stack!]@async_test8
+    [vm_eval(ROOT std.thunk [testimport3!]) stack!]@test.async8
 
-[minus(1)]@decrement
+    continuation('int(*)(int,int)' ROOT [ROOT <string(ARG0) string(ARG1) minus(ARG0 ARG1) return_tos!])@callback
+>
 
-[[[repl(get_stdin!)|]! repeat!]@repeat repeat!]/
-
+[[[repl(get_stdin!)|]! repeat!]@repeat repeat!]/ [persistent]/
 repl(get_stdin!)
 
 [goodbye!] return_tos!
+

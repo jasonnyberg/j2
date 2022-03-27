@@ -168,3 +168,6 @@ extern void bench() {
     }
     return;
 }
+
+test_callback_sig callback_example=NULL;
+extern int test_callback(int a,int b) { return callback_example? callback_example(a,b):0; }

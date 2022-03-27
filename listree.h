@@ -55,7 +55,7 @@ typedef enum {
     LT_BIN  =0x00000008, // data is binary/unprintable
     LT_REFS =0x00000010, // LTV holds a list of REFs (implies LT_LIST)
     LT_CVAR =0x00000020, // LTV data is a C variable
-    LT_TYPE =0x00000040, // CVAR of type TYPE_INFO (for reflection)
+    LT_TYPE =0x00000040, // CVAR of type TYPE_INFO_LTV (for reflection)
     LT_FFI  =0x00000080, // CVAR of type ffi_type (for reflection)
     LT_CIF  =0x00000100, // CVAR of type ffi_cif (for reflection)
     LT_NULL =0x00000200, // empty

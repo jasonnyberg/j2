@@ -37,5 +37,7 @@
 #define EXTENSIONS_H
 
 extern LTV *get_separated_debug_filename(char *filename);
+typedef int (*test_callback_sig)(int a,int b);
+extern test_callback_sig example_callback;
 
 #endif

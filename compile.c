@@ -135,6 +135,8 @@ int jit_edict(EMITTER emit,void *data,int len)
     return status;
 }
 
+int jit_edict2(EMITTER emit, void *data, int len) { return jit_edict(emit, data, len); }
+
 int jit_xml(EMITTER emit, void *data, int len) { printf("jit_xml not implemented\n"); }
 
 /*
@@ -254,76 +256,76 @@ int jit_json(EMITTER emit, void *data, int len)
  }
 */
 
-LTV *compile(COMPILER compiler,void *data,int len)
-{
-    TSTART(0,"compile");
-    char *buf=NULL;
-    size_t flen=0;
-    FILE *stream=open_memstream(&buf,&flen);
+LTV *compile(COMPILER compiler, void *data, int len) {
+    TSTART(0, "compile");
+    char  *buf    = NULL;
+    size_t flen   = 0;
+    FILE  *stream = open_memstream(&buf, &flen);
 
-    int emit(VM_CMD *cmd) {
+    int emit(VM_CMD * cmd) {
         unsigned unsigned_val;
-        fwrite(&cmd->op,1,1,stream);
-        if (cmd->op==VMOP_EXT) {
+        fwrite(&cmd->op, 1, 1, stream);
+        if (cmd->op == VMOP_EXT) {
             switch (cmd->len) {
                 case -1:
-                    cmd->len=strlen(cmd->data); // rewrite len and...
+                    cmd->len = strlen(cmd->data);  // rewrite len and...
                     // ...fall thru!
                 default:
-                    unsigned_val=htonl(cmd->len);
-                    fwrite(&unsigned_val,sizeof(unsigned),1,stream);
-                    unsigned_val=htonl(cmd->flags);
-                    fwrite(&unsigned_val,sizeof(unsigned),1,stream);
-                    fwrite(cmd->data,1,cmd->len,stream);
+                    unsigned_val = htonl(cmd->len);
+                    fwrite(&unsigned_val, sizeof(unsigned), 1, stream);
+                    unsigned_val = htonl(cmd->flags);
+                    fwrite(&unsigned_val, sizeof(unsigned), 1, stream);
+                    fwrite(cmd->data, 1, cmd->len, stream);
                     break;
             }
         }
     }
 
-    if (len==-1)
-        len=strlen((char *) data);
-    compiler(emit,data,len);
+    if (len == -1)
+        len = strlen((char *) data);
+    compiler(emit, data, len);
     fclose(stream);
-    TFINISH(0,"compile");
-    return LTV_init(NEW(LTV),buf,flen,LT_BC|LT_OWN|LT_BIN|LT_LIST);
+    TFINISH(0, "compile");
+    return LTV_init(NEW(LTV), buf, flen, LT_BC | LT_OWN | LT_BIN | LT_LIST);
 }
 
-LTV *compile_ltv(COMPILER compiler,LTV *ltv)
-{
+LTV *compile_ltv(COMPILER compiler, LTV *ltv) {
     // print_ltv(stdout,CODE_RED "compile: ",ltv,CODE_RESET "\n",0);
-    if (ltv->flags&(LT_CVAR|LT_BC))
-        return ltv; // FFI or pre-compiled
-    LTV *bc=compile(compiler,ltv->data,ltv->len);
+    if (ltv->flags & (LT_CVAR | LT_BC))
+        return ltv;  // FFI or pre-compiled
+    LTV *bc = compile(compiler, ltv->data, ltv->len);
     return bc;
 }
 
-char *opcode_name[] = { "RESET","YIELD","EXT","THROW","CATCH","PUSHEXT","EVAL","REF","DEREF","ASSIGN","REMOVE","CTX_PUSH","CTX_POP","FUN_PUSH","FUN_EVAL","FUN_POP",
-                       "S2S","D2S","E2S","F2S","S2D","S2E","S2F" };
+char *opcode_name[] = {"RESET", "YIELD", "EXT", "THROW", "CATCH", "PUSHEXT", "EVAL", "REF", "DEREF", "ASSIGN", "REMOVE", "CTX_PUSH", "CTX_POP", "FUN_PUSH", "FUN_EVAL", "FUN_POP",
+                       "S2S", "D2S", "E2S", "F2S", "S2D", "S2E", "S2F"};
 
-void disassemble(FILE *ofile,LTV *ltv)
-{
-    TSTART(0,"disassemble");
-    unsigned char *data,*code=(unsigned char *) ltv->data;
-    int i=0,length=0,flags=0;
-    fprintf(ofile,"BYTECODE: ");
-    while (i<ltv->len) {
-        unsigned char opcode=code[i++];
-        switch(opcode) {
+void disassemble(FILE *ofile, LTV *ltv) {
+    TSTART(0, "disassemble");
+    unsigned char *data, *code = (unsigned char *) ltv->data;
+    int            i = 0, length = 0, flags = 0;
+    fprintf(ofile, "BYTECODE: ");
+    while (i < ltv->len) {
+        unsigned char opcode = code[i++];
+        switch (opcode) {
             case VMOP_EXT:
-                length=ntohl(*(unsigned *) (code+i)); i+=sizeof(unsigned);
-                flags=ntohl(*(unsigned *)  (code+i)); i+=sizeof(unsigned);
-                data=code+i;                          i+=length;
-                //fprintf(ofile, "\n" CODE_BLUE);
+                length = ntohl(*(unsigned *) (code + i));
+                i += sizeof(unsigned);
+                flags = ntohl(*(unsigned *) (code + i));
+                i += sizeof(unsigned);
+                data = code + i;
+                i += length;
+                // fprintf(ofile, "\n" CODE_BLUE);
                 fprintf(ofile, CODE_BLUE);
-                fstrnprint(ofile,data,length);
+                fstrnprint(ofile, data, length);
                 fprintf(ofile, ":%x " CODE_RESET, flags);
                 break;
             case VMOP_RESET:
-                //fprintf(ofile,"\n");
+                // fprintf(ofile,"\n");
             default:
-                fprintf(ofile,"%s ",opcode_name[opcode]);
+                fprintf(ofile, "%s ", opcode_name[opcode]);
         }
     }
-    fprintf(ofile,"\n");
-    TFINISH(0,"disassemble");
+    fprintf(ofile, "\n");
+    TFINISH(0, "disassemble");
 }

@@ -653,11 +653,11 @@ static VMOP_CALL vmop_call[] = {
 };
 
 /* no conditionals(!!) */
-static int vm_run() {
+static int vm_run(LTV *bytecode) {
     void *outer[] = {&&outer_exit, &&outer_loop};
     void *inner[] = {&&inner_exit, &&inner_loop};
 
-    vm_code_push(compile(jit_edict, "CODE!", -1));
+    vm_code_push(bytecode);
     goto *outer[!(vm_env->state & (VM_COMPLETE | VM_ERROR))];  // 1st iteration
 outer_loop:
     vm_reset_ext();
@@ -675,6 +675,35 @@ outer_exit:
 //////////////////////////////////////////////////
 // Processor
 //////////////////////////////////////////////////
+void init_vm(LTV *dict) {
+    int   status = 0;
+    char *argid  = NULL;
+
+    LTV *vm_env_stack = LTV_NULL_LIST;
+    LTV *env_cvar = cif_create_cvar(cif_type_info("VM_ENV"), NEW(VM_ENV), NULL);
+    STRY(!env_cvar, "validating creation of env cvar");
+
+    LTV_put(LTV_list(vm_env_stack), env_cvar, HEAD, NULL);
+    vm_env = (VM_ENV *) env_cvar->data;
+
+    {
+        vm_env->state = 0;
+
+        for (int i = 0; i < VMRES_COUNT; i++)
+            LTV_init(&vm_env->ltv[i], NULL, 0, LT_NULL | LT_LIST);
+
+        STRY(!vm_enq(VMRES_STACK, LTV_NULL_LIST), "initializing env stack");
+        STRY(!vm_enq(VMRES_DICT, env_cvar), "adding vm's env to it's own dict");
+        STRY(!vm_enq(VMRES_DICT, dict), "adding user dict to vm env's dict");
+    }
+
+    LTV_release(LTV_get(LTV_list(vm_env_stack), POP, HEAD, NULL, NULL));
+    if ((env_cvar = LTV_get(LTV_list(vm_env_stack), KEEP, HEAD, NULL, NULL)))
+        vm_env = (VM_ENV *) env_cvar->data;
+
+done:
+    return;
+}
 
 // Translate a prepared C callback into an edict function/environment and evaluate it
 static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
@@ -699,8 +728,8 @@ static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
             LTV_init(&vm_env->ltv[i],NULL,0,LT_NULL|LT_LIST);
 
         STRY(!vm_enq(VMRES_STACK,LTV_NULL_LIST),"initializing env stack");
-        STRY(!vm_enq(VMRES_DICT,env_cvar),"adding continuation to env");
-        STRY(!vm_enq(VMRES_DICT,continuation),"adding continuation to env");
+        STRY(!vm_enq(VMRES_DICT, env_cvar), "adding vm's env to it's own dict");
+        STRY(!vm_enq(VMRES_DICT, continuation), "adding continuation (w/ROOT,CODE) to env");
 
         LTV *locals=LTV_init(NEW(LTV),"THUNK_LOCALS",-1,LT_NONE);
         STRY(!vm_enq(VMRES_DICT,locals),"pushing locals into dict");
@@ -717,7 +746,7 @@ static void vm_closure_thunk(ffi_cif *CIF,void *RET,void **ARGS,void *USER_DATA)
         STRY(cif_args_marshal(ffi_type_info,REV,marshaller),"marshalling ffi args");
         LT_put(locals,"RETURN",HEAD,cif_rval_create(ffi_type_info,RET)); // embed return val cvar in environment; ok if it fails
 
-        vm_run();
+        vm_run(compile(jit_edict, "CODE!", -1));
     }
 
     LTV_release(LTV_get(LTV_list(vm_env_stack),POP,HEAD,NULL,NULL));
@@ -750,6 +779,7 @@ extern LTV *vm_continuation(LTV *ffi_sig,LTV *root,LTV *code) {
 
     LTV *continuation=NULL;
     THROW(!(continuation=cif_create_closure(ffi_sig,vm_closure_thunk)),vm_exception);
+    // just transports initial code and dictionary into vm
     LT_put(continuation,"CODE",HEAD,code);
     LT_put(continuation,"ROOT",HEAD,root);
  done:

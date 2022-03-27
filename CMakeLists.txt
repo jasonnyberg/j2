@@ -39,4 +39,4 @@ install(TARGETS ${PROJECT_NAME} jj
         RUNTIME DESTINATION bin COMPONENT j2
         LIBRARY DESTINATION lib COMPONENT j2)
 
-install(FILES jj.sh bootstrap.edict DESTINATION bin)
+install(FILES jj bootstrap.edict DESTINATION bin)

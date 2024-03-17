@@ -33,13 +33,14 @@
  * not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifdef DIRECT_VM // see CMakeLists.txt: prelink, no bootstrap script
+#ifdef DIRECT_VM // see CMakeLists.txt: prelink
 
 #include "vm.h"
 
 const char *bootstrap=
     "[@input_stream [brl(input_stream) ! lambda!]@lambda lambda! |]@repl\n" // define repl
-    "ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
+    "ROOT<repl([bootstrap.edict] [r] file_open!)> [RETURN] ARG0 @";
+    //"ROOT<repl(get_stdin())> [RETURN] ARG0 @";                              // read from stdin
 
 int main(int argc, char *argv[]) { return vm_bootstrap(argc>1?argv[1]:(char *) bootstrap); }
 

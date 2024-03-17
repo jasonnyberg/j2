@@ -15,10 +15,10 @@ link_directories(${CMAKE_SOURCE_DIR}/build)
 #add_definitions(-O3)
 #add_definitions(-gdwarf-4)
 
-# build a shared library that is also an executable(!!)
-add_library(${PROJECT_NAME} SHARED trace.cc util.cc cll.cc listree.cc reflect.cc compile.cc vm.cc extensions.cc jj.cc)
+# build a shared library that is (no longer) also an executable(!!)
+add_library(${PROJECT_NAME} SHARED trace.cc util.cc cll.cc listree.cc reflect.cc compile.cc vm.cc extensions.cc)
 target_compile_options(${PROJECT_NAME} PUBLIC "-fPIC")
-target_link_libraries(${PROJECT_NAME} "-pie -Wl,-E")
+#target_link_libraries(${PROJECT_NAME} "-pie -Wl,-E")
 
 target_link_libraries(${PROJECT_NAME} dwarf elf dw dl ffi pthread)
 
@@ -27,7 +27,7 @@ target_link_libraries(${PROJECT_NAME} dwarf elf dw dl ffi pthread)
 
 # build a demo executable that dynamically links reflection as a plugin
 add_executable(jj jj_plugin.cc)
-#set(DIRECT_VM "TRUE")
+set(DIRECT_VM "TRUE")
 if (DIRECT_VM)
     add_definitions(-DDIRECT_VM)
     target_link_libraries(jj reflect)

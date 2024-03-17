@@ -171,9 +171,9 @@ static LTI *aa_remove(LTI **t,char *name,int len,int match) {
 static void *aa_metamap(LTI **lti,std::function<void *(LTI **)> op,int dir) {
     int status=0;
     void *rval=NULL;
+    int   order = dir & 1;
     if (LTI_invalid(*lti))
         goto done;
-    int order=dir&1;
     switch(dir&TREEDIR) {
         case PREFIX:  if ((rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))) {} break;
         case INFIX:   if ((rval=aa_metamap(&(*lti)->lnk[ !order],op,dir)) || (rval=op(lti)) || (rval=aa_metamap(&(*lti)->lnk[order],op,dir))) {} break;
@@ -241,7 +241,7 @@ void LTV_free(LTV *ltv)
 {
     TDEALLOC(ltv,"LTV");
     if (ltv) {
-        LTV_renew(ltv,NULL,0,0);
+        LTV_renew(ltv, NULL, 0, LT_NONE);
         RELEASE(ltv);
         ltv_count--;
     }
@@ -357,38 +357,35 @@ void *listree_acyclic(LTI **lti,LTVR *ltvr,LTV **ltv,int depth,LT_TRAVERSE_FLAGS
     return (*flags)&LT_TRAVERSE_HALT?NON_NULL:NULL;
 }
 
-void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
-{
-    int depth=0,cleanup=0;
-    void *rval=NULL;
+void *listree_traverse(CLL *ltvs, LTOBJ_OP preop, LTOBJ_OP postop) {
+    int   depth = 0, cleanup = 0;
+    void *rval = NULL;
 
-    std::function<void *(LTI *,LTVR *,LTV *)> descend_ltv = [&](LTI *parent_lti,LTVR *parent_ltvr,LTV *ltv) -> void *{
-            auto descend_lti= [&](LTI *lti) -> void *{
-                    auto descend_ltvr= [&](CLL *lnk) -> void *{ // for normal-form (ltv->lti->ltvr) form ltv
-                LTVR *ltvr=(LTVR *) lnk;
-                return descend_ltv(lti,ltvr,ltvr->ltv);
-                        };
+    std::function<void *(LTI *, LTVR *, LTV *)> descend_ltv = [&](LTI *parent_lti, LTVR *parent_ltvr, LTV *ltv) -> void * {
+        auto descend_lti = [&](LTI *lti) -> void * {
+            auto descend_ltvr = [&](CLL *lnk) -> void * {  // for normal-form (ltv->lti->ltvr) form ltv
+                LTVR *ltvr = (LTVR *) lnk;
+                return descend_ltv(lti, ltvr, ltvr->ltv);
+            };
 
+            LTV              *parent = ltv;
+            LT_TRAVERSE_FLAGS flags  = LT_TRAVERSE_LTI;
             if (!lti) goto done;
-            LTV *parent=ltv;
-            LT_TRAVERSE_FLAGS flags=LT_TRAVERSE_LTI;
-            if (cleanup) CLL_map(&lti->ltvs,FWD,descend_ltvr);
-            else if (preop && (rval=preop(&lti,NULL,&parent,depth,&flags)) ||
-                     ((flags&LT_TRAVERSE_HALT) || (rval=CLL_map(&lti->ltvs,(flags&LT_TRAVERSE_REVERSE)?REV:FWD,descend_ltvr))) ||
-                     postop && ((flags|=LT_TRAVERSE_POST),(rval=postop(&lti,NULL,&parent,depth,&flags))))
+            if (cleanup) CLL_map(&lti->ltvs, FWD, descend_ltvr);
+            else if (preop && (rval = preop(&lti, NULL, &parent, depth, &flags)) || ((flags & LT_TRAVERSE_HALT) || (rval = CLL_map(&lti->ltvs, (flags & LT_TRAVERSE_REVERSE) ? REV : FWD, descend_ltvr))) || postop && ((flags |= LT_TRAVERSE_POST), (rval = postop(&lti, NULL, &parent, depth, &flags))))
                 goto done;
         done:
             return rval;
-                };
+        };
 
-            auto descend_ltvr= [&](CLL *lnk) -> void *{ // for list-form ltv
+        auto descend_ltvr = [&](CLL *lnk) -> void * {  // for list-form ltv
             LTVR *ltvr=(LTVR *) lnk;
             return descend_ltv(NULL,ltvr,ltvr->ltv); // LTI is null in this case
-                };
+        };
 
-        if (!ltv) goto done;
         LTI *child=parent_lti;
-        LT_TRAVERSE_FLAGS flags=LT_TRAVERSE_LTV;
+        LT_TRAVERSE_FLAGS flags = LT_TRAVERSE_LTV;
+        if (!ltv) goto done;
         if (cleanup) // only descends (and cleans up) LTVs w/absolute visited flag
             return (ltv->flags&LT_AVIS && !((ltv->flags&=~LT_AVIS)&LT_AVIS) && !(ltv->flags&LT_REFS))? LTV_map(ltv,FWD,descend_lti,descend_ltvr):NULL;
         else {
@@ -408,7 +405,7 @@ void *listree_traverse(CLL *ltvs,LTOBJ_OP preop,LTOBJ_OP postop)
     done:
         if (ltv) ltv->flags|=LT_AVIS;
         return rval;
-        };
+    };
 
     TSTART(0,"listree_traverse");
     auto traverse=[&](CLL *lnk) -> void *{ LTVR *ltvr=(LTVR *) lnk; return descend_ltv(NULL,ltvr,ltvr->ltv); };
@@ -586,9 +583,9 @@ LTV *LTV_copy(LTV *ltv,int maxdepth)
 LTV *LTV_concat(LTV *a,LTV *b)
 {
     int status=0;
-    STRY(!a || !b,"validating args");
-    char *buf=NULL;
-    LTV *ltv=NULL;
+    char *buf   = NULL;
+    LTV  *ltv   = NULL;
+    STRY(!a || !b, "validating args");
     STRY(!(buf=mymalloc(a->len+b->len)),"validating buf allocation");
     STRY(!(ltv=LTV_init(NEW(LTV),buf,a->len+b->len,LT_OWN)),"validating ltv allocation");
     strncpy(buf,a->data,a->len);
@@ -1042,114 +1039,125 @@ void REF_free(CLL *lnk)
 
 ///////////////////////////////////////////////////////
 
-LTV *REF_create(LTV *refs)
-{
-    int status=0;
-    STRY(!refs,"validating params");
-    if (!(refs->flags&LT_REFS)) { // promote an ltv to a ref
-        STRY(!LTV_empty(refs),"promoting non-empty ltv to ref");
-        STRY(refs->flags&(LT_CVAR|LT_NAP|LT_NSTR|LT_REFL),"promoting incompatible ltv to ref");
-        refs->flags|=(LT_REFS|LT_LIST);
+LTV *REF_create(LTV *refs) {
+    int status = 0;
+    STRY(!refs, "validating params");
+    if (!(refs->flags & LT_REFS)) {  // promote an ltv to a ref
+        STRY(!LTV_empty(refs), "promoting non-empty ltv to ref");
+        STRY(refs->flags & (LT_CVAR | LT_NAP | LT_NSTR | LT_REFL), "promoting incompatible ltv to ref");
+        refs->flags |= (LT_REFS | LT_LIST);
         CLL_init(&refs->sub.ltvs);
     }
-    char *data=refs->data;
-    int len=refs->len;
-    CLL *cll=LTV_list(refs);
-    STRY(REF_delete(refs),"clearing any cll");
 
-    auto advance=[&](int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; };
+    {
+        char *data = refs->data;
+        int   len  = refs->len;
+        CLL  *cll  = LTV_list(refs);
+        STRY(REF_delete(refs), "clearing any cll");
 
-    auto quote=[&]() { return series(data,len,NULL,NULL,"''"); };
-    auto name=[&]()  { return series(data,len,NULL,".[",NULL); };
-    auto val=[&]()   { return series(data,len,NULL,NULL,"[]"); }; // val=data+1,len-2!!!
-    auto sep=[&]()   { return series(data,len,".",NULL,NULL);  };
+        {
+            auto advance = [&](int bump) { bump=MIN(bump,len); data+=bump; len-=bump; return bump; };
 
-    unsigned tlen,striplen;
-    REF *ref=NULL;
+            auto quote = [&]() { return series(data, len, NULL, NULL, "''"); };
+            auto name  = [&]() { return series(data, len, NULL, ".[", NULL); };
+            auto val   = [&]() { return series(data, len, NULL, NULL, "[]"); };  // val=data+1,len-2!!!
+            auto sep   = [&]() { return series(data, len, ".", NULL, NULL); };
 
-    while (len) { // parse ref keys
-        STRY(!((tlen=quote()) || (tlen=name())),"parsing ref name"); // mandatory
-        STRY(!(ref=REF_init(NEW(REF),data,tlen)),"allocating name ref");
-        STRY(!CLL_put(cll,&ref->lnk,HEAD),"enqueing name ref");
-        advance(tlen);
+            unsigned tlen, striplen;
+            REF     *ref = NULL;
 
-        while ((tlen=val())) { // parse vals (optional)
-            STRY(!LTV_enq(&ref->keys,LTV_init(NEW(LTV),data+1,tlen-2,0),TAIL),"enqueueing val key");
-            advance(tlen);
+            while (len) {                                                          // parse ref keys
+                STRY(!((tlen = quote()) || (tlen = name())), "parsing ref name");  // mandatory
+                STRY(!(ref = REF_init(NEW(REF), data, tlen)), "allocating name ref");
+                STRY(!CLL_put(cll, &ref->lnk, HEAD), "enqueing name ref");
+                advance(tlen);
+
+                while ((tlen = val())) {  // parse vals (optional)
+                    STRY(!LTV_enq(&ref->keys, LTV_init(NEW(LTV), data + 1, tlen - 2, 0), TAIL), "enqueueing val key");
+                    advance(tlen);
+                }
+
+                if (len)  // if there's anything left, it has to be a single separator
+                    STRY(advance(sep()) != 1, "parsing sep");
+            }
         }
-
-        if (len) // if there's anything left, it has to be a single separator
-            STRY(advance(sep())!=1,"parsing sep");
     }
 
- done:
-    return status?NULL:refs;
+done:
+    return status ? NULL : refs;
 }
 
-int REF_delete(LTV *refs)
-{
+int REF_delete(LTV *refs) {
     int status=0;
     STRY(!refs || !(refs->flags&LT_REFS),"validating params");
-    CLL *cll=LTV_list(refs);
-    CLL_release(cll,[](CLL *lnk) { REF_free(lnk); });
+    {
+        CLL *cll = LTV_list(refs);
+        CLL_release(cll, [](CLL *lnk) { REF_free(lnk); });
+    }
  done:
     return status;
-}
+ }
 
 int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
 {
     int status=0;
     LTV *root=root_ltv;
     STRY(!refs || !(refs->flags&LT_REFS),"validating params");
-    CLL *cll=LTV_list(refs);
-    REF *ref=NULL;
-    int placeholder=0;
+    {
+        CLL *cll         = LTV_list(refs);
+        REF *ref         = NULL;
+        int  placeholder = 0;
 
-    auto resolve = [&](CLL *lnk) {
-        int status=0;
-        ref=(REF *) lnk;
-        placeholder=0;
-        LTV *name=NULL;
-        LTVR *ltvr=NULL;
+        auto resolve = [&](CLL *lnk) {
+            int status  = 0;
+            ref         = (REF *) lnk;
+            placeholder = 0;
+            LTV  *name  = NULL;
+            LTVR *ltvr  = NULL;
 
-        STRY(!(name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&ltvr)),"validating name key"); // name is first key (use get for ltvr)
-        LTVR *val=(LTVR *) CLL_next(&ref->keys,&ltvr->lnk,FWD); // val will be next key
+            STRY(!(name = LTV_get(&ref->keys, KEEP, HEAD, NULL, &ltvr)), "validating name key");  // name is first key (use get for ltvr)
+            {
+                LTVR *val = (LTVR *) CLL_next(&ref->keys, &ltvr->lnk, FWD);  // val will be next key
 
-        STRY(!root,"validating root");
-        root=REF_reset(ref,root); // clean up ref if root changed
+                STRY(!root, "validating root");
+                {
+                    root = REF_reset(ref, root);  // clean up ref if root changed
 
-        char *buf=NULL;
-        if (root->flags&LT_CVAR && (ref->cvar=cif_create_cvar(LT_get(root,TYPE_BASE,HEAD,KEEP),root->data,PRINTA(buf,name->len,name->data))))
-            root=ref->cvar;
-        else {
-            if (!ref->lti) { // resolve lti
-                if ((status=LTI_invalid(ref->lti=LTI_lookup(root,name,insert))))
-                    goto done; // return failure, but don't log it
+                    char *buf = NULL;
+                    if (root->flags & LT_CVAR && (ref->cvar = cif_create_cvar(LT_get(root, TYPE_BASE, HEAD, KEEP), root->data, PRINTA(buf, name->len, name->data))))
+                        root = ref->cvar;
+                    else {
+                        if (!ref->lti) {  // resolve lti
+                            if ((status = LTI_invalid(ref->lti = LTI_lookup(root, name, insert))))
+                                goto done;  // return failure, but don't log it
+                        }
+                        if (!ref->ltvr) {  // resolve ltv(r)
+                            TRY(!LTV_get(&ref->lti->ltvs, KEEP, ref->reverse, val ? val->ltv : NULL, &ref->ltvr), "retrieving ltvr");
+                            CATCH(!ref->ltvr && insert, 0, goto install_placeholder, "retrieving ltvr, installing placeholder");
+                            if (status)  // found LTI but no matching LTV
+                                goto done;
+                        }
+                        root = ref->ltvr->ltv;
+                    }
+                }
+                goto done;  // success!
+
+            install_placeholder:
+                STRY(!(root = LTV_put(&ref->lti->ltvs, (placeholder = !val) ? LTV_NULL : LTV_dup(val->ltv), ref->reverse, &ref->ltvr)), "inserting placeholder ltvr");
             }
-            if (!ref->ltvr) { // resolve ltv(r)
-                TRY(!LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr),"retrieving ltvr");
-                CATCH(!ref->ltvr && insert,0,goto install_placeholder,"retrieving ltvr, installing placeholder");
-                if (status) // found LTI but no matching LTV
-                    goto done;
-            }
-            root=ref->ltvr->ltv;
-        }
-        goto done; // success!
 
-    install_placeholder:
-        STRY(!(root=LTV_put(&ref->lti->ltvs,(placeholder=!val)?LTV_NULL:LTV_dup(val->ltv),ref->reverse,&ref->ltvr)),"inserting placeholder ltvr");
-
-    done:
-        return status?(void *) NON_NULL:(void *) NULL;
+        done:
+            return status ? (void *) NON_NULL : (void *) NULL;
         };
 
-    STRY(!cll,"validating refs");
-    if (!root)
-        STRY(!(root=REF_root(REF_TAIL(refs))),"validating root");
-    status=(CLL_map(cll,REV,resolve)!=NULL);
-    if (placeholder) { // remove terminal placeholder
-        LTVR_release(&ref->ltvr->lnk);
-        ref->ltvr=NULL;
+        STRY(!cll, "validating refs");
+        if (!root)
+            STRY(!(root = REF_root(REF_TAIL(refs))), "validating root");
+        status = (CLL_map(cll, REV, resolve) != NULL);
+        if (placeholder) {  // remove terminal placeholder
+            LTVR_release(&ref->ltvr->lnk);
+            ref->ltvr = NULL;
+        }
     }
  done:
     return status;
@@ -1158,44 +1166,49 @@ int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
 int REF_iterate(LTV *refs,int pop)
 {
     int status=0;
-    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
-    CLL *cll=LTV_list(refs);
+    STRY(!refs || !(refs->flags & LT_REFS), "validating params");
+    {
+        CLL *cll = LTV_list(refs);
 
-    auto iterate = [&](CLL *lnk) { // return null if there is no next
-        REF *ref=(REF *) lnk;
+        auto iterate = [&](CLL *lnk) {  // return null if there is no next
+            REF *ref = (REF *) lnk;
 
-        LTVR *name_ltvr=NULL,*ref_ltvr=ref->ltvr;
-        LTV *name=LTV_get(&ref->keys,KEEP,HEAD,NULL,&name_ltvr);
-        LTVR *val=(LTVR *) CLL_next(&ref->keys,&name_ltvr->lnk,FWD); // val will be next key
+            LTVR *name_ltvr = NULL, *ref_ltvr = ref->ltvr;
+            LTV  *name = LTV_get(&ref->keys, KEEP, HEAD, NULL, &name_ltvr);
+            LTVR *val  = (LTVR *) CLL_next(&ref->keys, &name_ltvr->lnk, FWD);  // val will be next key
 
-        if (!ref->lti || !ref->ltvr)
-            goto done;
-        LTV *next_ltv=LTV_get(&ref->lti->ltvs,KEEP,ref->reverse,val?val->ltv:NULL,&ref->ltvr);
-        if (pop)
-            LTVR_release(&ref_ltvr->lnk);
-        if (next_ltv)
-            return (void *) ref;
+            if (!ref->lti || !ref->ltvr)
+                goto done;
+            {
+                LTV *next_ltv = LTV_get(&ref->lti->ltvs, KEEP, ref->reverse, val ? val->ltv : NULL, &ref->ltvr);
+                if (pop)
+                    LTVR_release(&ref_ltvr->lnk);
+                if (next_ltv)
+                    return (void *) ref;
 
-        if (LTV_wildcard(name)) {
-            LTV *root=REF_root(ref);
-            LTI *lti=ref->lti;
-            for (ref->lti=LTI_iter(root,ref->lti,FWD); !LTI_invalid(ref->lti) && fnmatch_len(name->data,name->len,ref->lti->name,-1); ref->lti=LTI_iter(root,ref->lti,FWD)); // find next lti
+                if (LTV_wildcard(name)) {
+                    LTV *root = REF_root(ref);
+                    LTI *lti  = ref->lti;
+                    for (ref->lti = LTI_iter(root, ref->lti, FWD); !LTI_invalid(ref->lti) && fnmatch_len(name->data, name->len, ref->lti->name, -1); ref->lti = LTI_iter(root, ref->lti, FWD))
+                        ;  // find next lti
 
-            if (CLL_EMPTY(&lti->ltvs)) // if LTI is pruneable
-                LTV_erase(root,lti); // prune it
-            if (ref->lti!=NULL)
-                return (void *) ref;
-        }
+                    if (CLL_EMPTY(&lti->ltvs))  // if LTI is pruneable
+                        LTV_erase(root, lti);   // prune it
+                    if (ref->lti != NULL)
+                        return (void *) ref;
+                }
 
-        REF_reset(ref,NULL);
+                REF_reset(ref, NULL);
+            }
 
-    done:
-        return (void *) NULL;
+        done:
+            return (void *) NULL;
         };
 
-    STRY(!cll,"validating arguments");
-    if (CLL_map(cll,FWD,iterate))
-        STRY(REF_resolve(NULL,refs,false),"resolving iterated ref");
+        STRY(!cll, "validating arguments");
+        if (CLL_map(cll, FWD, iterate))
+            STRY(REF_resolve(NULL, refs, false), "resolving iterated ref");
+    }
 
  done:
     return status;
@@ -1208,14 +1221,18 @@ int REF_assign(LTV *refs,LTV *ltv)
     auto ref_cvar=[&](LTV *ref_ltv) { return ref_ltv && (ref_ltv->flags&LT_CVAR)?ref_ltv:(LTV *) NULL; };
 
     STRY(!refs || !(refs->flags&LT_REFS),"validating refs in assign");
-    REF *ref=REF_HEAD(refs);
-    STRY(!ref,"validating ref in assign");
-    LTV *ref_ltv=ref_cvar(REF_ltv(ref));
-    if (ref_ltv && ref_cvar(REF_root(ref)))
-        STRY(!cif_assign_cvar(ref_ltv,ltv),"assigning to cvar");
-    else {
-        STRY(!ref->lti,"validating ref lti");
-        STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"adding ltv to ref");
+    {
+        REF *ref = REF_HEAD(refs);
+        STRY(!ref, "validating ref in assign");
+        {
+            LTV *ref_ltv = ref_cvar(REF_ltv(ref));
+            if (ref_ltv && ref_cvar(REF_root(ref)))
+                STRY(!cif_assign_cvar(ref_ltv, ltv), "assigning to cvar");
+            else {
+                STRY(!ref->lti, "validating ref lti");
+                STRY(!LTV_put(&ref->lti->ltvs, ltv, ref->reverse, &ref->ltvr), "adding ltv to ref");
+            }
+        }
     }
  done:
     return status;
@@ -1226,12 +1243,14 @@ int REF_replace(LTV *refs,LTV *ltv)
 {
     int status=0;
     STRY(!refs || !(refs->flags&LT_REFS),"validating params");
-    REF *ref=REF_HEAD(refs);
-    LTVR *ref_ltvr=REF_ltvr(ref);
-    STRY(!REF_lti(ref),"validating ref lti");
-    STRY(!LTV_put(&ref->lti->ltvs,ltv,ref->reverse,&ref->ltvr),"replacing/adding rev ltv");
-    if (ref_ltvr) // remove old ref if it existed
-        LTVR_release(&ref_ltvr->lnk);
+    {
+        REF  *ref      = REF_HEAD(refs);
+        LTVR *ref_ltvr = REF_ltvr(ref);
+        STRY(!REF_lti(ref), "validating ref lti");
+        STRY(!LTV_put(&ref->lti->ltvs, ltv, ref->reverse, &ref->ltvr), "replacing/adding rev ltv");
+        if (ref_ltvr)  // remove old ref if it existed
+            LTVR_release(&ref_ltvr->lnk);
+    }
  done:
     return status;
 }
@@ -1241,10 +1260,12 @@ int REF_remove(LTV *refs)
 {
     int status=0;
     STRY(!refs || !(refs->flags&LT_REFS),"validating params");
-    REF *ref=REF_HEAD(refs);
-    STRY(!ref->lti || !ref->ltvr,"validating ref lti, ltvr");
-    LTVR_release(&ref->ltvr->lnk);
-    ref->ltvr=NULL;
+    {
+        REF *ref = REF_HEAD(refs);
+        STRY(!ref->lti || !ref->ltvr, "validating ref lti, ltvr");
+        LTVR_release(&ref->ltvr->lnk);
+        ref->ltvr = NULL;
+    }
  done:
     return status;
 }

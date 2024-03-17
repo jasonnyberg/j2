@@ -172,9 +172,10 @@ done:
 }
 
 static void vm_code_push(LTV *ltv) {
+    LTV *opcode_ltv{};
     TSTART(vm_env->state, "");
     THROW(!ltv, vm_exception);
-    LTV *opcode_ltv = LTV_init(NEW(LTV), ltv->data, ltv->len, LT_BIN | LT_LIST | LT_BC);
+    opcode_ltv = LTV_init(NEW(LTV), ltv->data, ltv->len, LT_BIN | LT_LIST | LT_BC);
     THROW(!opcode_ltv, vm_exception);
     DEBUG(fprintf(errfile(), CODE_RED "  vm_code_push %x" CODE_RESET "\n", opcode_ltv->data));
     THROW(!LTV_enq(LTV_list(opcode_ltv), ltv, HEAD), vm_exception);  // encaps code ltv within tracking ltv
@@ -239,27 +240,29 @@ static void vm_ffi(LTV *lambda) {
     THROW(!(ftype = LT_get(lambda, TYPE_BASE, HEAD, KEEP)), vm_exception);
     THROW(!(cif = cif_ffi_prep(ftype)), vm_exception);
 
-    rval = cif_rval_create(ftype, NULL);
-    if ((void_func = !rval))
-        rval = LTV_NULL;
-    CIF_MARSHAL_OP marshaller = [&](char *name, LTV *type) {
-        int  status = 0;
-        LTV *arg = NULL, *coerced = NULL;
-        STRY(!(arg = vm_stack_deq(POP)), "popping ffi arg (%s) from stack", name);  // FIXME: attempt to resolve by name first
-        STRY(!(coerced = cif_coerce_i2c(arg, type)), "coercing ffi arg (%s)", name);
-        LTV_enq(&args, coerced, HEAD);      // enq coerced arg onto args CLL
-        LT_put(rval, name, HEAD, coerced);  // coerced args are installed as childen of rval
-        LTV_release(arg);
-    done:
-        return status;
-    };
-    TSTART(vm_env->state, "");
-    THROW(cif_args_marshal(ftype, REV, marshaller), vm_exception);  // pre-
-    THROW(cif_ffi_call(cif, lambda->data, rval, &args), vm_exception);
-    if (void_func)
-        LTV_release(rval);
-    else
-        THROW(!vm_stack_enq(cif_coerce_c2i(rval)), vm_exception);
+    {
+        rval = cif_rval_create(ftype, NULL);
+        if ((void_func = !rval))
+            rval = LTV_NULL;
+        CIF_MARSHAL_OP marshaller = [&](char *name, LTV *type) {
+            int  status = 0;
+            LTV *arg = NULL, *coerced = NULL;
+            STRY(!(arg = vm_stack_deq(POP)), "popping ffi arg (%s) from stack", name);  // FIXME: attempt to resolve by name first
+            STRY(!(coerced = cif_coerce_i2c(arg, type)), "coercing ffi arg (%s)", name);
+            LTV_enq(&args, coerced, HEAD);      // enq coerced arg onto args CLL
+            LT_put(rval, name, HEAD, coerced);  // coerced args are installed as childen of rval
+            LTV_release(arg);
+        done:
+            return status;
+        };
+        TSTART(vm_env->state, "");
+        THROW(cif_args_marshal(ftype, REV, marshaller), vm_exception);  // pre-
+        THROW(cif_ffi_call(cif, lambda->data, rval, &args), vm_exception);
+        if (void_func)
+            LTV_release(rval);
+        else
+            THROW(!vm_stack_enq(cif_coerce_c2i(rval)), vm_exception);
+    }
     CLL_release(&args, LTVR_release);  //  ALWAYS release at end, to give other code a chance to enq an LTV
 done:
     TFINISH(vm_env->state, "");
@@ -295,9 +298,10 @@ done:
 extern void is_lit() {
     TSTART(vm_env->state, "");
     LTV *ltv;
+    int  tlen{};
     THROW(!(ltv = vm_stack_deq(POP)), vm_exception);
     THROW(ltv->flags & LT_NSTR, vm_exception);  // throw if non-string
-    int tlen = series(ltv->data, ltv->len, WHITESPACE, NULL, NULL);
+    tlen = series(ltv->data, ltv->len, WHITESPACE, NULL, NULL);
     THROW(tlen && ltv->len == tlen, vm_exception);
 done:
     LTV_release(ltv);
@@ -486,15 +490,17 @@ static void vmop_DEREF() { VMOP_DEBUG();
     if (vm_env->state) return;
     THROW(!vm_use_ext(),vm_exception);
     vm_resolve(vm_env->ext);
-    LTV *ltv = REF_ltv(REF_HEAD(vm_env->ext));
-    if (!ltv)
-        ltv=LTV_dup(vm_env->ext); // unresolvable refs are treated as literals(!)
-    if (ltv->flags & LT_REFS) {
-        LTV *ref = ltv;
-        THROW(!(ltv = REF_ltv(REF_HEAD(ref))), vm_exception);
-        REF_iterate(ref, 0);
+    {
+        LTV *ltv = REF_ltv(REF_HEAD(vm_env->ext));
+        if (!ltv)
+            ltv = LTV_dup(vm_env->ext);  // unresolvable refs are treated as literals(!)
+        if (ltv->flags & LT_REFS) {
+            LTV *ref = ltv;
+            THROW(!(ltv = REF_ltv(REF_HEAD(ref))), vm_exception);
+            REF_iterate(ref, 0);
+        }
+        THROW(!vm_stack_enq(ltv), vm_exception);
     }
-    THROW(!vm_stack_enq(ltv), vm_exception);
 done:
     return;
 }

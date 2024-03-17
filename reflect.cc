@@ -72,7 +72,7 @@ void cif_init(int bootstrap) {
         print_ltv(stderr, CODE_RED, cif_module, CODE_RESET "\n", 0);
         cif_curate_module(cif_module, bootstrap);
     }
-}                                                                                                                               
+}
 
 char        *Type_pushUVAL(TYPE_UVALUE *uval, char *buf);
 TYPE_UVALUE *Type_pullUVAL(TYPE_UVALUE *uval, char *buf);
@@ -257,33 +257,33 @@ int print_type_info(FILE *ofile, LTV *ltv) {
     int status = 0;
     if (!(ltv->flags & LT_TYPE))
         goto done;
+    else {
+        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
 
-    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
-
-    fprintf(ofile, "|TYPE_INFO %s", type_info->id_str);
-    const char *str = NULL;
-    static char alias[32];
-    DWARF_ALIAS(alias, type_info->sig8);
-    dwarf_get_TAG_name(type_info->tag, &str);
-    fprintf(ofile, "|%s", str + 7);
-    if (type_info->flags & TYPEF_BASE) fprintf(ofile, "|base %s", type_info->base_str);
-    if (type_info->flags & TYPEF_CONSTVAL) fprintf(ofile, "|constval 0x%x", type_info->const_value);
-    if (type_info->flags & TYPEF_BYTESIZE) fprintf(ofile, "|bytesize %u", type_info->bytesize);
-    if (type_info->flags & TYPEF_BITSIZE) fprintf(ofile, "|bitsize %u", type_info->bitsize);
-    if (type_info->flags & TYPEF_BITOFFSET) fprintf(ofile, "|bitoffset %u", type_info->bitoffset);
-    if (type_info->flags & TYPEF_ENCODING) fprintf(ofile, "|encoding %u", type_info->encoding);
-    if (type_info->flags & TYPEF_UPPERBOUND) fprintf(ofile, "|upperbound 0x%x", type_info->upper_bound);
-    if (type_info->flags & TYPEF_LOWPC) fprintf(ofile, "|lowpc 0x%x", type_info->low_pc);
-    if (type_info->flags & TYPEF_MEMBERLOC) fprintf(ofile, "|member loc 0x%x", type_info->data_member_location);
-    if (type_info->flags & TYPEF_LOCATION) fprintf(ofile, "|location 0x%x", type_info->location);
-    if (type_info->flags & TYPEF_ADDR) fprintf(ofile, "|addr 0x%x", type_info->addr);
-    if (type_info->flags & TYPEF_EXTERNAL) fprintf(ofile, "|external %u", type_info->external);
-    if (type_info->flags & TYPEF_SYMBOLIC) fprintf(ofile, "|symbolic");
-    if (type_info->flags & TYPEF_OFFSET) fprintf(ofile, "|offset %x", type_info->offset);
-    if (type_info->flags & TYPEF_IS_INFO) fprintf(ofile, "|info");
-    if (type_info->flags & TYPEF_IS_DECL) fprintf(ofile, "|decl");
-    if (type_info->flags & TYPEF_SIGNATURE) fprintf(ofile, "|sig %s", alias);
-
+        fprintf(ofile, "|TYPE_INFO %s", type_info->id_str);
+        const char *str = NULL;
+        static char alias[32];
+        DWARF_ALIAS(alias, type_info->sig8);
+        dwarf_get_TAG_name(type_info->tag, &str);
+        fprintf(ofile, "|%s", str + 7);
+        if (type_info->flags & TYPEF_BASE) fprintf(ofile, "|base %s", type_info->base_str);
+        if (type_info->flags & TYPEF_CONSTVAL) fprintf(ofile, "|constval 0x%x", type_info->const_value);
+        if (type_info->flags & TYPEF_BYTESIZE) fprintf(ofile, "|bytesize %u", type_info->bytesize);
+        if (type_info->flags & TYPEF_BITSIZE) fprintf(ofile, "|bitsize %u", type_info->bitsize);
+        if (type_info->flags & TYPEF_BITOFFSET) fprintf(ofile, "|bitoffset %u", type_info->bitoffset);
+        if (type_info->flags & TYPEF_ENCODING) fprintf(ofile, "|encoding %u", type_info->encoding);
+        if (type_info->flags & TYPEF_UPPERBOUND) fprintf(ofile, "|upperbound 0x%x", type_info->upper_bound);
+        if (type_info->flags & TYPEF_LOWPC) fprintf(ofile, "|lowpc 0x%x", type_info->low_pc);
+        if (type_info->flags & TYPEF_MEMBERLOC) fprintf(ofile, "|member loc 0x%x", type_info->data_member_location);
+        if (type_info->flags & TYPEF_LOCATION) fprintf(ofile, "|location 0x%x", type_info->location);
+        if (type_info->flags & TYPEF_ADDR) fprintf(ofile, "|addr 0x%x", type_info->addr);
+        if (type_info->flags & TYPEF_EXTERNAL) fprintf(ofile, "|external %u", type_info->external);
+        if (type_info->flags & TYPEF_SYMBOLIC) fprintf(ofile, "|symbolic");
+        if (type_info->flags & TYPEF_OFFSET) fprintf(ofile, "|offset %x", type_info->offset);
+        if (type_info->flags & TYPEF_IS_INFO) fprintf(ofile, "|info");
+        if (type_info->flags & TYPEF_IS_DECL) fprintf(ofile, "|decl");
+        if (type_info->flags & TYPEF_SIGNATURE) fprintf(ofile, "|sig %s", alias);
+    }
 done:
     return status;
 }
@@ -298,27 +298,27 @@ int dot_type_info(FILE *ofile, LTV *ltv) {
     if (!(ltv->flags & LT_TYPE)) {
         fprintf(ofile, " fillcolor=beige");
         goto done;
-    }
-
-    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
-    switch (type_info->tag) {
-        case DW_TAG_compile_unit: fprintf(ofile, " fillcolor=red rank=max"); break;
-        case DW_TAG_subprogram: fprintf(ofile, " fillcolor=orange"); break;
-        case DW_TAG_subroutine_type: fprintf(ofile, " fillcolor=darkorange"); break;
-        case DW_TAG_formal_parameter: fprintf(ofile, " fillcolor=gold"); break;
-        case DW_TAG_variable: fprintf(ofile, " fillcolor=cyan"); break;
-        case DW_TAG_typedef: fprintf(ofile, " fillcolor=green"); break;
-        case DW_TAG_structure_type: fprintf(ofile, " fillcolor=blue"); break;
-        case DW_TAG_class_type: fprintf(ofile, " fillcolor=blue"); break;
-        case DW_TAG_union_type: fprintf(ofile, " fillcolor=violet"); break;
-        case DW_TAG_member: fprintf(ofile, " fillcolor=lightblue"); break;
-        case DW_TAG_enumeration_type: fprintf(ofile, " fillcolor=magenta"); break;
-        case DW_TAG_array_type: fprintf(ofile, " fillcolor=gray80"); break;
-        case DW_TAG_pointer_type: fprintf(ofile, " fillcolor=gray90"); break;
-        case DW_TAG_base_type: fprintf(ofile, " fillcolor=yellow rank=min"); break;
-        case DW_TAG_enumerator: fprintf(ofile, " fillcolor=pink rank=min"); break;
-        case DW_TAG_subrange_type: fprintf(ofile, " fillcolor=gray80 rank=min"); break;
-        case DW_TAG_type_unit: fprintf(ofile, " fillcolor=darkred rank=min"); break;
+    } else {
+        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
+        switch (type_info->tag) {
+            case DW_TAG_compile_unit: fprintf(ofile, " fillcolor=red rank=max"); break;
+            case DW_TAG_subprogram: fprintf(ofile, " fillcolor=orange"); break;
+            case DW_TAG_subroutine_type: fprintf(ofile, " fillcolor=darkorange"); break;
+            case DW_TAG_formal_parameter: fprintf(ofile, " fillcolor=gold"); break;
+            case DW_TAG_variable: fprintf(ofile, " fillcolor=cyan"); break;
+            case DW_TAG_typedef: fprintf(ofile, " fillcolor=green"); break;
+            case DW_TAG_structure_type: fprintf(ofile, " fillcolor=blue"); break;
+            case DW_TAG_class_type: fprintf(ofile, " fillcolor=blue"); break;
+            case DW_TAG_union_type: fprintf(ofile, " fillcolor=violet"); break;
+            case DW_TAG_member: fprintf(ofile, " fillcolor=lightblue"); break;
+            case DW_TAG_enumeration_type: fprintf(ofile, " fillcolor=magenta"); break;
+            case DW_TAG_array_type: fprintf(ofile, " fillcolor=gray80"); break;
+            case DW_TAG_pointer_type: fprintf(ofile, " fillcolor=gray90"); break;
+            case DW_TAG_base_type: fprintf(ofile, " fillcolor=yellow rank=min"); break;
+            case DW_TAG_enumerator: fprintf(ofile, " fillcolor=pink rank=min"); break;
+            case DW_TAG_subrange_type: fprintf(ofile, " fillcolor=gray80 rank=min"); break;
+            case DW_TAG_type_unit: fprintf(ofile, " fillcolor=darkred rank=min"); break;
+        }
     }
 done:
     return status;
@@ -418,7 +418,7 @@ LTV *cif_create_cvar(LTV *type, void *data, char *member) {
     TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
     basic_type               = member ? cif_find_indexable(type) : cif_find_concrete(type);
     int size                 = 0;
-    int is_array             = 0;
+    LTV_FLAGS is_array             = LT_NONE;
     if (!basic_type) {
         switch (type_info->tag) {
             case DW_TAG_subprogram:
@@ -499,118 +499,120 @@ int cif_dump_cvar(FILE *ofile, LTV *cvar, int depth) {
     LTV *type;
     TRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "validate cvar via type");
     CATCH(status, 0, goto done, "not descendable");
-    CLL queue;
-    CLL_init(&queue);
-    LTV_enq(&queue, cif_create_cvar(type, cvar->data, NULL), TAIL);  // copy cvar so we don't mess with it
+    {
+        CLL queue;
+        CLL_init(&queue);
+        LTV_enq(&queue, cif_create_cvar(type, cvar->data, NULL), TAIL);  // copy cvar so we don't mess with it
 
-    auto traverse_array = [&](LTV *cvar, int count) {
-        int status = 0;
-        STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "look up cvar type");
-        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
-        for (int i = 0; i < count; i++) {
-            cif_dump_cvar(ofile, cvar, depth + 4);
-            cvar->data += type_info->bytesize;
-        }
-    done:
-        return status;
-    };
-
-    auto process_type_info = [&](LTV *cvar) {
-        int  status = 0;
-        LTV *type   = NULL;
-
-        auto type_info_op = [&](CLL *lnk) {
-            LTV           *ltv       = ((LTVR *) lnk)->ltv;
-            TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
-            switch (type_info->tag) {
-                case DW_TAG_member:
-                    LTV_enq(&queue, cif_create_cvar(ltv, cvar->data + type_info->data_member_location, NULL), TAIL);
-                    break;
-                default:
-                    fprintf(ofile, CODE_RED "child tag %d unimplemented" CODE_RESET "\n", type_info->tag);
-                    break;
+        auto traverse_array = [&](LTV *cvar, int count) {
+            int status = 0;
+            STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "look up cvar type");
+            {
+                TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
+                for (int i = 0; i < count; i++) {
+                    cif_dump_cvar(ofile, cvar, depth + 4);
+                    cvar->data += type_info->bytesize;
+                }
             }
         done:
-            return status ? (void *) NON_NULL : (void *) NULL;
+            return status;
         };
 
-        STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "look up cvar type");
-        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
+        auto process_type_info = [&](LTV *cvar) {
+            int  status = 0;
+            LTV *type   = NULL;
 
-        char *name = attr_get(type, TYPE_SYMB);
-
-        {
-            const char *str = NULL;
-            dwarf_get_TAG_name(type_info->tag, &str);
-            fprintf(ofile, "%*c%s \"%s\" ", depth * 4, ' ', str + 7, name);
-
-            switch (type_info->tag) {
-                case DW_TAG_union_type:
-                case DW_TAG_structure_type:
-                case DW_TAG_class_type: {
-                    LTI *children = NULL;
-                    if ((children = LTI_resolve(type, TYPE_LIST, false)))
-                        CLL_map(&children->ltvs, FWD, type_info_op);
-                    break;
+            auto type_info_op = [&](CLL *lnk) {
+                LTV           *ltv       = ((LTVR *) lnk)->ltv;
+                TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) ltv;
+                switch (type_info->tag) {
+                    case DW_TAG_member:
+                        LTV_enq(&queue, cif_create_cvar(ltv, cvar->data + type_info->data_member_location, NULL), TAIL);
+                        break;
+                    default:
+                        fprintf(ofile, CODE_RED "child tag %d unimplemented" CODE_RESET "\n", type_info->tag);
+                        break;
                 }
-                case DW_TAG_subprogram:
-                case DW_TAG_subroutine_type:
-                    fprintf(ofile, "0x%x", cvar->data);
-                    break;
-                case DW_TAG_pointer_type:
-                    fprintf(ofile, "0x%x", *((void **) cvar->data));
-                    break;
-                case DW_TAG_array_type: {
-                    TYPE_INFO_LTV *base_info = NULL;
-                    if (type_info->flags & TYPEF_BASE)  // link to base type
-                        STRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "look up base die for %s", type_info->id_str);
-                    char *base_symb = base_info && (base_info->flags & TYPEF_SYMBOLIC) ? attr_get(&base_info->ltv, TYPE_SYMB) : NULL;
-                    if (base_symb) {
-                        LTV           *subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
-                        TYPE_INFO_LTV *subrange     = subrange_ltv ? (TYPE_INFO_LTV *) subrange_ltv->data : NULL;
-                        if (subrange && (subrange->flags & TYPEF_UPPERBOUND)) {
-                            fprintf(ofile, "\n");
-                            LTV *tcvar = cif_create_cvar(&base_info->ltv, cvar->data, NULL);
-                            traverse_array(tcvar, subrange->upper_bound + 1);
-                            LTV_release(tcvar);
-                        } else
-                            fprintf(ofile, "(unbounded array of %s)", base_symb);
-                    }
-                    break;
-                }
-                case DW_TAG_enumeration_type:
-                    fprintf(ofile, "(enum display unimplemented)");
-                    break;
-                case DW_TAG_enumerator:
-                    fprintf(ofile, "0x%x", type_info->const_value);
-                    break;
-                case DW_TAG_member:
-                    if (type_info->flags & TYPEF_BYTESIZE)
-                        ; /* fall thru! */
-                    else {
-                        LTV_enq(&queue, cif_create_cvar(cif_find_concrete(type), cvar->data, NULL), HEAD);
+            done:
+                return status ? (void *) NON_NULL : (void *) NULL;
+            };
+
+            STRY(!(type = LT_get(cvar, TYPE_BASE, HEAD, KEEP)), "look up cvar type");
+            {
+                TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
+                char          *name      = attr_get(type, TYPE_SYMB);
+                const char    *str       = NULL;
+                dwarf_get_TAG_name(type_info->tag, &str);
+                fprintf(ofile, "%*c%s \"%s\" ", depth * 4, ' ', str + 7, name);
+
+                switch (type_info->tag) {
+                    case DW_TAG_union_type:
+                    case DW_TAG_structure_type:
+                    case DW_TAG_class_type: {
+                        LTI *children = NULL;
+                        if ((children = LTI_resolve(type, TYPE_LIST, false)))
+                            CLL_map(&children->ltvs, FWD, type_info_op);
                         break;
                     }
-                case DW_TAG_base_type: {
-                    TYPE_UVALUE uval = {};
-                    char        buf[64];
-                    if (Type_getUVAL(cvar, &uval))
-                        fprintf(ofile, "%s (%p)", Type_pushUVAL(&uval, buf), cvar->data);
-                    break;
+                    case DW_TAG_subprogram:
+                    case DW_TAG_subroutine_type:
+                        fprintf(ofile, "0x%x", cvar->data);
+                        break;
+                    case DW_TAG_pointer_type:
+                        fprintf(ofile, "0x%x", *((void **) cvar->data));
+                        break;
+                    case DW_TAG_array_type: {
+                        TYPE_INFO_LTV *base_info = NULL;
+                        if (type_info->flags & TYPEF_BASE)  // link to base type
+                            STRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "look up base die for %s", type_info->id_str);
+                        char *base_symb = base_info && (base_info->flags & TYPEF_SYMBOLIC) ? attr_get(&base_info->ltv, TYPE_SYMB) : NULL;
+                        if (base_symb) {
+                            LTV           *subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
+                            TYPE_INFO_LTV *subrange     = subrange_ltv ? (TYPE_INFO_LTV *) subrange_ltv->data : NULL;
+                            if (subrange && (subrange->flags & TYPEF_UPPERBOUND)) {
+                                fprintf(ofile, "\n");
+                                LTV *tcvar = cif_create_cvar(&base_info->ltv, cvar->data, NULL);
+                                traverse_array(tcvar, subrange->upper_bound + 1);
+                                LTV_release(tcvar);
+                            } else
+                                fprintf(ofile, "(unbounded array of %s)", base_symb);
+                        }
+                        break;
+                    }
+                    case DW_TAG_enumeration_type:
+                        fprintf(ofile, "(enum display unimplemented)");
+                        break;
+                    case DW_TAG_enumerator:
+                        fprintf(ofile, "0x%x", type_info->const_value);
+                        break;
+                    case DW_TAG_member:
+                        if (type_info->flags & TYPEF_BYTESIZE)
+                            ; /* fall thru! */
+                        else {
+                            LTV_enq(&queue, cif_create_cvar(cif_find_concrete(type), cvar->data, NULL), HEAD);
+                            break;
+                        }
+                    case DW_TAG_base_type: {
+                        TYPE_UVALUE uval = {};
+                        char        buf[64];
+                        if (Type_getUVAL(cvar, &uval))
+                            fprintf(ofile, "%s (%p)", Type_pushUVAL(&uval, buf), cvar->data);
+                        break;
+                    }
+                    default:
+                        LTV_enq(&queue, cif_create_cvar(cif_find_concrete(type), cvar->data, NULL), HEAD);
+                        break;
                 }
-                default:
-                    LTV_enq(&queue, cif_create_cvar(cif_find_concrete(type), cvar->data, NULL), HEAD);
-                    break;
             }
-        }
-    done:
-        fprintf(ofile, "\n");
-        return status;
-    };
+        done:
+            fprintf(ofile, "\n");
+            return status;
+        };
 
-    while ((cvar = LTV_deq(&queue, HEAD))) {
-        process_type_info(cvar);
-        LTV_release(cvar);
+        while ((cvar = LTV_deq(&queue, HEAD))) {
+            process_type_info(cvar);
+            LTV_release(cvar);
+        }
     }
 
 done:
@@ -669,15 +671,14 @@ done:
 
 int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info, CU_DATA *cu_data) {
     int         status = 0;
-    Dwarf_Error error  = 0;
-
+    Dwarf_Error error   = 0;
     char *diename = NULL;
+    Dwarf_Off   goff;
 
     STRY(!type_info || !cu_data, "validate params");
 
     STRY(die == NULL, "test for null die");
     STRY(dwarf_die_CU_offset(die, &type_info->offset, &error), "get CU-relative die offset");
-    Dwarf_Off goff;
     STRY(dwarf_dieoffset(die, &goff, &error), "get global die offset");
     DWARF_ID(type_info->id_str, goff);
     STRY(dwarf_tag(die, &type_info->tag, &error), "get die tag");
@@ -740,260 +741,272 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
             goto done;
     }
 
-    Dwarf_Signed     atcnt  = 0;
-    Dwarf_Attribute *atlist = NULL;
-    TRY(dwarf_attrlist(die, &atlist, &atcnt, &error), "get die attrlist");
-    CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "check for DW_DLV_NO_ENTRY in dwarf_attrlist");
-    SCATCH("get die attrlist");
+    {
+        Dwarf_Signed     atcnt  = 0;
+        Dwarf_Attribute *atlist = NULL;
+        Dwarf_Attribute *attr   = NULL;
+        TRY(dwarf_attrlist(die, &atlist, &atcnt, &error), "get die attrlist");
+        CATCH(status == DW_DLV_NO_ENTRY, 0, goto done, "check for DW_DLV_NO_ENTRY in dwarf_attrlist");
+        SCATCH("get die attrlist");
 
-    Dwarf_Attribute *attr = NULL;
-    while (atcnt--) {
-        char *prefix;
-        attr = &atlist[atcnt];
+        while (atcnt--) {
+            char *prefix;
+            attr = &atlist[atcnt];
 
-        Dwarf_Half vshort;
-        STRY(dwarf_whatattr(*attr, &vshort, &error), "get attr type");
-        Dwarf_Off  voffset;
-        Dwarf_Sig8 vsig8;
-        char      *vstr;
+            Dwarf_Half vshort;
+            STRY(dwarf_whatattr(*attr, &vshort, &error), "get attr type");
+            Dwarf_Off  voffset;
+            Dwarf_Sig8 vsig8;
+            char      *vstr;
 
-        auto dump_attr = [&](FILE *ofile) {
-            int status = 0;
+            auto dump_attr = [&](FILE *ofile) {
+                int status = 0;
 
-            fprintf(ofile, CODE_RED "dump attr 0x%x\n", vshort);
-            Dwarf_Signed   vint;
-            Dwarf_Unsigned vuint;
-            Dwarf_Addr     vaddr;
-            Dwarf_Off      voffset;
-            Dwarf_Half     vshort;
-            Dwarf_Bool     vbool;
-            Dwarf_Ptr      vptr;
-            Dwarf_Block   *vblock;
-            Dwarf_Sig8     vsig8;
-            char          *vstr;
-            const char    *vcstr;
+                fprintf(ofile, CODE_RED "dump attr 0x%x\n", vshort);
+                Dwarf_Signed   vint;
+                Dwarf_Unsigned vuint;
+                Dwarf_Addr     vaddr;
+                Dwarf_Off      voffset;
+                Dwarf_Half     vshort;
+                Dwarf_Bool     vbool;
+                Dwarf_Ptr      vptr;
+                Dwarf_Block   *vblock;
+                Dwarf_Sig8     vsig8;
+                char          *vstr;
+                const char    *vcstr;
 
-            STRY(dwarf_whatform(*attr, &vshort, &error), "get attr form");
-            STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr formname");
-            fprintf(ofile, "form %d (%s) ", vshort, vcstr);
+                STRY(dwarf_whatform(*attr, &vshort, &error), "get attr form");
+                STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr formname");
+                fprintf(ofile, "form %d (%s) ", vshort, vcstr);
 
-            STRY(dwarf_whatform_direct(*attr, &vshort, &error), "get attr form_direct");
-            STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr form_direct name");
-            fprintf(ofile, "form_direct %d (%s) ", vshort, vcstr);
+                STRY(dwarf_whatform_direct(*attr, &vshort, &error), "get attr form_direct");
+                STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr form_direct name");
+                fprintf(ofile, "form_direct %d (%s) ", vshort, vcstr);
 
-            IF_OK(dwarf_formref(*attr, &voffset, &error), fprintf(ofile, "formref 0x%" DW_PR_DSx " ", voffset));
-            IF_OK(dwarf_global_formref(*attr, &voffset, &error), fprintf(ofile, "global_formref 0x%" DW_PR_DSx " ", voffset));
-            IF_OK(dwarf_formaddr(*attr, &vaddr, &error), fprintf(ofile, "addr 0x%" DW_PR_DUx " ", vaddr));
-            IF_OK(dwarf_formflag(*attr, &vbool, &error), fprintf(ofile, "flag %" DW_PR_DSd " ", vbool));
-            IF_OK(dwarf_formudata(*attr, &vuint, &error), fprintf(ofile, "udata %" DW_PR_DUu " ", vuint));
-            IF_OK(dwarf_formsdata(*attr, &vint, &error), fprintf(ofile, "sdata %" DW_PR_DSd " ", vint));
-            IF_OK(dwarf_formblock(*attr, &vblock, &error), fprintf(ofile, "block 0x%" DW_PR_DUx " ", vblock->bl_len));
-            IF_OK(dwarf_formstring(*attr, &vstr, &error), fprintf(ofile, "string %s ", vstr));
-            IF_OK(dwarf_formsig8(*attr, &vsig8, &error), fprintf(ofile, "addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
-                                                                 vsig8.signature[0], vsig8.signature[1], vsig8.signature[2], vsig8.signature[3],
-                                                                 vsig8.signature[4], vsig8.signature[5], vsig8.signature[6], vsig8.signature[7]));
-            fprintf(ofile, "\n");
-        done:
-            return status;
-        };
+                IF_OK(dwarf_formref(*attr, &voffset, &error), fprintf(ofile, "formref 0x%" DW_PR_DSx " ", voffset));
+                IF_OK(dwarf_global_formref(*attr, &voffset, &error), fprintf(ofile, "global_formref 0x%" DW_PR_DSx " ", voffset));
+                IF_OK(dwarf_formaddr(*attr, &vaddr, &error), fprintf(ofile, "addr 0x%" DW_PR_DUx " ", vaddr));
+                IF_OK(dwarf_formflag(*attr, &vbool, &error), fprintf(ofile, "flag %" DW_PR_DSd " ", vbool));
+                IF_OK(dwarf_formudata(*attr, &vuint, &error), fprintf(ofile, "udata %" DW_PR_DUu " ", vuint));
+                IF_OK(dwarf_formsdata(*attr, &vint, &error), fprintf(ofile, "sdata %" DW_PR_DSd " ", vint));
+                IF_OK(dwarf_formblock(*attr, &vblock, &error), fprintf(ofile, "block 0x%" DW_PR_DUx " ", vblock->bl_len));
+                IF_OK(dwarf_formstring(*attr, &vstr, &error), fprintf(ofile, "string %s ", vstr));
+                IF_OK(dwarf_formsig8(*attr, &vsig8, &error), fprintf(ofile, "addr %02d:%02d:%02d:%02d:%02d:%02d:%02d:%02d ",
+                                                                     vsig8.signature[0], vsig8.signature[1], vsig8.signature[2], vsig8.signature[3],
+                                                                     vsig8.signature[4], vsig8.signature[5], vsig8.signature[6], vsig8.signature[7]));
+                fprintf(ofile, "\n");
+            done:
+                return status;
+            };
 
-        switch (vshort) {
-            case DW_AT_name:  // string
-                type_info->flags |= TYPEF_HAS_NAME;
-                break;
-            case DW_AT_type:  // global_formref
-                // STRY(dwarf_whatform(*attr,&vshort,&error),"get attr form");
-                IF_OK(dwarf_global_formref(*attr, &type_info->base, &error), type_info->flags |= TYPEF_BASE);
-                DWARF_ID(type_info->base_str, type_info->base);
-                IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= (TYPEF_BASE | TYPEF_SIGNATURE));
-                break;
-            case DW_AT_low_pc:
-                IF_OK(dwarf_formsdata(*attr, &type_info->low_pc, &error), type_info->flags |= TYPEF_LOWPC);
-                break;
-            case DW_AT_data_member_location:  // sdata
-                IF_OK(dwarf_formsdata(*attr, &type_info->data_member_location, &error), type_info->flags |= TYPEF_MEMBERLOC);
-                break;
-            case DW_AT_const_value:  // sdata
-                IF_OK(dwarf_formsdata(*attr, &type_info->const_value, &error), type_info->flags |= TYPEF_CONSTVAL);
-                break;
-            case DW_AT_location:  // sdata
-                IF_OK(dwarf_formsdata(*attr, &type_info->location, &error), type_info->flags |= TYPEF_LOCATION);
-                break;
-            case DW_AT_byte_size:
-                IF_OK(dwarf_formudata(*attr, &type_info->bytesize, &error), type_info->flags |= TYPEF_BYTESIZE);
-                break;
-            case DW_AT_bit_offset:
-                IF_OK(dwarf_formudata(*attr, &type_info->bitoffset, &error), type_info->flags |= TYPEF_BITOFFSET);
-                break;
-            case DW_AT_bit_size:
-                IF_OK(dwarf_formudata(*attr, &type_info->bitsize, &error), type_info->flags |= TYPEF_BITSIZE);
-                break;
-            case DW_AT_external:
-                IF_OK(dwarf_formflag(*attr, &type_info->external, &error), type_info->flags |= TYPEF_EXTERNAL);
-                break;
-            case DW_AT_upper_bound:
-                IF_OK(dwarf_formudata(*attr, &type_info->upper_bound, &error), type_info->flags |= TYPEF_UPPERBOUND);
-                break;
-            case DW_AT_encoding:  // DW_ATE_unsigned, etc.
-                IF_OK(dwarf_formudata(*attr, &type_info->encoding, &error), type_info->flags |= TYPEF_ENCODING);
-                break;
-            case DW_AT_GNU_vector:                 // "The main difference between a regular array and the vector variant is that vectors are passed by value to functions."
-                type_info->flags |= TYPEF_VECTOR;  // an attribute of an array
-                break;
-            case DW_AT_signature:
-                // case DW_AT_GNU_odr_signature: // One Definition Rule
-                IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
-                IF_OK(dwarf_formudata(*attr, (Dwarf_Unsigned *) &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
-                if (!(type_info->flags & TYPEF_SIGNATURE)) {
-                    printf("sig attr (%d) with wrong form\n", vshort);
+            switch (vshort) {
+                case DW_AT_name:  // string
+                    type_info->flags |= TYPEF_HAS_NAME;
+                    break;
+                case DW_AT_type:  // global_formref
+                    // STRY(dwarf_whatform(*attr,&vshort,&error),"get attr form");
+                    IF_OK(dwarf_global_formref(*attr, &type_info->base, &error), type_info->flags |= TYPEF_BASE);
+                    DWARF_ID(type_info->base_str, type_info->base);
+                    IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= (TYPEF_BASE | TYPEF_SIGNATURE));
+                    break;
+                case DW_AT_low_pc:
+                    IF_OK(dwarf_formsdata(*attr, &type_info->low_pc, &error), type_info->flags |= TYPEF_LOWPC);
+                    break;
+                case DW_AT_data_member_location:  // sdata
+                    IF_OK(dwarf_formsdata(*attr, &type_info->data_member_location, &error), type_info->flags |= TYPEF_MEMBERLOC);
+                    break;
+                case DW_AT_const_value:  // sdata
+                    IF_OK(dwarf_formsdata(*attr, &type_info->const_value, &error), type_info->flags |= TYPEF_CONSTVAL);
+                    break;
+                case DW_AT_location:  // sdata
+                    IF_OK(dwarf_formsdata(*attr, &type_info->location, &error), type_info->flags |= TYPEF_LOCATION);
+                    break;
+                case DW_AT_byte_size:
+                    IF_OK(dwarf_formudata(*attr, &type_info->bytesize, &error), type_info->flags |= TYPEF_BYTESIZE);
+                    break;
+                case DW_AT_bit_offset:
+                    IF_OK(dwarf_formudata(*attr, &type_info->bitoffset, &error), type_info->flags |= TYPEF_BITOFFSET);
+                    break;
+                case DW_AT_bit_size:
+                    IF_OK(dwarf_formudata(*attr, &type_info->bitsize, &error), type_info->flags |= TYPEF_BITSIZE);
+                    break;
+                case DW_AT_external:
+                    IF_OK(dwarf_formflag(*attr, &type_info->external, &error), type_info->flags |= TYPEF_EXTERNAL);
+                    break;
+                case DW_AT_upper_bound:
+                    IF_OK(dwarf_formudata(*attr, &type_info->upper_bound, &error), type_info->flags |= TYPEF_UPPERBOUND);
+                    break;
+                case DW_AT_encoding:  // DW_ATE_unsigned, etc.
+                    IF_OK(dwarf_formudata(*attr, &type_info->encoding, &error), type_info->flags |= TYPEF_ENCODING);
+                    break;
+                case DW_AT_GNU_vector:                 // "The main difference between a regular array and the vector variant is that vectors are passed by value to functions."
+                    type_info->flags |= TYPEF_VECTOR;  // an attribute of an array
+                    break;
+                case DW_AT_signature:
+                    // case DW_AT_GNU_odr_signature: // One Definition Rule
+                    IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
+                    IF_OK(dwarf_formudata(*attr, (Dwarf_Unsigned *) &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
+                    if (!(type_info->flags & TYPEF_SIGNATURE)) {
+                        printf("sig attr (%d) with wrong form\n", vshort);
+                        dump_attr(stderr);
+                    }
+                    break;
+                case DW_AT_linkage_name:  // C++ mangling
+                    IF_OK(dwarf_formstring(*attr, &vstr, &error), type_info->flags |= TYPEF_LINKAGE);
+                    attr_set(&type_info->ltv, TYPE_LINK, vstr);
+                    break;
+                case DW_AT_declaration:  // i.e. not a definition (BOOLEAN)
+                    type_info->flags |= TYPEF_IS_DECL;
+                    break;
+                case DW_AT_GNU_odr_signature:  // One Definition Rule
+                case DW_AT_sibling:
+                case DW_AT_high_pc:
+                case DW_AT_decl_column:
+                case DW_AT_decl_line:
+                case DW_AT_decl_file:
+                case DW_AT_call_line:
+                case DW_AT_call_file:
+                case DW_AT_GNU_all_tail_call_sites:
+                case DW_AT_GNU_all_call_sites:
+                case DW_AT_stmt_list:
+                case DW_AT_comp_dir:
+                case DW_AT_static_link:
+                case DW_AT_artificial:  // __line__, etc.
+                case DW_AT_frame_base:  // stack?
+                case DW_AT_inline:
+                case DW_AT_prototyped:  // signature?
+                case DW_AT_language:
+                case DW_AT_producer:
+                case DW_AT_abstract_origin:  // associated with DW_TAG_inlined_subroutine
+                case DW_AT_GNU_tail_call:
+                case DW_AT_GNU_call_site_value:
+                case DW_AT_GNU_macros:      //
+                case DW_AT_specification:   // C++?
+                case DW_AT_object_pointer:  // C++
+                case DW_AT_pure:            // C++
+                case DW_AT_accessibility:
+                case DW_AT_ranges:
+                case DW_AT_explicit:
+
+                case DW_AT_alignment:
+                case DW_AT_identifier_case:
+                case DW_AT_deleted:
+                case DW_AT_defaulted:
+                case DW_AT_const_expr:
+                case DW_AT_noreturn:
+                case DW_AT_default_value:
+                case DW_AT_GNU_dwo_id:  // GNU DebugFission (split dwarf)
+                    break;
+                default:
                     dump_attr(stderr);
-                }
-                break;
-            case DW_AT_linkage_name:  // C++ mangling
-                IF_OK(dwarf_formstring(*attr, &vstr, &error), type_info->flags |= TYPEF_LINKAGE);
-                attr_set(&type_info->ltv, TYPE_LINK, vstr);
-                break;
-            case DW_AT_declaration:  // i.e. not a definition (BOOLEAN)
-                type_info->flags |= TYPEF_IS_DECL;
-                break;
-            case DW_AT_GNU_odr_signature:  // One Definition Rule
-            case DW_AT_sibling:
-            case DW_AT_high_pc:
-            case DW_AT_decl_column:
-            case DW_AT_decl_line:
-            case DW_AT_decl_file:
-            case DW_AT_call_line:
-            case DW_AT_call_file:
-            case DW_AT_GNU_all_tail_call_sites:
-            case DW_AT_GNU_all_call_sites:
-            case DW_AT_stmt_list:
-            case DW_AT_comp_dir:
-            case DW_AT_static_link:
-            case DW_AT_artificial:  // __line__, etc.
-            case DW_AT_frame_base:  // stack?
-            case DW_AT_inline:
-            case DW_AT_prototyped:  // signature?
-            case DW_AT_language:
-            case DW_AT_producer:
-            case DW_AT_abstract_origin:  // associated with DW_TAG_inlined_subroutine
-            case DW_AT_GNU_tail_call:
-            case DW_AT_GNU_call_site_value:
-            case DW_AT_GNU_macros:      //
-            case DW_AT_specification:   // C++?
-            case DW_AT_object_pointer:  // C++
-            case DW_AT_pure:            // C++
-            case DW_AT_accessibility:
-            case DW_AT_ranges:
-            case DW_AT_explicit:
+                    break;
+            }
 
-            case DW_AT_alignment:
-            case DW_AT_identifier_case:
-            case DW_AT_deleted:
-            case DW_AT_defaulted:
-            case DW_AT_const_expr:
-            case DW_AT_noreturn:
-            case DW_AT_default_value:
-            case DW_AT_GNU_dwo_id:  // GNU DebugFission (split dwarf)
-                break;
-            default:
-                dump_attr(stderr);
-                break;
+            auto get_expr_loclist_data = [&](Dwarf_Unsigned exprlen, Dwarf_Ptr exprloc) {
+                int            status = 0;
+                Dwarf_Locdesc *llbuf;
+                Dwarf_Signed   listlen;
+                STRY(dwarf_loclist_from_expr(dbg, exprloc, exprlen, &llbuf, &listlen, &error), "get exprloc");
+                for (int j = 0; j < llbuf->ld_cents; j++) {
+                    if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31)
+                        ;
+                    else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31)
+                        ;
+                    else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31)
+                        ;
+                    else
+                        switch (llbuf->ld_s[j].lr_atom) {
+                            case DW_OP_addr:
+                                type_info->addr = llbuf->ld_s[j].lr_number;
+                                type_info->flags |= TYPEF_ADDR;
+                                break;
+                            case DW_OP_GNU_push_tls_address:  // THREAD LOCAL STORAGE
+                                type_info->tag = 0;           // disqualify TLS variables
+                                break;
+                            case DW_OP_consts:
+                            case DW_OP_const1s:
+                            case DW_OP_const2s:
+                            case DW_OP_const4s:
+                            case DW_OP_const8s:  // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                            case DW_OP_constu:
+                            case DW_OP_const1u:
+                            case DW_OP_const2u:
+                            case DW_OP_const4u:
+                            case DW_OP_const8u:  // llbuf->ld_s[j].lr_number
+                            case DW_OP_fbreg:    // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                            case DW_OP_bregx:    // printf(stdout," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                            case DW_OP_regx:     // printf(stdout," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                            case DW_OP_pick:
+                            case DW_OP_plus_uconst:
+                            case DW_OP_piece:
+                            case DW_OP_deref_size:
+                            case DW_OP_xderef_size:
+                            case DW_OP_GNU_uninit:
+                            case DW_OP_GNU_encoded_addr:
+                            case DW_OP_GNU_implicit_pointer:
+                            case DW_OP_GNU_entry_value:
+                            case DW_OP_call_frame_cfa:
+                            case DW_OP_deref:
+                            case DW_OP_skip:
+                            case DW_OP_bra:
+                            case DW_OP_plus:
+                            case DW_OP_shl:
+                            case DW_OP_or:
+                            case DW_OP_and:
+                            case DW_OP_xor:
+                            case DW_OP_eq:
+                            case DW_OP_ne:
+                            case DW_OP_gt:
+                            case DW_OP_lt:
+                            case DW_OP_shra:
+                            case DW_OP_mul:
+                            case DW_OP_minus:
+
+                            case DW_OP_stack_value:        // 0x9f
+                            case DW_OP_lit16:              // 0x40
+                            case DW_OP_GNU_parameter_ref:  // unreferenced parameter
+                            case DW_OP_GNU_addr_index:     // GNU DebugFission
+                            case DW_OP_GNU_const_index:    // GNU DebugFission
+                                // fprintf(stdout," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                                break;
+                            default:
+                                fprintf(stderr, " Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x", llbuf->ld_s[j].lr_atom, llbuf->ld_s[j].lr_number, llbuf->ld_s[j].lr_number2, llbuf->ld_s[j].lr_offset);
+                                fprintf(stderr, CODE_RED " lowpc %" DW_PR_DUx " hipc %" DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
+                                        llbuf->ld_lopc, llbuf->ld_hipc, llbuf->ld_section_offset, llbuf->ld_from_loclist ? "debug_loc" : "debug_info", llbuf->ld_cents);
+                                fprintf(stderr, CODE_RESET "\n");
+                                break;
+                        }
+                }
+                dwarf_dealloc(dbg, llbuf->ld_s, DW_DLA_LOC_BLOCK);
+                dwarf_dealloc(dbg, llbuf, DW_DLA_LOCDESC);
+            done:
+                return status;
+            };
+
+            Dwarf_Unsigned vuint;
+            Dwarf_Ptr      vptr;
+            IF_OK(dwarf_formexprloc(*attr, &vuint, &vptr, &error), get_expr_loclist_data(vuint, vptr));
+
+            dwarf_dealloc(dbg, atlist[atcnt], DW_DLA_ATTR);
         }
 
-        auto get_expr_loclist_data = [&](Dwarf_Unsigned exprlen, Dwarf_Ptr exprloc) {
-            int            status = 0;
-            Dwarf_Locdesc *llbuf;
-            Dwarf_Signed   listlen;
-            STRY(dwarf_loclist_from_expr(dbg, exprloc, exprlen, &llbuf, &listlen, &error), "get exprloc");
-            for (int j=0;j<llbuf->ld_cents;j++)
-            {
-                if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31) ;
-                else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31) ;
-                else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31) ;
-                else
-                    switch (llbuf->ld_s[j].lr_atom) {
-                        case DW_OP_addr:
-                            type_info->addr = llbuf->ld_s[j].lr_number;
-                            type_info->flags |= TYPEF_ADDR;
-                            break;
-                        case DW_OP_GNU_push_tls_address:  // THREAD LOCAL STORAGE
-                            type_info->tag = 0;           // disqualify TLS variables
-                            break;
-                        case DW_OP_consts: case DW_OP_const1s: case DW_OP_const2s: case DW_OP_const4s: case DW_OP_const8s: // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                        case DW_OP_constu: case DW_OP_const1u: case DW_OP_const2u: case DW_OP_const4u: case DW_OP_const8u: // llbuf->ld_s[j].lr_number
-                        case DW_OP_fbreg:    // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                        case DW_OP_bregx:    // printf(stdout," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                        case DW_OP_regx:     // printf(stdout," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                        case DW_OP_pick:
-                        case DW_OP_plus_uconst:
-                        case DW_OP_piece:
-                        case DW_OP_deref_size:
-                        case DW_OP_xderef_size:
-                        case DW_OP_GNU_uninit:
-                        case DW_OP_GNU_encoded_addr:
-                        case DW_OP_GNU_implicit_pointer:
-                        case DW_OP_GNU_entry_value:
-                        case DW_OP_call_frame_cfa:
-                        case DW_OP_deref:
-                        case DW_OP_skip:
-                        case DW_OP_bra:
-                        case DW_OP_plus:
-                        case DW_OP_shl:
-                        case DW_OP_or:
-                        case DW_OP_and:
-                        case DW_OP_xor:
-                        case DW_OP_eq:
-                        case DW_OP_ne:
-                        case DW_OP_gt:
-                        case DW_OP_lt:
-                        case DW_OP_shra:
-                        case DW_OP_mul:
-                        case DW_OP_minus:
+        dwarf_dealloc(dbg, atlist, DW_DLA_LIST);
 
-                        case DW_OP_stack_value:        // 0x9f
-                        case DW_OP_lit16:              // 0x40
-                        case DW_OP_GNU_parameter_ref:  // unreferenced parameter
-                        case DW_OP_GNU_addr_index:     // GNU DebugFission
-                        case DW_OP_GNU_const_index:    // GNU DebugFission
-                            // fprintf(stdout," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
-                            break;
-                        default:
-                            fprintf(stderr, " Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x", llbuf->ld_s[j].lr_atom, llbuf->ld_s[j].lr_number, llbuf->ld_s[j].lr_number2, llbuf->ld_s[j].lr_offset);
-                            fprintf(stderr, CODE_RED " lowpc %" DW_PR_DUx " hipc %" DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
-                                    llbuf->ld_lopc, llbuf->ld_hipc, llbuf->ld_section_offset, llbuf->ld_from_loclist ? "debug_loc" : "debug_info", llbuf->ld_cents);
-                            fprintf(stderr, CODE_RESET "\n");
-                            break;
-                    }
-            }
-            dwarf_dealloc(dbg, llbuf->ld_s, DW_DLA_LOC_BLOCK);
-            dwarf_dealloc(dbg, llbuf, DW_DLA_LOCDESC);
-        done:
-            return status;
-        };
-
-        Dwarf_Unsigned vuint;
-        Dwarf_Ptr      vptr;
-        IF_OK(dwarf_formexprloc(*attr, &vuint, &vptr, &error), get_expr_loclist_data(vuint, vptr));
-
-        dwarf_dealloc(dbg, atlist[atcnt], DW_DLA_ATTR);
-    }
-
-    dwarf_dealloc(dbg, atlist, DW_DLA_LIST);
-
-    // Disqualify certain nodes
-    switch (type_info->tag) {
-        case 0:  // populate_type_info rejected it
-        case DW_TAG_label:
-            type_info->tag = 0;
-        case DW_TAG_variable:
-        case DW_TAG_subprogram:
-            if (type_info->depth > 1)
+        // Disqualify certain nodes
+        switch (type_info->tag) {
+            case 0:  // populate_type_info rejected it
+            case DW_TAG_label:
                 type_info->tag = 0;
-            else if (!(type_info->flags & TYPEF_EXTERNAL))
-                type_info->tag = 0;
-            break;
-        default:
-            break;
+            case DW_TAG_variable:
+            case DW_TAG_subprogram:
+                if (type_info->depth > 1)
+                    type_info->tag = 0;
+                else if (!(type_info->flags & TYPEF_EXTERNAL))
+                    type_info->tag = 0;
+                break;
+            default:
+                break;
+        }
     }
 
 done:
@@ -1004,8 +1017,9 @@ char *get_diename(Dwarf_Debug dbg, Dwarf_Die die) {
     int         status  = 0;
     Dwarf_Error error   = 0;
     char       *diename = NULL;
+    char       *type_info_name = NULL;
     STRY(dwarf_diename(die, &diename, &error) == DW_DLV_ERROR, "check dwarf_diename");
-    char *type_info_name = diename ? bufdup(diename, -1) : NULL;
+    type_info_name = diename ? bufdup(diename, -1) : NULL;
     dwarf_dealloc(dbg, diename, DW_DLA_STRING);
 done:
     return (status || !type_info_name) ? NULL : type_info_name;
@@ -1071,223 +1085,225 @@ static int cif_curate_module(LTV *module, int bootstrap) {
     auto derive_symbolic_name = [&](TYPE_INFO_LTV *type_info, int post) {
         int status = 0;
         if (!type_info->tag) return 0;
+        TYPE_INFO_LTV *base_info = NULL;
 
         TRYCATCH(type_info->flags & TYPEF_SYMBOLIC, 0, done, "check if symbolic name already derived");
-        TYPE_INFO_LTV *base_info = NULL;
         if (type_info->flags & TYPEF_BASE) {  // link to base type
             TRY(!(base_info = (TYPE_INFO_LTV *) LT_get(&type_info->ltv, TYPE_BASE, HEAD, KEEP)), "look up base die for %s", type_info->id_str);
             CATCH(status, 0, goto done, "");
         }
 
-        char *type_name      = attr_get(&type_info->ltv, TYPE_NAME);
-        char *base_symb      = base_info && (base_info->flags & TYPEF_SYMBOLIC) ? attr_get(&base_info->ltv, TYPE_SYMB) : NULL;
-        char *composite_name = NULL;
+        {
+            char *type_name      = attr_get(&type_info->ltv, TYPE_NAME);
+            char *base_symb      = base_info && (base_info->flags & TYPEF_SYMBOLIC) ? attr_get(&base_info->ltv, TYPE_SYMB) : NULL;
+            char *composite_name = NULL;
 
-        auto dedup_base = [&]() {
-            if (base_info && base_symb) {  // dedup types; to get here, base must have already been categorized
-                TYPE_INFO_LTV *symb_base = (TYPE_INFO_LTV *) LT_get(module, base_symb, HEAD, KEEP);
-                if (symb_base && symb_base != base_info) {  // may already be correct
-                    attr_del(&type_info->ltv, TYPE_BASE);
-                    LT_put(&type_info->ltv, TYPE_BASE, TAIL, &symb_base->ltv);
-                    strncpy(type_info->base_str, symb_base->id_str, TYPE_IDLEN);
+            auto dedup_base = [&]() {
+                if (base_info && base_symb) {  // dedup types; to get here, base must have already been categorized
+                    TYPE_INFO_LTV *symb_base = (TYPE_INFO_LTV *) LT_get(module, base_symb, HEAD, KEEP);
+                    if (symb_base && symb_base != base_info) {  // may already be correct
+                        attr_del(&type_info->ltv, TYPE_BASE);
+                        LT_put(&type_info->ltv, TYPE_BASE, TAIL, &symb_base->ltv);
+                        strncpy(type_info->base_str, symb_base->id_str, TYPE_IDLEN);
 
-                    base_info = symb_base;  // update this to reflect new base
-                    base_symb = attr_get(&base_info->ltv, TYPE_SYMB);
-                }
-            }
-        };
-
-        auto categorize_symbolic = [&](char *sym) {
-            auto tag_category = [&](TYPE_INFO_LTV *type) {
-                switch (type->tag) {
-                    case DW_TAG_subprogram:
-                    case DW_TAG_subroutine_type: return (int) DW_TAG_subprogram;
-                    default: return (int) type->tag;
+                        base_info = symb_base;  // update this to reflect new base
+                        base_symb = attr_get(&base_info->ltv, TYPE_SYMB);
+                    }
                 }
             };
 
-            TYPE_INFO_LTV *deduped = NULL;
-            if (sym) {
-                type_info->flags |= TYPEF_SYMBOLIC;
-                attr_set(&type_info->ltv, TYPE_SYMB, sym);
-                const char *is;
-                dwarf_get_TAG_name(type_info->tag, &is);
-                LTV *sym_ltv = LT_get(module, sym, HEAD, KEEP);  // see if symbol already exists
-                if (sym_ltv && sym_ltv->flags & LT_TYPE) {
-                    TYPE_INFO_LTV *sym_type_info = (TYPE_INFO_LTV *) sym_ltv;
-                    if (tag_category(type_info) == tag_category(sym_type_info))
-                        deduped = sym_type_info;
-                    else if (type_info->tag == DW_TAG_formal_parameter)
-                        deduped = sym_type_info;
-                    else {
-                        const char *already, *named;
-                        named = attr_get(&sym_type_info->ltv, TYPE_NAME);
-                        dwarf_get_TAG_name(sym_type_info->tag, &already);
-                        fprintf(stderr, CODE_RED "conflict for \"%s\": %s (%s) \"%s\" vs. (installed)  %s (%s) \"%s\"" CODE_RESET "\n",
-                                sym, is, type_info->id_str, type_name, already, sym_type_info->id_str, named);
+            auto categorize_symbolic = [&](char *sym) {
+                auto tag_category = [&](TYPE_INFO_LTV *type) {
+                    switch (type->tag) {
+                        case DW_TAG_subprogram:
+                        case DW_TAG_subroutine_type: return (int) DW_TAG_subprogram;
+                        default: return (int) type->tag;
+                    }
+                };
+
+                TYPE_INFO_LTV *deduped = NULL;
+                if (sym) {
+                    type_info->flags |= TYPEF_SYMBOLIC;
+                    attr_set(&type_info->ltv, TYPE_SYMB, sym);
+                    const char *is;
+                    dwarf_get_TAG_name(type_info->tag, &is);
+                    LTV *sym_ltv = LT_get(module, sym, HEAD, KEEP);  // see if symbol already exists
+                    if (sym_ltv && sym_ltv->flags & LT_TYPE) {
+                        TYPE_INFO_LTV *sym_type_info = (TYPE_INFO_LTV *) sym_ltv;
+                        if (tag_category(type_info) == tag_category(sym_type_info))
+                            deduped = sym_type_info;
+                        else if (type_info->tag == DW_TAG_formal_parameter)
+                            deduped = sym_type_info;
+                        else {
+                            const char *already, *named;
+                            named = attr_get(&sym_type_info->ltv, TYPE_NAME);
+                            dwarf_get_TAG_name(sym_type_info->tag, &already);
+                            fprintf(stderr, CODE_RED "conflict for \"%s\": %s (%s) \"%s\" vs. (installed)  %s (%s) \"%s\"" CODE_RESET "\n",
+                                    sym, is, type_info->id_str, type_name, already, sym_type_info->id_str, named);
+                        }
                     }
                 }
-            }
 
-            if (!deduped) {
-                DEBUG(fprintf(stdout, "install symbolic type_info %s (%s)\n", sym, type_info->id_str));
-                LT_put(module, sym, HEAD, &type_info->ltv);
-            }
-
-            return deduped ? deduped : type_info;
-        };
-
-        if (post)
-            dedup_base();
-
-        switch (type_info->tag) {
-            case 0:
-                break;
-            case DW_TAG_structure_type:
-                if (post && type_name)
-                    categorize_symbolic(FORMATA(composite_name, strlen(type_name), "struct %s", type_name));
-                break;
-            case DW_TAG_class_type:
-                if (post && type_name)
-                    categorize_symbolic(FORMATA(composite_name, strlen(type_name), "class %s", type_name));
-                break;
-            case DW_TAG_union_type:
-                if (post && type_name)
-                    categorize_symbolic(FORMATA(composite_name, strlen(type_name), "union %s", type_name));
-                break;
-            case DW_TAG_enumeration_type:
-                if (type_name)
-                    categorize_symbolic(FORMATA(composite_name, strlen(type_name), "enum %s", type_name));
-                break;
-            case DW_TAG_pointer_type:
-                if (post) {
-                    if (!(type_info->flags & TYPEF_BASE))
-                        base_symb = "void";
-                    if (base_symb)
-                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "(%s)*", base_symb));
+                if (!deduped) {
+                    DEBUG(fprintf(stdout, "install symbolic type_info %s (%s)\n", sym, type_info->id_str));
+                    LT_put(module, sym, HEAD, &type_info->ltv);
                 }
-                break;
-            case DW_TAG_array_type:
-                if (post && base_symb) {
-                    LTV           *subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
-                    TYPE_INFO_LTV *subrange     = subrange_ltv ? (TYPE_INFO_LTV *) subrange_ltv->data : NULL;
-                    if (subrange && (subrange->flags & TYPEF_UPPERBOUND)) {
-                        if (base_info && (base_info->flags & TYPEF_BYTESIZE)) {
-                            type_info->bytesize = base_info->bytesize * (subrange->upper_bound + 1);
-                            type_info->flags |= TYPEF_BYTESIZE;
-                        }
-                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb) + 20, "(%s)[%d]", base_symb, subrange->upper_bound + 1));
-                    } else
-                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "(%s)[]", base_symb));
-                }
-                break;
-            case DW_TAG_volatile_type:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "volatile %s", base_symb));
-                break;
-            case DW_TAG_const_type:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "const %s", base_symb));
-                break;
-            case DW_TAG_restrict_type:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "restrict %s", base_symb));
-                break;
-            case DW_TAG_base_type:
-            case DW_TAG_enumerator:
-                if (type_name)
-                    categorize_symbolic(FORMATA(composite_name, strlen(type_name), "%s", type_name));
-                break;
-            case DW_TAG_typedef:
-                if (post) {
+
+                return deduped ? deduped : type_info;
+            };
+
+            if (post)
+                dedup_base();
+
+            switch (type_info->tag) {
+                case 0:
+                    break;
+                case DW_TAG_structure_type:
+                    if (post && type_name)
+                        categorize_symbolic(FORMATA(composite_name, strlen(type_name), "struct %s", type_name));
+                    break;
+                case DW_TAG_class_type:
+                    if (post && type_name)
+                        categorize_symbolic(FORMATA(composite_name, strlen(type_name), "class %s", type_name));
+                    break;
+                case DW_TAG_union_type:
+                    if (post && type_name)
+                        categorize_symbolic(FORMATA(composite_name, strlen(type_name), "union %s", type_name));
+                    break;
+                case DW_TAG_enumeration_type:
+                    if (type_name)
+                        categorize_symbolic(FORMATA(composite_name, strlen(type_name), "enum %s", type_name));
+                    break;
+                case DW_TAG_pointer_type:
+                    if (post) {
+                        if (!(type_info->flags & TYPEF_BASE))
+                            base_symb = "void";
+                        if (base_symb)
+                            categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "(%s)*", base_symb));
+                    }
+                    break;
+                case DW_TAG_array_type:
+                    if (post && base_symb) {
+                        LTV           *subrange_ltv = LT_get(&type_info->ltv, "subrange type", HEAD, KEEP);
+                        TYPE_INFO_LTV *subrange     = subrange_ltv ? (TYPE_INFO_LTV *) subrange_ltv->data : NULL;
+                        if (subrange && (subrange->flags & TYPEF_UPPERBOUND)) {
+                            if (base_info && (base_info->flags & TYPEF_BYTESIZE)) {
+                                type_info->bytesize = base_info->bytesize * (subrange->upper_bound + 1);
+                                type_info->flags |= TYPEF_BYTESIZE;
+                            }
+                            categorize_symbolic(FORMATA(composite_name, strlen(base_symb) + 20, "(%s)[%d]", base_symb, subrange->upper_bound + 1));
+                        } else
+                            categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "(%s)[]", base_symb));
+                    }
+                    break;
+                case DW_TAG_volatile_type:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "volatile %s", base_symb));
+                    break;
+                case DW_TAG_const_type:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "const %s", base_symb));
+                    break;
+                case DW_TAG_restrict_type:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "restrict %s", base_symb));
+                    break;
+                case DW_TAG_base_type:
+                case DW_TAG_enumerator:
                     if (type_name)
                         categorize_symbolic(FORMATA(composite_name, strlen(type_name), "%s", type_name));
-                    else if (base_symb)  // anonymous typedef
-                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "%s", base_symb));
-                }
-                break;
-            case DW_TAG_subprogram:
-            case DW_TAG_subroutine_type:
-                if (post) {
-                    char  signature[1024];
-                    char *bufloc     = signature;
-                    int   count      = 0;
-                    auto  marshaller = [&](char *name, LTV *type) {
-                        count++;
-                        LTV *base = cif_find_symbolic(type);
-                        bufloc += sprintf(bufloc, "%s,", attr_get(base, TYPE_SYMB));
-                        return (int) 0;
-                    };
-                    bufloc += sprintf(bufloc, "%s(*)(", base_symb);
-                    STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshall ffi args");  // pre-
-                    bufloc += sprintf(bufloc - (count ? 1 : 0), ")");
-                    TYPE_INFO_LTV *cvar_type = categorize_symbolic(signature);  // GLOBAL!
-
-                    if (type_name && !LT_get(module, type_name, HEAD, KEEP)) {
-                        void *addr           = NULL;
-                        char *linkage_symbol = (type_info->flags & TYPEF_LINKAGE) ? attr_get(&type_info->ltv, TYPE_LINK) : type_name;
-                        if (dlhandle) {
-                            dlerror();  // reset
-                            if ((addr = dlsym(dlhandle, linkage_symbol)))
-                                LT_put(module, type_name, TAIL, cif_create_cvar(&cvar_type->ltv, addr, NULL));
-                            else
-                                DEBUG(fprintf(stderr, "dlsym error: handle %x %s (%s)\n", dlhandle, dlerror(), type_name));
-                        } else
-                            fprintf(stderr, "no dlhandle for function %s (%s)\n", linkage_symbol, type_name);
+                    break;
+                case DW_TAG_typedef:
+                    if (post) {
+                        if (type_name)
+                            categorize_symbolic(FORMATA(composite_name, strlen(type_name), "%s", type_name));
+                        else if (base_symb)  // anonymous typedef
+                            categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "%s", base_symb));
                     }
-                }
-                break;
-            case DW_TAG_variable:
-                if (post) {
-                    if (type_name && !LT_get(module, type_name, HEAD, KEEP) && base_info) {  // GLOBAL!
-                        void *addr = NULL;
-                        if (dlhandle) {
-                            dlerror();  // reset
-                            if ((addr = dlsym(dlhandle, type_name)))
-                                LT_put(module, type_name, TAIL, cif_create_cvar(&base_info->ltv, addr, NULL));
-                            else
-                                DEBUG(fprintf(stderr, "dlsym error: handle %x %s\n", dlhandle, dlerror()));
-                        } else
-                            fprintf(stderr, "no dlhandle for variable %s\n", type_name);
+                    break;
+                case DW_TAG_subprogram:
+                case DW_TAG_subroutine_type:
+                    if (post) {
+                        char  signature[1024];
+                        char *bufloc     = signature;
+                        int   count      = 0;
+                        auto  marshaller = [&](char *name, LTV *type) {
+                            count++;
+                            LTV *base = cif_find_symbolic(type);
+                            bufloc += sprintf(bufloc, "%s,", attr_get(base, TYPE_SYMB));
+                            return (int) 0;
+                        };
+                        bufloc += sprintf(bufloc, "%s(*)(", base_symb);
+                        STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshall ffi args");  // pre-
+                        bufloc += sprintf(bufloc - (count ? 1 : 0), ")");
+                        TYPE_INFO_LTV *cvar_type = categorize_symbolic(signature);  // GLOBAL!
+
+                        if (type_name && !LT_get(module, type_name, HEAD, KEEP)) {
+                            void *addr           = NULL;
+                            char *linkage_symbol = (type_info->flags & TYPEF_LINKAGE) ? attr_get(&type_info->ltv, TYPE_LINK) : type_name;
+                            if (dlhandle) {
+                                dlerror();  // reset
+                                if ((addr = dlsym(dlhandle, linkage_symbol)))
+                                    LT_put(module, type_name, TAIL, cif_create_cvar(&cvar_type->ltv, addr, NULL));
+                                else
+                                    DEBUG(fprintf(stderr, "dlsym error: handle %x %s (%s)\n", dlhandle, dlerror(), type_name));
+                            } else
+                                fprintf(stderr, "no dlhandle for function %s (%s)\n", linkage_symbol, type_name);
+                        }
                     }
-                }
-                break;
-            case DW_TAG_subrange_type:
-                if (type_name)  // still want to dedup!
-                    categorize_symbolic(FORMATA(composite_name, strlen(type_name), "%s", type_name));
-                break;
-            case DW_TAG_member:
-                if (post && type_name && !attr_get(&type_info->ltv, TYPE_SYMB))  // if member not already named...
-                    attr_set(&type_info->ltv, TYPE_SYMB, type_name);             // ...give it it's own name, even if it's not a "symbolic" type
-                break;
-            case DW_TAG_formal_parameter:  // name would be same as base, redundantly.
-                // if (post && base_symb)
-                //     categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
-                break;
+                    break;
+                case DW_TAG_variable:
+                    if (post) {
+                        if (type_name && !LT_get(module, type_name, HEAD, KEEP) && base_info) {  // GLOBAL!
+                            void *addr = NULL;
+                            if (dlhandle) {
+                                dlerror();  // reset
+                                if ((addr = dlsym(dlhandle, type_name)))
+                                    LT_put(module, type_name, TAIL, cif_create_cvar(&base_info->ltv, addr, NULL));
+                                else
+                                    DEBUG(fprintf(stderr, "dlsym error: handle %x %s\n", dlhandle, dlerror()));
+                            } else
+                                fprintf(stderr, "no dlhandle for variable %s\n", type_name);
+                        }
+                    }
+                    break;
+                case DW_TAG_subrange_type:
+                    if (type_name)  // still want to dedup!
+                        categorize_symbolic(FORMATA(composite_name, strlen(type_name), "%s", type_name));
+                    break;
+                case DW_TAG_member:
+                    if (post && type_name && !attr_get(&type_info->ltv, TYPE_SYMB))  // if member not already named...
+                        attr_set(&type_info->ltv, TYPE_SYMB, type_name);             // ...give it it's own name, even if it's not a "symbolic" type
+                    break;
+                case DW_TAG_formal_parameter:  // name would be same as base, redundantly.
+                    // if (post && base_symb)
+                    //     categorize_symbolic(FORMATA(composite_name,strlen(base_symb),"%s",base_symb));
+                    break;
 
-            case DW_TAG_reference_type:  // C++?
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "&(%s)", base_symb));
-                break;
-            case DW_TAG_rvalue_reference_type:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "rval &(%s)", base_symb));
-                break;
-            case DW_TAG_template_type_parameter:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "template_type_param %s", base_symb));
-                break;
-            case DW_TAG_template_value_parameter:
-                if (post && base_symb)
-                    categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "template_value_param %s", base_symb));
-                break;
+                case DW_TAG_reference_type:  // C++?
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "&(%s)", base_symb));
+                    break;
+                case DW_TAG_rvalue_reference_type:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "rval &(%s)", base_symb));
+                    break;
+                case DW_TAG_template_type_parameter:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "template_type_param %s", base_symb));
+                    break;
+                case DW_TAG_template_value_parameter:
+                    if (post && base_symb)
+                        categorize_symbolic(FORMATA(composite_name, strlen(base_symb), "template_value_param %s", base_symb));
+                    break;
 
-            case DW_TAG_unspecified_parameters:  // varargs
-            case DW_TAG_compile_unit:
-            case DW_TAG_type_unit:
-                break;
-            default:  // no name
-                break;
+                case DW_TAG_unspecified_parameters:  // varargs
+                case DW_TAG_compile_unit:
+                case DW_TAG_type_unit:
+                    break;
+                default:  // no name
+                    break;
+            }
         }
     done:
         return status;
@@ -1443,59 +1459,61 @@ static int cif_curate_module(LTV *module, int bootstrap) {
             Dwarf_Off offset;
             char      offset_str[TYPE_IDLEN];
             STRY(dwarf_dieoffset(die, &offset, &error), "get global die offset");
-            DWARF_ID(offset_str, offset);
-            int is_cu = cu_data.header_cu_type == DW_IDX_compile_unit;
+            {
+                DWARF_ID(offset_str, offset);
+                int is_cu = cu_data.header_cu_type == DW_IDX_compile_unit;
 
-            if (!(type_info = (TYPE_INFO_LTV *) LT_get(index[is_cu], offset_str, HEAD, KEEP))) {  // may have been curated previously
-                // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
-                STRY(!(type_info = NEW(TYPE_INFO_LTV)), "create a type_info item");
-                STRY(!LTV_init(&type_info->ltv, type_info, sizeof(TYPE_INFO_LTV), LT_BIN | LT_CVAR | LT_TYPE), "initialize type_info");
-                STRY(!LTV_put(LTV_list(type_ltvs), &type_info->ltv, HEAD, NULL), "put type_ltv on gc list");  // any unused types will be garbage collected later
+                if (!(type_info = (TYPE_INFO_LTV *) LT_get(index[is_cu], offset_str, HEAD, KEEP))) {  // may have been curated previously
+                    // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
+                    STRY(!(type_info = NEW(TYPE_INFO_LTV)), "create a type_info item");
+                    STRY(!LTV_init(&type_info->ltv, type_info, sizeof(TYPE_INFO_LTV), LT_BIN | LT_CVAR | LT_TYPE), "initialize type_info");
+                    STRY(!LTV_put(LTV_list(type_ltvs), &type_info->ltv, HEAD, NULL), "put type_ltv on gc list");  // any unused types will be garbage collected later
 
-                type_info->depth = depth;
-                STRY(populate_type_info(dbg, die, type_info, &cu_data), "populate die type info");
+                    type_info->depth = depth;
+                    STRY(populate_type_info(dbg, die, type_info, &cu_data), "populate die type info");
 
-                switch (type_info->tag) {
-                    case DW_TAG_subprogram:
-                    case DW_TAG_subroutine_type:
-                        if (!(type_info->flags & TYPEF_HAS_NAME))
-                            goto done;
-                }
+                    switch (type_info->tag) {
+                        case DW_TAG_subprogram:
+                        case DW_TAG_subroutine_type:
+                            if (!(type_info->flags & TYPEF_HAS_NAME))
+                                goto done;
+                    }
 
-                if ((name = get_diename(dbg, die)))  // name is allocated from heap...
-                    STRY(!attr_own(&type_info->ltv, TYPE_NAME, name), "name type info");
+                    if ((name = get_diename(dbg, die)))  // name is allocated from heap...
+                        STRY(!attr_own(&type_info->ltv, TYPE_NAME, name), "name type info");
 
-                if (type_info->tag) {
-                    DEBUG(fprintf(stdout, "%*c", MAX(0, depth * 4 - 2), ' '));
-                    DEBUG(print_type_info(stdout, type_info));
-                    DEBUG(fprintf(stdout, " [%s]\n", name));
-                } else
-                    DEBUG(fprintf(stdout, "disqualified die %s\n", type_info->id_str));
+                    if (type_info->tag) {
+                        DEBUG(fprintf(stdout, "%*c", MAX(0, depth * 4 - 2), ' '));
+                        DEBUG(print_type_info(stdout, type_info));
+                        DEBUG(fprintf(stdout, " [%s]\n", name));
+                    } else
+                        DEBUG(fprintf(stdout, "disqualified die %s\n", type_info->id_str));
 
-                if (type_info->tag != DW_TAG_compile_unit || LT_get(module, name, HEAD, KEEP)) {  // only traverse listed CU's siblings
-                    STRY(link2parent(name), "link die to parent");
-                    STRY(!LT_put(index[is_cu], type_info->id_str, TAIL, &type_info->ltv), "index type info");
+                    if (type_info->tag != DW_TAG_compile_unit || LT_get(module, name, HEAD, KEEP)) {  // only traverse listed CU's siblings
+                        STRY(link2parent(name), "link die to parent");
+                        STRY(!LT_put(index[is_cu], type_info->id_str, TAIL, &type_info->ltv), "index type info");
 
-                    if (parent_type_info && (parent_type_info->tag == DW_TAG_type_unit)) {
-                        if (type_info->offset == cu_data.offset) {
-                            static char alias[32];
-                            DWARF_ALIAS(alias, cu_data.sig8);
-                            STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "alias type info %s with %s", type_info->id_str, alias);
-                            DEBUG(fprintf(stdout, "--- aliasing %s with %s\n", type_info->id_str, alias));
+                        if (parent_type_info && (parent_type_info->tag == DW_TAG_type_unit)) {
+                            if (type_info->offset == cu_data.offset) {
+                                static char alias[32];
+                                DWARF_ALIAS(alias, cu_data.sig8);
+                                STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "alias type info %s with %s", type_info->id_str, alias);
+                                DEBUG(fprintf(stdout, "--- aliasing %s with %s\n", type_info->id_str, alias));
+                            }
                         }
+
+                        if ((type_info->flags & TYPEF_IS_DECL) && (type_info->flags & TYPEF_SIGNATURE)) {
+                            static char alias[32];
+                            DWARF_ALIAS(alias, type_info->sig8);
+                            STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "alias type info %s with %s", type_info->id_str, alias);
+                            DEBUG(fprintf(stdout, "--- alias %s sig %s\n", type_info->id_str, alias));
+                        }
+
+                        STRY(traverse_child(dbg, die, child_op, flags | RDW_traverse_sibs), "traverse child and its siblings");
+
+                        if (type_info->tag == DW_TAG_compile_unit)
+                            read_cu_macros();
                     }
-
-                    if ((type_info->flags & TYPEF_IS_DECL) && (type_info->flags & TYPEF_SIGNATURE)) {
-                        static char alias[32];
-                        DWARF_ALIAS(alias, type_info->sig8);
-                        STRY(!LT_put(aliases, alias, TAIL, &type_info->ltv), "alias type info %s with %s", type_info->id_str, alias);
-                        DEBUG(fprintf(stdout, "--- alias %s sig %s\n", type_info->id_str, alias));
-                    }
-
-                    STRY(traverse_child(dbg, die, child_op, flags | RDW_traverse_sibs), "traverse child and its siblings");
-
-                    if (type_info->tag == DW_TAG_compile_unit)
-                        read_cu_macros();
                 }
             }
 
@@ -1679,44 +1697,54 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar, TYPE_UVALUE *uval) {
     LTV *type   = NULL;
     STRY(!cvar || !uval, "validate params");
     TRYCATCH(!(type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP))), 0, done, "retrieve cvar basic type");
-    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
+    {
+        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
 
-    ull size      = type_info->bytesize;
-    ull bitsize   = type_info->bitsize;
-    ull bitoffset = type_info->bitoffset;
-    ull encoding;
-    switch (type_info->tag) {
-        case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
-        case DW_TAG_enumeration_type: encoding = DW_ATE_signed; break;
-        case DW_TAG_pointer_type: encoding = DW_ATE_unsigned; break;
-        case DW_TAG_base_type: encoding = type_info->encoding; break;
-        default: goto done;
-    }
+        ull size      = type_info->bytesize;
+        ull bitsize   = type_info->bitsize;
+        ull bitoffset = type_info->bitoffset;
+        ull encoding;
+        switch (type_info->tag) {
+            case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
+            case DW_TAG_enumeration_type: encoding = DW_ATE_signed; break;
+            case DW_TAG_pointer_type: encoding = DW_ATE_unsigned; break;
+            case DW_TAG_base_type: encoding = type_info->encoding; break;
+            default: goto done;
+        }
 
-    BZERO(*uval);
-    switch (encoding) {
-        case DW_ATE_float:
-            if (size == 4) GETUVAL(float4, TYPE_FLOAT4, uval);
-            else if (size==8)  GETUVAL(float8,TYPE_FLOAT8,uval);
-            else if (size==16) GETUVAL(float16,TYPE_FLOAT16,uval);
-            break;
-        case DW_ATE_signed:
-        case DW_ATE_signed_char:
-            if (size == 1) GETUBITS(int1s, TYPE_INT1S, uval, bitsize, bitoffset, 1);
-            else if (size==2)  GETUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
-            else if (size==4)  GETUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
-            else if (size==8)  GETUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
-            break;
-        case DW_ATE_boolean:
-        case DW_ATE_unsigned:
-        case DW_ATE_unsigned_char:
-            if (size == 1) GETUBITS(int1u, TYPE_INT1U, uval, bitsize, bitoffset, 0);
-            else if (size==2)  GETUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
-            else if (size==4)  GETUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
-            else if (size==8)  GETUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
-            break;
-        default:
-            break;
+        BZERO(*uval);
+        switch (encoding) {
+            case DW_ATE_float:
+                if (size == 4) GETUVAL(float4, TYPE_FLOAT4, uval);
+                else if (size == 8)
+                    GETUVAL(float8, TYPE_FLOAT8, uval);
+                else if (size == 16)
+                    GETUVAL(float16, TYPE_FLOAT16, uval);
+                break;
+            case DW_ATE_signed:
+            case DW_ATE_signed_char:
+                if (size == 1) GETUBITS(int1s, TYPE_INT1S, uval, bitsize, bitoffset, 1);
+                else if (size == 2)
+                    GETUBITS(int2s, TYPE_INT2S, uval, bitsize, bitoffset, 1);
+                else if (size == 4)
+                    GETUBITS(int4s, TYPE_INT4S, uval, bitsize, bitoffset, 1);
+                else if (size == 8)
+                    GETUBITS(int8s, TYPE_INT8S, uval, bitsize, bitoffset, 1);
+                break;
+            case DW_ATE_boolean:
+            case DW_ATE_unsigned:
+            case DW_ATE_unsigned_char:
+                if (size == 1) GETUBITS(int1u, TYPE_INT1U, uval, bitsize, bitoffset, 0);
+                else if (size == 2)
+                    GETUBITS(int2u, TYPE_INT2U, uval, bitsize, bitoffset, 0);
+                else if (size == 4)
+                    GETUBITS(int4u, TYPE_INT4U, uval, bitsize, bitoffset, 0);
+                else if (size == 8)
+                    GETUBITS(int8u, TYPE_INT8U, uval, bitsize, bitoffset, 0);
+                break;
+            default:
+                break;
+        }
     }
 done:
     return status ? 0 : uval->base.dutype;
@@ -1743,43 +1771,53 @@ int Type_putUVAL(LTV *cvar, TYPE_UVALUE *uval) {
     LTV *type   = NULL;
     STRY(!cvar || !uval, "validate params");
     STRY(!(type = cif_find_concrete(LT_get(cvar, TYPE_BASE, HEAD, KEEP))), "retrieve cvar basic type");
-    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
+    {
+        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) type->data;
 
-    ull size      = type_info->bytesize;
-    ull bitsize   = type_info->bitsize;
-    ull bitoffset = type_info->bitoffset;
-    ull encoding;
-    switch (type_info->tag) {
-        case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
-        case DW_TAG_enumeration_type: encoding = DW_ATE_signed; break;
-        case DW_TAG_pointer_type: encoding = DW_ATE_unsigned; break;
-        case DW_TAG_base_type: encoding = type_info->encoding; break;
-        default: goto done;
-    }
+        ull size      = type_info->bytesize;
+        ull bitsize   = type_info->bitsize;
+        ull bitoffset = type_info->bitoffset;
+        ull encoding;
+        switch (type_info->tag) {
+            case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
+            case DW_TAG_enumeration_type: encoding = DW_ATE_signed; break;
+            case DW_TAG_pointer_type: encoding = DW_ATE_unsigned; break;
+            case DW_TAG_base_type: encoding = type_info->encoding; break;
+            default: goto done;
+        }
 
-    switch (encoding) {
-        case DW_ATE_float:
-            if (size == 4) PUTUVAL(float4, TYPE_FLOAT4, uval);
-            else if (size==8)  PUTUVAL(float8, TYPE_FLOAT8, uval);
-            else if (size==16) PUTUVAL(float16,TYPE_FLOAT16,uval);
-            break;
-        case DW_ATE_signed:
-        case DW_ATE_signed_char:
-            if (size == 1) PUTUBITS(int1s, TYPE_INT1S, uval, bitsize, bitoffset, 1);
-            else if (size==2)  PUTUBITS(int2s,TYPE_INT2S,uval,bitsize,bitoffset,1);
-            else if (size==4)  PUTUBITS(int4s,TYPE_INT4S,uval,bitsize,bitoffset,1);
-            else if (size==8)  PUTUBITS(int8s,TYPE_INT8S,uval,bitsize,bitoffset,1);
-            break;
-        case DW_ATE_boolean:
-        case DW_ATE_unsigned:
-        case DW_ATE_unsigned_char:
-            if (size == 1) PUTUBITS(int1u, TYPE_INT1U, uval, bitsize, bitoffset, 0);
-            else if (size==2)  PUTUBITS(int2u,TYPE_INT2U,uval,bitsize,bitoffset,0);
-            else if (size==4)  PUTUBITS(int4u,TYPE_INT4U,uval,bitsize,bitoffset,0);
-            else if (size==8)  PUTUBITS(int8u,TYPE_INT8U,uval,bitsize,bitoffset,0);
-            break;
-        default:
-            break;
+        switch (encoding) {
+            case DW_ATE_float:
+                if (size == 4) PUTUVAL(float4, TYPE_FLOAT4, uval);
+                else if (size == 8)
+                    PUTUVAL(float8, TYPE_FLOAT8, uval);
+                else if (size == 16)
+                    PUTUVAL(float16, TYPE_FLOAT16, uval);
+                break;
+            case DW_ATE_signed:
+            case DW_ATE_signed_char:
+                if (size == 1) PUTUBITS(int1s, TYPE_INT1S, uval, bitsize, bitoffset, 1);
+                else if (size == 2)
+                    PUTUBITS(int2s, TYPE_INT2S, uval, bitsize, bitoffset, 1);
+                else if (size == 4)
+                    PUTUBITS(int4s, TYPE_INT4S, uval, bitsize, bitoffset, 1);
+                else if (size == 8)
+                    PUTUBITS(int8s, TYPE_INT8S, uval, bitsize, bitoffset, 1);
+                break;
+            case DW_ATE_boolean:
+            case DW_ATE_unsigned:
+            case DW_ATE_unsigned_char:
+                if (size == 1) PUTUBITS(int1u, TYPE_INT1U, uval, bitsize, bitoffset, 0);
+                else if (size == 2)
+                    PUTUBITS(int2u, TYPE_INT2U, uval, bitsize, bitoffset, 0);
+                else if (size == 4)
+                    PUTUBITS(int4u, TYPE_INT4U, uval, bitsize, bitoffset, 0);
+                else if (size == 8)
+                    PUTUBITS(int8u, TYPE_INT8U, uval, bitsize, bitoffset, 0);
+                break;
+            default:
+                break;
+        }
     }
 done:
     return status;
@@ -1841,57 +1879,69 @@ LTV *basic_ffi_ltv(LTV *type) {
         goto done;
     }
 
-    LTV *basic_type = NULL;
-    TRYCATCH(!(basic_type = cif_find_concrete(type)), 0, done, "resolve basic type");
-    TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) basic_type->data;
+    {
+        LTV *basic_type = NULL;
+        TRYCATCH(!(basic_type = cif_find_concrete(type)), 0, done, "resolve basic type");
+        TYPE_INFO_LTV *type_info = (TYPE_INFO_LTV *) basic_type->data;
 
-    ull size      = type_info->bytesize;
-    ull bitsize   = type_info->bitsize;
-    ull bitoffset = type_info->bitoffset;
-    ull encoding;
-    switch (type_info->tag) {
-        case DW_TAG_pointer_type:
-        case DW_TAG_array_type:
-            rval = ffi_type_ltv[FT_POINTER];
-            goto done;
-        case DW_TAG_enumeration_type:
-        case DW_TAG_enumerator:
-            encoding = DW_ATE_signed;
-            break;
-        case DW_TAG_member:
-            if (bitsize)                     // only for bitfields
-                encoding = DW_ATE_unsigned;  // TODO: DW_AT_type actually propagates through to sint or uint!!!
-            break;
-        case DW_TAG_base_type:
-            encoding = type_info->encoding;
-            break;
-        default:
-            goto done;
-    }
+        {
+            ull size      = type_info->bytesize;
+            ull bitsize   = type_info->bitsize;
+            ull bitoffset = type_info->bitoffset;
+            ull encoding;
+            switch (type_info->tag) {
+                case DW_TAG_pointer_type:
+                case DW_TAG_array_type:
+                    rval = ffi_type_ltv[FT_POINTER];
+                    goto done;
+                case DW_TAG_enumeration_type:
+                case DW_TAG_enumerator:
+                    encoding = DW_ATE_signed;
+                    break;
+                case DW_TAG_member:
+                    if (bitsize)                     // only for bitfields
+                        encoding = DW_ATE_unsigned;  // TODO: DW_AT_type actually propagates through to sint or uint!!!
+                    break;
+                case DW_TAG_base_type:
+                    encoding = type_info->encoding;
+                    break;
+                default:
+                    goto done;
+            }
 
-    switch (encoding) {
-        case DW_ATE_float:
-            if (size == 4) rval = ffi_type_ltv[FT_FLOAT];
-            else if (size==8)  rval=ffi_type_ltv[FT_DOUBLE];
-            else if (size==16) rval=ffi_type_ltv[FT_LONGDOUBLE];
-            break;
-        case DW_ATE_signed:
-        case DW_ATE_signed_char:
-            if (size == 1) rval = ffi_type_ltv[FT_SINT8];
-            else if (size==2)  rval=ffi_type_ltv[FT_SINT16];
-            else if (size==4)  rval=ffi_type_ltv[FT_SINT32];
-            else if (size==8)  rval=ffi_type_ltv[FT_SINT64];
-            break;
-        case DW_ATE_boolean:
-        case DW_ATE_unsigned:
-        case DW_ATE_unsigned_char:
-            if (size == 1) rval = ffi_type_ltv[FT_UINT8];
-            else if (size==2)  rval=ffi_type_ltv[FT_UINT16];
-            else if (size==4)  rval=ffi_type_ltv[FT_UINT32];
-            else if (size==8)  rval=ffi_type_ltv[FT_UINT64];
-            break;
-        default:
-            break;
+            switch (encoding) {
+                case DW_ATE_float:
+                    if (size == 4) rval = ffi_type_ltv[FT_FLOAT];
+                    else if (size == 8)
+                        rval = ffi_type_ltv[FT_DOUBLE];
+                    else if (size == 16)
+                        rval = ffi_type_ltv[FT_LONGDOUBLE];
+                    break;
+                case DW_ATE_signed:
+                case DW_ATE_signed_char:
+                    if (size == 1) rval = ffi_type_ltv[FT_SINT8];
+                    else if (size == 2)
+                        rval = ffi_type_ltv[FT_SINT16];
+                    else if (size == 4)
+                        rval = ffi_type_ltv[FT_SINT32];
+                    else if (size == 8)
+                        rval = ffi_type_ltv[FT_SINT64];
+                    break;
+                case DW_ATE_boolean:
+                case DW_ATE_unsigned:
+                case DW_ATE_unsigned_char:
+                    if (size == 1) rval = ffi_type_ltv[FT_UINT8];
+                    else if (size == 2)
+                        rval = ffi_type_ltv[FT_UINT16];
+                    else if (size == 4)
+                        rval = ffi_type_ltv[FT_UINT32];
+                    else if (size == 8)
+                        rval = ffi_type_ltv[FT_UINT64];
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 done:
     return rval;
@@ -2222,20 +2272,22 @@ LTV *cif_coerce_i2c(LTV *ltv, LTV *type) {
         ltv = result;  // may need further coersions
     }
 
-    LTV *cvar_base = LT_get(ltv, TYPE_BASE, HEAD, KEEP);
-    if (type_base && cvar_base) {
-        if (type_base == cvar_base)
-            result = ltv;
-        else if (basic_ffi_ltv(type_base) == basic_ffi_ltv(cvar_base))
-            result = ltv;
-        else {
-            LTV *meta = cif_get_meta(cvar_base);
-            if (meta && type_base == meta)  // allow X to X* coersions
-                result = cif_put_meta(ltv, meta);
-            else if (match("(LTV)*"))
-                result = encaps_ltv(ltv);
-            else
-                STRY((vm_throw(LTV_NULL), 1), "no i2c coersion");
+    {
+        LTV *cvar_base = LT_get(ltv, TYPE_BASE, HEAD, KEEP);
+        if (type_base && cvar_base) {
+            if (type_base == cvar_base)
+                result = ltv;
+            else if (basic_ffi_ltv(type_base) == basic_ffi_ltv(cvar_base))
+                result = ltv;
+            else {
+                LTV *meta = cif_get_meta(cvar_base);
+                if (meta && type_base == meta)  // allow X to X* coersions
+                    result = cif_put_meta(ltv, meta);
+                else if (match("(LTV)*"))
+                    result = encaps_ltv(ltv);
+                else
+                    STRY((vm_throw(LTV_NULL), 1), "no i2c coersion");
+            }
         }
     }
 done:
@@ -2307,14 +2359,15 @@ LTV *cif_create_closure(LTV *function_type, void (*thunk)(ffi_cif *CIF, void *RE
     LTV *lambda = NULL, *ffi_cif_ltv = NULL;
     STRY(!(lambda = cif_find_function(function_type)), "find closure type");
     STRY(!(ffi_cif_ltv = cif_ffi_prep(lambda)), "get closure cif");
-    ffi_cif *cif        = (ffi_cif *) ffi_cif_ltv->data;
-    void    *executable = NULL;
-    void    *writeable  = ffi_closure_alloc(sizeof(ffi_closure), &executable);
-    STRY(!(closure = cif_create_cvar(lambda, NULL, NULL)), "create closure cvar");
-    STRY(ffi_prep_closure_loc(writeable, cif, thunk, closure, executable) != FFI_OK, "prep closure");  // closure passes itself to callback
-    LTV_renew(closure, executable, 0, LT_NONE);                                                        // update closure with function pointer
-    LT_put(closure, "WRITEABLE", HEAD, LTV_init(NEW(LTV), writeable, 0, LT_NONE));
-
+    {
+        ffi_cif *cif        = (ffi_cif *) ffi_cif_ltv->data;
+        void    *executable = NULL;
+        void    *writeable  = ffi_closure_alloc(sizeof(ffi_closure), &executable);
+        STRY(!(closure = cif_create_cvar(lambda, NULL, NULL)), "create closure cvar");
+        STRY(ffi_prep_closure_loc(writeable, cif, thunk, closure, executable) != FFI_OK, "prep closure");  // closure passes itself to callback
+        LTV_renew(closure, executable, 0, LT_NONE);                                                        // update closure with function pointer
+        LT_put(closure, "WRITEABLE", HEAD, LTV_init(NEW(LTV), writeable, 0, LT_NONE));
+    }
 done:
     return closure;
 }

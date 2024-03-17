@@ -43,7 +43,7 @@
 
 typedef struct {
     unsigned char op;
-    unsigned int len; // extended
+    int           len;    // extended
     LTV_FLAGS flags;  // extended
     char *data;       // extended
 } VM_CMD; // exploded bytecode template

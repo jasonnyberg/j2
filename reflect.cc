@@ -1612,7 +1612,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
 
     STRY(ltv_traverse(module, remove_die_names, resolve_meta) != NULL, "clean up and bind pointers to pointees");  // link X.meta to pointer-to-X
 
-    printf("Finished curating module\n");
+    printf("Finished curating %s\n", filename);
 
 done:
     return status;

@@ -478,7 +478,7 @@ This simple suite of operations is sufficient to interact with the dictionary, r
 
 ## Dependencies
 
-(Any GNU/Linux distro worth its salt has these:
+Any GNU/Linux distro worth its salt has these: (May need to use xxx-dev library packages)
 
 *   gcc, cmake
 *   libdwarf, libdw, libelf (to read elf/dwarf debug section)
@@ -486,9 +486,13 @@ This simple suite of operations is sufficient to interact with the dictionary, r
 *   libffi (foreign function calls to/from C libs)
 *   libpthread (multithreading)
 *   Optional: liblttng*/liburcu* (Linux Tracing Toolkit Next Gen)
-*   Optional: rlwrap/libreadline (REPL convenience)
+*   Optional: rlwrap/libreadline (REPL convenience, "make run" uses rlwrap)
 
-To run: Assuming gcc, cmake, and libraries are not too ancient, simply run "make" to build and get into the REPL.
+To run: Assuming gcc, cmake, and libraries are not too ancient, simply run "make run" to build and get into the REPL.
+
+To test some reflection and multithreading capabilities, do "make run" and then enter "test.async7!" at the prompt after you see "Finished curating <...>/libreflect.so". (That edict method is found in bootstrap.edict)
+
+Exit the repl with ^D (EOF).
 
 ## TODO
 

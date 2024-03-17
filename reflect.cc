@@ -736,6 +736,7 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
 
         case DW_TAG_ptr_to_member_type:
         case DW_TAG_GNU_template_parameter_pack:
+        case DW_TAG_GNU_formal_parameter_pack:
         case DW_TAG_unspecified_type:
             type_info->tag = 0;  // reject
             goto done;

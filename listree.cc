@@ -56,7 +56,8 @@ int lti_count=0,ltvr_count=0,ltv_count=0;
 // homebrew implementation of Arne Andersson's BST
 // http://user.it.uu.se/~arnea/ps/simp.pdf
 
-static LTI aa_sentinel={.lnk={&aa_sentinel,&aa_sentinel},.level=0};
+static LTI aa_sentinel = {
+    .lnk = {&aa_sentinel, &aa_sentinel}, .name = nullptr, .ltvs = {nullptr, nullptr}, .len = 0, .level = 0};
 
 int LTI_invalid(LTI *lti) { return lti==NULL || lti==&aa_sentinel; }
 
@@ -1102,7 +1103,7 @@ int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
 {
     int status=0;
     LTV *root=root_ltv;
-    STRY(!refs || !(refs->flags&LT_REFS),"validating params");
+    STRY2(!refs || !(refs->flags&LT_REFS),"validating params");
     {
         CLL *cll         = LTV_list(refs);
         REF *ref         = NULL;
@@ -1150,16 +1151,16 @@ int REF_resolve(LTV *root_ltv,LTV *refs,int insert)
             return status ? (void *) NON_NULL : (void *) NULL;
         };
 
-        STRY(!cll, "validating refs");
+        STRY2(!cll, "validating refs");
         if (!root)
-            STRY(!(root = REF_root(REF_TAIL(refs))), "validating root");
+            STRY2(!(root = REF_root(REF_TAIL(refs))), "validating root");
         status = (CLL_map(cll, REV, resolve) != NULL);
         if (placeholder) {  // remove terminal placeholder
             LTVR_release(&ref->ltvr->lnk);
             ref->ltvr = NULL;
         }
     }
- done:
+ done2:
     return status;
 }
 
@@ -1178,7 +1179,7 @@ int REF_iterate(LTV *refs,int pop)
             LTVR *val  = (LTVR *) CLL_next(&ref->keys, &name_ltvr->lnk, FWD);  // val will be next key
 
             if (!ref->lti || !ref->ltvr)
-                goto done;
+                goto done2;
             {
                 LTV *next_ltv = LTV_get(&ref->lti->ltvs, KEEP, ref->reverse, val ? val->ltv : NULL, &ref->ltvr);
                 if (pop)
@@ -1201,7 +1202,7 @@ int REF_iterate(LTV *refs,int pop)
                 REF_reset(ref, NULL);
             }
 
-        done:
+        done2:
             return (void *) NULL;
         };
 

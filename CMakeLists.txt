@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 2.6)
 
-project(reflect LANGUAGES CXX)
+#project(reflect LANGUAGES CXX)
+project(reflect)
 
 add_definitions(-fpermissive)
 add_definitions(-ggdb3)

@@ -36,8 +36,8 @@
 #ifndef REFLECT_H
 #define REFLECT_H
 
-#include <libdwarf/dwarf.h>
-#include <libdwarf/libdwarf.h>
+#include <libdwarf-0/dwarf.h>
+#include <libdwarf-0/libdwarf.h>
 #include <ffi.h>
 
 #include "listree.h"

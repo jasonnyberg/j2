@@ -171,7 +171,8 @@ extern void try_logerror(const char *func,const char *cond,int status);
 #define SCATCH(_msg_...) CATCH(status != 0, status, goto done, _msg_);
 
 #define TRYCATCH(_cond_,_fail_status_,_exit_,_msg_...) do { TRY(_cond_,_msg_); CATCH(status!=0,_fail_status_,goto _exit_,_msg_); } while (0)
-#define STRY(_cond_,_msg_...) TRYCATCH(_cond_,status,done,_msg_)
+#define STRY(_cond_, _msg_...) TRYCATCH(_cond_, status, done, _msg_)
+#define STRY2(_cond_, _msg_...) TRYCATCH(_cond_, status, done2, _msg_) // disambiguate "done"
 
 #define PRINTA(p,len,buf) (p=alloca(len+1),snprintf(p,len+1,"%s",buf),p)
 #define FORMATA(p,len,fmt,args...) (p=alloca(strlen(fmt)+len+1),snprintf(p,strlen(fmt)+len+1,fmt,args),p)

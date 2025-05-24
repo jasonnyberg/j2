@@ -44,8 +44,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <libdwarf/dwarf.h>
-#include <libdwarf/libdwarf.h>
+#include <libdwarf-0/dwarf.h>
+#include <libdwarf-0/libdwarf.h>
 #include <dlfcn.h>  // dlopen/dlsym/dlclose
 #include <arpa/inet.h>
 

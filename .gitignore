@@ -17,3 +17,4 @@ test/test.so
 test/testh.so
 obj
 Makefile
+LocalContext

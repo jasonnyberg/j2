@@ -51,7 +51,7 @@
 
 extern int square(int a) { return a*a; }
 extern int minus(int a,int b) { return a-b; }
-extern int string(char *s) { fprintf(outfile(),"%s\n",s); }
+extern int string(char *s) { fprintf(outfile(),"%s\n",s); return 0; }
 extern LTV *ltv_coersion_test(LTV *ltv) { print_ltv(outfile(),CODE_RED,ltv,CODE_RESET "\n",0); return ltv; } // no change to stack means success
 
 extern FILE *get_stdin()  { return stdin;  }

@@ -51,7 +51,7 @@ typedef struct {
 typedef std::function<void(VM_CMD *cmd)> EMITTER;
 typedef std::function<int(EMITTER emit,void *data,int len)> COMPILER;
 
-enum {
+typedef enum {
     VMOP_RESET,
     VMOP_YIELD,
     VMOP_EXT,

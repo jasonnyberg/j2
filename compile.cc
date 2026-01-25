@@ -49,6 +49,7 @@ int jit_asm(EMITTER emit,void *data,int len)
     for (int i=0;i<len;i++)
         emit(cmd+i);
     EMIT(YIELD);
+    return 0;
 }
 
 #define EDICT_OPS "@/!&|^"
@@ -138,7 +139,7 @@ int jit_edict(EMITTER emit,void *data,int len)
 
 int jit_edict2(EMITTER emit, void *data, int len) { return jit_edict(emit, data, len); }
 
-int jit_xml(EMITTER emit, void *data, int len) { printf("jit_xml not implemented\n"); }
+int jit_xml(EMITTER emit, void *data, int len) { printf("jit_xml not implemented\n"); return 0; }
 
 /*
 int json_object(EMITTER emit,void *data,int len) {

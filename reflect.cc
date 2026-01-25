@@ -44,8 +44,8 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <libdwarf-0/dwarf.h>
-#include <libdwarf-0/libdwarf.h>
+#include <libdwarf-2/dwarf.h>
+#include <libdwarf-2/libdwarf.h>
 #include <dlfcn.h>  // dlopen/dlsym/dlclose
 #include <arpa/inet.h>
 
@@ -56,6 +56,44 @@
 #include "reflect.h"
 #include "vm.h"
 #include "extensions.h"
+
+#ifndef DW_PR_DUx
+#define DW_PR_DUx "llx"
+#define DW_PR_DSx "llx"
+#define DW_PR_DUu "llu"
+#define DW_PR_DSd "lld"
+#endif
+
+#ifndef DW_TAG_GNU_call_site_4106
+#define DW_TAG_GNU_call_site_4106 0x4106
+#endif
+#ifndef DW_AT_GNU_call_site_value
+#define DW_AT_GNU_call_site_value 0x91
+#endif
+#ifndef DW_AT_GNU_call_site_data_value
+#define DW_AT_GNU_call_site_data_value 0x90
+#endif
+#ifndef DW_AT_GNU_call_site_target
+#define DW_AT_GNU_call_site_target 0x89
+#endif
+#ifndef DW_AT_data_bit_offset
+#define DW_AT_data_bit_offset 0x6b
+#endif
+#ifndef DW_AT_enum_class
+#define DW_AT_enum_class 0x6d
+#endif
+#ifndef DW_AT_call_all_calls
+#define DW_AT_call_all_calls 0x79
+#endif
+#ifndef DW_AT_call_all_source_calls
+#define DW_AT_call_all_source_calls 0x7a
+#endif
+#ifndef DW_AT_call_all_tail_calls
+#define DW_AT_call_all_tail_calls 0x7c
+#endif
+#ifndef DW_OP_form_tls_address
+#define DW_OP_form_tls_address 0x9b
+#endif
 
 static int cif_curate_module(LTV *module, int bootstrap);
 
@@ -209,10 +247,10 @@ int traverse_cus(char *filename, DIE_OP op, CU_DATA *cu_data, DIEWALK_FLAGS flag
 
     int filedesc = -1;
     STRY((filedesc = open(filename, O_RDONLY)) < 0, "open dwarf2edict input file %s", filename);
-    TRYCATCH(dwarf_init(filedesc, DW_DLC_READ, NULL, NULL, &dbg, &error), status, close_file, "initialize dwarf reader");
+    TRYCATCH(dwarf_init_b(filedesc, DW_GROUPNUMBER_ANY, NULL, NULL, &dbg, &error), status, close_file, "initialize dwarf reader");
     TRYCATCH(read_cu_list(), status, close_dwarf, "read cu list");
 close_dwarf:
-    STRY(dwarf_finish(dbg, &error), "finalize dwarf reader");
+    STRY(dwarf_finish(dbg), "finalize dwarf reader");
 close_file:
     close(filedesc);
 done:
@@ -410,6 +448,7 @@ LTV *cif_get_child(LTV *type, char *childname) {
 
 LTV *cif_get_element(LTV *type, int index) {
     // see Type_findMemberByIndex
+    return NULL;
 }
 
 LTV *cif_create_cvar(LTV *type, void *data, char *member) {
@@ -723,10 +762,10 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
         default:
             fprintf(stderr, CODE_RED "Unrecognized tag 0x%x\n" CODE_RESET, type_info->tag);
         case DW_TAG_lexical_block:
+        case DW_TAG_GNU_call_site_4106:
         case DW_AT_GNU_all_tail_call_sites:
         case DW_TAG_label:
         case DW_TAG_inlined_subroutine:
-        case DW_TAG_GNU_call_site:
         case DW_TAG_GNU_call_site_parameter:
         case DW_TAG_dwarf_procedure:
         case DW_TAG_namespace:
@@ -763,13 +802,16 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
             auto dump_attr = [&](FILE *ofile) {
                 int status = 0;
 
-                fprintf(ofile, CODE_RED "dump attr 0x%x\n", vshort);
+                const char *at_name = NULL;
+                dwarf_get_AT_name(vshort, &at_name);
+                fprintf(ofile, CODE_RED "dump attr 0x%x (%s)\n", vshort, at_name ? at_name : "unknown");
                 Dwarf_Signed   vint;
                 Dwarf_Unsigned vuint;
                 Dwarf_Addr     vaddr;
                 Dwarf_Off      voffset;
                 Dwarf_Half     vshort;
                 Dwarf_Bool     vbool;
+                Dwarf_Bool     is_info;
                 Dwarf_Ptr      vptr;
                 Dwarf_Block   *vblock;
                 Dwarf_Sig8     vsig8;
@@ -784,7 +826,7 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
                 STRY(dwarf_get_FORM_name(vshort, &vcstr), "get attr form_direct name");
                 fprintf(ofile, "form_direct %d (%s) ", vshort, vcstr);
 
-                IF_OK(dwarf_formref(*attr, &voffset, &error), fprintf(ofile, "formref 0x%" DW_PR_DSx " ", voffset));
+                IF_OK(dwarf_formref(*attr, &voffset, &is_info, &error), fprintf(ofile, "formref 0x%" DW_PR_DSx " ", voffset));
                 IF_OK(dwarf_global_formref(*attr, &voffset, &error), fprintf(ofile, "global_formref 0x%" DW_PR_DSx " ", voffset));
                 IF_OK(dwarf_formaddr(*attr, &vaddr, &error), fprintf(ofile, "addr 0x%" DW_PR_DUx " ", vaddr));
                 IF_OK(dwarf_formflag(*attr, &vbool, &error), fprintf(ofile, "flag %" DW_PR_DSd " ", vbool));
@@ -831,6 +873,9 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
                 case DW_AT_bit_size:
                     IF_OK(dwarf_formudata(*attr, &type_info->bitsize, &error), type_info->flags |= TYPEF_BITSIZE);
                     break;
+                case DW_AT_data_bit_offset:
+                    IF_OK(dwarf_formudata(*attr, &type_info->bitoffset, &error), type_info->flags |= (TYPEF_BITOFFSET | TYPEF_DATA_BITOFFSET));
+                    break;
                 case DW_AT_external:
                     IF_OK(dwarf_formflag(*attr, &type_info->external, &error), type_info->flags |= TYPEF_EXTERNAL);
                     break;
@@ -847,6 +892,7 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
                     // case DW_AT_GNU_odr_signature: // One Definition Rule
                     IF_OK(dwarf_formsig8(*attr, &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
                     IF_OK(dwarf_formudata(*attr, (Dwarf_Unsigned *) &type_info->sig8, &error), type_info->flags |= TYPEF_SIGNATURE);
+                    IF_OK(dwarf_global_formref(*attr, &type_info->base, &error), type_info->flags |= (TYPEF_BASE | TYPEF_SIGNATURE)); 
                     if (!(type_info->flags & TYPEF_SIGNATURE)) {
                         printf("sig attr (%d) with wrong form\n", vshort);
                         dump_attr(stderr);
@@ -883,20 +929,23 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
                 case DW_AT_GNU_call_site_value:
                 case DW_AT_GNU_macros:      //
                 case DW_AT_specification:   // C++?
-                case DW_AT_object_pointer:  // C++
-                case DW_AT_pure:            // C++
+                case 0x79: // DW_AT_call_all_calls
+                case 0x7a: // DW_AT_call_all_source_calls
+                case 0x7c: // DW_AT_call_all_tail_calls
+                case 0x91: // DW_AT_GNU_call_site_value (Duplicate if above matches, but harmless if same value)
+                case 0x90: // DW_AT_GNU_call_site_data_value
+                case 0x89: // DW_AT_GNU_call_site_target
+                case 0x6d: // DW_AT_enum_class
+                case DW_AT_object_pointer:
                 case DW_AT_accessibility:
-                case DW_AT_ranges:
                 case DW_AT_explicit:
-
-                case DW_AT_alignment:
-                case DW_AT_identifier_case:
-                case DW_AT_deleted:
-                case DW_AT_defaulted:
                 case DW_AT_const_expr:
-                case DW_AT_noreturn:
-                case DW_AT_default_value:
-                case DW_AT_GNU_dwo_id:  // GNU DebugFission (split dwarf)
+                case 0x8a: // DW_AT_deleted
+                case 0x8b: // DW_AT_defaulted
+                case 0x87: // DW_AT_noreturn
+                case 0x1e: // Unknown 0x1e
+                case 0x88: // Unknown 0x88
+                case DW_AT_ranges:
                     break;
                 default:
                     dump_attr(stderr);
@@ -905,81 +954,106 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
 
             auto get_expr_loclist_data = [&](Dwarf_Unsigned exprlen, Dwarf_Ptr exprloc) {
                 int            status = 0;
-                Dwarf_Locdesc *llbuf;
-                Dwarf_Signed   listlen;
-                STRY(dwarf_loclist_from_expr(dbg, exprloc, exprlen, &llbuf, &listlen, &error), "get exprloc");
-                for (int j = 0; j < llbuf->ld_cents; j++) {
-                    if (llbuf->ld_s[j].lr_atom >= DW_OP_breg0 && llbuf->ld_s[j].lr_atom <= DW_OP_breg31)
-                        ;
-                    else if (llbuf->ld_s[j].lr_atom >= DW_OP_reg0 && llbuf->ld_s[j].lr_atom <= DW_OP_reg31)
-                        ;
-                    else if (llbuf->ld_s[j].lr_atom >= DW_OP_lit0 && llbuf->ld_s[j].lr_atom <= DW_OP_lit31)
-                        ;
-                    else
-                        switch (llbuf->ld_s[j].lr_atom) {
-                            case DW_OP_addr:
-                                type_info->addr = llbuf->ld_s[j].lr_number;
-                                type_info->flags |= TYPEF_ADDR;
-                                break;
-                            case DW_OP_GNU_push_tls_address:  // THREAD LOCAL STORAGE
-                                type_info->tag = 0;           // disqualify TLS variables
-                                break;
-                            case DW_OP_consts:
-                            case DW_OP_const1s:
-                            case DW_OP_const2s:
-                            case DW_OP_const4s:
-                            case DW_OP_const8s:  // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                            case DW_OP_constu:
-                            case DW_OP_const1u:
-                            case DW_OP_const2u:
-                            case DW_OP_const4u:
-                            case DW_OP_const8u:  // llbuf->ld_s[j].lr_number
-                            case DW_OP_fbreg:    // (Dwarf_Signed) llbuf->ld_s[j].lr_number
-                            case DW_OP_bregx:    // printf(stdout," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                            case DW_OP_regx:     // printf(stdout," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
-                            case DW_OP_pick:
-                            case DW_OP_plus_uconst:
-                            case DW_OP_piece:
-                            case DW_OP_deref_size:
-                            case DW_OP_xderef_size:
-                            case DW_OP_GNU_uninit:
-                            case DW_OP_GNU_encoded_addr:
-                            case DW_OP_GNU_implicit_pointer:
-                            case DW_OP_GNU_entry_value:
-                            case DW_OP_call_frame_cfa:
-                            case DW_OP_deref:
-                            case DW_OP_skip:
-                            case DW_OP_bra:
-                            case DW_OP_plus:
-                            case DW_OP_shl:
-                            case DW_OP_or:
-                            case DW_OP_and:
-                            case DW_OP_xor:
-                            case DW_OP_eq:
-                            case DW_OP_ne:
-                            case DW_OP_gt:
-                            case DW_OP_lt:
-                            case DW_OP_shra:
-                            case DW_OP_mul:
-                            case DW_OP_minus:
+                Dwarf_Loc_Head_c loc_head = 0;
+                Dwarf_Unsigned   listlen = 0;
+                STRY(dwarf_loclist_from_expr_c(dbg, exprloc, exprlen,
+                     cu_data->address_size, cu_data->length_size, cu_data->version_stamp,
+                     &loc_head, &listlen, &error), "get exprloc");
 
-                            case DW_OP_stack_value:        // 0x9f
-                            case DW_OP_lit16:              // 0x40
-                            case DW_OP_GNU_parameter_ref:  // unreferenced parameter
-                            case DW_OP_GNU_addr_index:     // GNU DebugFission
-                            case DW_OP_GNU_const_index:    // GNU DebugFission
-                                // fprintf(stdout," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
-                                break;
-                            default:
-                                fprintf(stderr, " Unrecognized DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x", llbuf->ld_s[j].lr_atom, llbuf->ld_s[j].lr_number, llbuf->ld_s[j].lr_number2, llbuf->ld_s[j].lr_offset);
-                                fprintf(stderr, CODE_RED " lowpc %" DW_PR_DUx " hipc %" DW_PR_DUx " ld_section_offset %" DW_PR_DUx " ld_from_loclist %s ld_cents %d ",
-                                        llbuf->ld_lopc, llbuf->ld_hipc, llbuf->ld_section_offset, llbuf->ld_from_loclist ? "debug_loc" : "debug_info", llbuf->ld_cents);
-                                fprintf(stderr, CODE_RESET "\n");
-                                break;
+                for (Dwarf_Unsigned k = 0; k < listlen; ++k) {
+                    Dwarf_Locdesc_c desc = 0;
+                    Dwarf_Small lle_val = 0;
+                    Dwarf_Unsigned rawlow = 0, rawhigh = 0;
+                    Dwarf_Bool no_addr = 0;
+                    Dwarf_Addr cookedlow = 0, cookedhigh = 0;
+                    Dwarf_Unsigned op_count = 0;
+                    Dwarf_Small source = 0;
+                    Dwarf_Unsigned expression_offset = 0;
+                    Dwarf_Unsigned locdesc_offset = 0;
+
+                    if (dwarf_get_locdesc_entry_d(loc_head, k,
+                        &lle_val, &rawlow, &rawhigh, &no_addr,
+                        &cookedlow, &cookedhigh, &op_count, &desc,
+                        &source, &expression_offset, &locdesc_offset, &error) != DW_DLV_OK) continue;
+
+                    for (Dwarf_Unsigned j = 0; j < op_count; j++) {
+                        Dwarf_Small op = 0;
+                        Dwarf_Unsigned op1=0, op2=0, op3=0, offset_branch=0;
+
+                        if (dwarf_get_location_op_value_c(desc, j, &op, &op1, &op2, &op3, &offset_branch, &error) != DW_DLV_OK) continue;
+
+                        if (op >= DW_OP_breg0 && op <= DW_OP_breg31)
+                            ;
+                        else if (op >= DW_OP_reg0 && op <= DW_OP_reg31)
+                            ;
+                        else if (op >= DW_OP_lit0 && op <= DW_OP_lit31)
+                            ;
+                        else
+                            switch (op) {
+                                case DW_OP_addr:
+                                    type_info->addr = op1;
+                                    type_info->flags |= TYPEF_ADDR;
+                                    break;
+                                case DW_OP_GNU_push_tls_address:  // THREAD LOCAL STORAGE
+                                case DW_OP_form_tls_address:
+                                    type_info->tag = 0;           // disqualify TLS variables
+                                    break;
+                                case DW_OP_consts:
+                                case DW_OP_const1s:
+                                case DW_OP_const2s:
+                                case DW_OP_const4s:
+                                case DW_OP_const8s:  // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                                case DW_OP_constu:
+                                case DW_OP_const1u:
+                                case DW_OP_const2u:
+                                case DW_OP_const4u:
+                                case DW_OP_const8u:  // llbuf->ld_s[j].lr_number
+                                case DW_OP_fbreg:    // (Dwarf_Signed) llbuf->ld_s[j].lr_number
+                                case DW_OP_bregx:    // printf(stdout," bregx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                                case DW_OP_regx:     // printf(stdout," regx %" DW_PR_DUu " + (%" DW_PR_DSd ") ",llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2);
+                                case DW_OP_pick:
+                                case DW_OP_plus_uconst:
+                                case DW_OP_piece:
+                                case DW_OP_deref_size:
+                                case DW_OP_xderef_size:
+                                case DW_OP_GNU_uninit:
+                                case DW_OP_GNU_encoded_addr:
+                                case DW_OP_GNU_implicit_pointer:
+                                case DW_OP_GNU_entry_value:
+                                case DW_OP_call_frame_cfa:
+                                case DW_OP_deref:
+                                case DW_OP_skip:
+                                case DW_OP_bra:
+                                case DW_OP_plus:
+                                case DW_OP_shl:
+                                case DW_OP_or:
+                                case DW_OP_and:
+                                case DW_OP_xor:
+                                case DW_OP_eq:
+                                case DW_OP_ne:
+                                case DW_OP_gt:
+                                case DW_OP_lt:
+                                case DW_OP_shra:
+                                case DW_OP_mul:
+                                case DW_OP_minus:
+
+                                case DW_OP_stack_value:        // 0x9f
+                                case DW_OP_lit16:              // 0x40
+                                case DW_OP_GNU_parameter_ref:  // unreferenced parameter
+                                case DW_OP_GNU_addr_index:     // GNU DebugFission
+                                case DW_OP_GNU_const_index:    // GNU DebugFission
+                                    // fprintf(stdout," Ingnored DW_OP 0x%x n 0x%x n2 0x%x offset 0x%x",llbuf->ld_s[j].lr_atom,llbuf->ld_s[j].lr_number,llbuf->ld_s[j].lr_number2,llbuf->ld_s[j].lr_offset);
+                                    break;
+                                default:
+                                    fprintf(stderr, " Unrecognized DW_OP 0x%x n 0x%" DW_PR_DUx " n2 0x%" DW_PR_DUx " offset 0x%" DW_PR_DUx, op, op1, op2, offset_branch);
+                                    fprintf(stderr, CODE_RED " lowpc %" DW_PR_DUx " hipc %" DW_PR_DUx " ld_section_offset %" DW_PR_DUx " op_count %" DW_PR_DUu " ",
+                                            cookedlow, cookedhigh, (Dwarf_Unsigned)0, op_count);
+                                    fprintf(stderr, CODE_RESET "\n");
+                                    break;
                         }
+                    }
                 }
-                dwarf_dealloc(dbg, llbuf->ld_s, DW_DLA_LOC_BLOCK);
-                dwarf_dealloc(dbg, llbuf, DW_DLA_LOCDESC);
+                dwarf_dealloc_loc_head_c(loc_head);
             done:
                 return status;
             };
@@ -1019,11 +1093,18 @@ char *get_diename(Dwarf_Debug dbg, Dwarf_Die die) {
     Dwarf_Error error   = 0;
     char       *diename = NULL;
     char       *type_info_name = NULL;
-    STRY(dwarf_diename(die, &diename, &error) == DW_DLV_ERROR, "check dwarf_diename");
-    type_info_name = diename ? bufdup(diename, -1) : NULL;
+    if (dwarf_diename(die, &diename, &error) == DW_DLV_ERROR) {
+        fprintf(stderr, "dwarf_diename error: %s\n", dwarf_errmsg(error));
+        return NULL;
+    }
+    if (!diename) {
+        // fprintf(stderr, "DIE at offset has no name\n");
+        return NULL;
+    }
+    type_info_name = bufdup(diename, -1);
     dwarf_dealloc(dbg, diename, DW_DLA_STRING);
 done:
-    return (status || !type_info_name) ? NULL : type_info_name;
+    return type_info_name;
 }
 
 int cif_preview_module(LTV *module)  // just put the cu name under module
@@ -1035,8 +1116,9 @@ int cif_preview_module(LTV *module)  // just put the cu name under module
         char       *cu_name = NULL;
         Dwarf_Off   offset;
         STRY(dwarf_CU_dieoffset_given_die(die, &offset, &error), "get global die offset");
-        STRY(!(cu_name = get_diename(dbg, die)), "look up compile unit die name");
-        STRY(!attr_imm(module, cu_name, (long long) offset), "add compile unit name to list of compile units");
+        if ((cu_name = get_diename(dbg, die))) {
+            STRY(!attr_imm(module, cu_name, (long long) offset), "add compile unit name to list of compile units");
+        }
     done:
         return status;
     };
@@ -1704,6 +1786,10 @@ TYPE_UTYPE Type_getUVAL(LTV *cvar, TYPE_UVALUE *uval) {
         ull size      = type_info->bytesize;
         ull bitsize   = type_info->bitsize;
         ull bitoffset = type_info->bitoffset;
+
+        if (type_info->flags & TYPEF_DATA_BITOFFSET)
+            bitoffset = (size * 8) - bitsize - bitoffset;
+
         ull encoding;
         switch (type_info->tag) {
             case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield
@@ -1778,6 +1864,10 @@ int Type_putUVAL(LTV *cvar, TYPE_UVALUE *uval) {
         ull size      = type_info->bytesize;
         ull bitsize   = type_info->bitsize;
         ull bitoffset = type_info->bitoffset;
+
+        if (type_info->flags & TYPEF_DATA_BITOFFSET)
+            bitoffset = (size * 8) - bitsize - bitoffset;
+
         ull encoding;
         switch (type_info->tag) {
             case DW_TAG_member: encoding = DW_ATE_signed; break;  // bitfield

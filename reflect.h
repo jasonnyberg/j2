@@ -36,8 +36,8 @@
 #ifndef REFLECT_H
 #define REFLECT_H
 
-#include <libdwarf-0/dwarf.h>
-#include <libdwarf-0/libdwarf.h>
+#include <libdwarf-2/dwarf.h>
+#include <libdwarf-2/libdwarf.h>
 #include <ffi.h>
 
 #include "listree.h"
@@ -153,6 +153,7 @@ typedef enum {
     TYPEF_LINKAGE    = 1<<0x11,
     TYPEF_IS_DECL    = 1<<0x12,
     TYPEF_HAS_NAME   = 1<<0x13,
+    TYPEF_DATA_BITOFFSET = 1<<0x14,
 } TYPE_FLAGS;
 
 

@@ -144,6 +144,10 @@ static void vm_reset_ext() {
 }
 
 void vm_throw(LTV *ltv) {
+    if (!vm_env) {
+        fprintf(stderr, "vm_throw called with NULL vm_env\n");
+        exit(1);
+    }
     vm_env->state |= VM_THROWING;
     vm_enq(VMRES_EXCP, (ltv));
     vm_reset_ext();

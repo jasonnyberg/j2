@@ -919,6 +919,7 @@ int pickle_ltvs(FILE *ofile,char *pre,CLL *ltvs,char *post,int maxdepth)
     listree_traverse(ltvs,write_links,NULL);
 
     fflush(ofile);
+    return 0;
 }
 
 int pickle_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
@@ -928,6 +929,7 @@ int pickle_ltv(FILE *ofile,char *pre,LTV *ltv,char *post,int maxdepth)
     LTV_enq(&ltvs,ltv,HEAD);
     pickle_ltvs(ofile,pre,&ltvs,post,maxdepth);
     LTV_deq(&ltvs,HEAD);
+    return 0;
 }
 
 //////////////////////////////////////////////////

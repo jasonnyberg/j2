@@ -1307,6 +1307,8 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                 case DW_TAG_subprogram:
                 case DW_TAG_subroutine_type:
                     if (post) {
+                        if (!base_symb) base_symb = "void";
+
                         char  signature[1024];
                         char *bufloc     = signature;
                         int   count      = 0;
@@ -1319,6 +1321,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                         bufloc += sprintf(bufloc, "%s(*)(", base_symb);
                         STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshall ffi args");  // pre-
                         bufloc += sprintf(bufloc - (count ? 1 : 0), ")");
+                        
                         TYPE_INFO_LTV *cvar_type = categorize_symbolic(signature);  // GLOBAL!
 
                         if (type_name && !LT_get(module, type_name, HEAD, KEEP)) {
@@ -1544,7 +1547,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
             STRY(dwarf_dieoffset(die, &offset, &error), "get global die offset");
             {
                 DWARF_ID(offset_str, offset);
-                int is_cu = cu_data.header_cu_type == DW_IDX_compile_unit;
+                int is_cu = (flags & RDW_is_info) ? 1 : 0;
 
                 if (!(type_info = (TYPE_INFO_LTV *) LT_get(index[is_cu], offset_str, HEAD, KEEP))) {  // may have been curated previously
                     // special derived LTV! LTV won't delete "itself" (i.e. data); LTV_release will delete the whole TYPE_INFO
@@ -1615,6 +1618,37 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                 int            tried     = 0;
                 if ((type_info->flags & TYPEF_BASE) && type_info->base) {  // base is offset
                     base  = LT_get(index[(type_info->flags & TYPEF_IS_INFO) != 0], type_info->base_str, HEAD, KEEP);
+
+                    if (!base) {
+                        Dwarf_Debug dbg;
+                        Dwarf_Error error;
+                        char *fname = (char *) module->data;
+                        int fd = open(fname, O_RDONLY);
+                        if (fd >= 0) {
+                            if (dwarf_init_b(fd, DW_GROUPNUMBER_ANY, NULL, NULL, &dbg, &error) == DW_DLV_OK) {
+                                Dwarf_Die die;
+                                Dwarf_Bool is_info = (type_info->flags & TYPEF_IS_INFO) != 0;
+                                if (dwarf_offdie_b(dbg, type_info->base, is_info, &die, &error) == DW_DLV_OK) {
+                                    TYPE_INFO_LTV *new_info = NEW(TYPE_INFO_LTV);
+                                    CU_DATA dummy_cu = {0};
+                                    dummy_cu.header_cu_type = DW_UT_compile;
+                                    
+                                    LTV_init(&new_info->ltv, new_info, sizeof(TYPE_INFO_LTV), (LTV_FLAGS)(LT_BIN | LT_CVAR | LT_TYPE));
+
+                                    if (populate_type_info(dbg, die, new_info, &dummy_cu)) {
+                                        if (new_info->tag == 0x50) new_info->tag = DW_TAG_subroutine_type;
+                                        LT_put(index[is_info], new_info->id_str, TAIL, &new_info->ltv);
+                                        base = (LTV*)new_info;
+                                        fprintf(stderr, "Recovered missing DIE %s (tag %x)\n", new_info->id_str, new_info->tag);
+                                    }
+                                    dwarf_dealloc(dbg, die, DW_DLA_DIE);
+                                }
+                                dwarf_finish(dbg);
+                            }
+                            close(fd);
+                        }
+                    }
+
                     tried = 1;
                 } else if ((type_info->flags & TYPEF_BASE) ||  // base is signature
                            ((type_info->flags & TYPEF_SIGNATURE) && !(type_info->flags & TYPEF_IS_DECL))) {
@@ -2225,6 +2259,7 @@ int cif_args_marshal(LTV *lambda, int dir, CIF_MARSHAL_OP marshal) {
         LTV  *arg_type = LT_get(arg, FFI_TYPE, HEAD, KEEP);
         char *name     = attr_get(arg_type, TYPE_SYMB);
         LTV  *type     = cif_find_symbolic(((LTVR *) lnk)->ltv);
+        STRY(!type, "failed to resolve symbolic type for arg");
         STRY(marshal(name, type), "retrieve ffi arg from environment");
     done:
         return status ? (void *) NON_NULL : (void *) NULL;

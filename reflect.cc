@@ -326,6 +326,46 @@ done:
     return status;
 }
 
+int diagnose_type_hierarchy(FILE *ofile, LTV *type, int depth) {
+    if (!type || !(type->flags & LT_TYPE)) return 0;
+    if (depth > 20) {
+        fprintf(ofile, "%*s... (recursion limit reached)\n", depth * 2, "");
+        return 0;
+    }
+    
+    TYPE_INFO_LTV *info = (TYPE_INFO_LTV *)type;
+    char *name = attr_get(type, TYPE_NAME);
+    char *symb = attr_get(type, TYPE_SYMB);
+    const char *tag_name = NULL;
+    dwarf_get_TAG_name(info->tag, &tag_name);
+    
+    fprintf(ofile, "%*s[%s] %s (%s) %s\n", depth*2, "", 
+            tag_name ? tag_name + 7 : "TAG?",
+            name ? name : "anon", 
+            info->id_str, 
+            symb ? symb : "UNRESOLVED");
+
+    // Check Base
+    LTV *base = LT_get(type, TYPE_BASE, HEAD, KEEP);
+    if (base) {
+        diagnose_type_hierarchy(ofile, base, depth + 1);
+    } else if (info->flags & TYPEF_BASE) {
+        fprintf(ofile, "%*s-> Missing Base %s (Index Lookup Failed)\n", (depth+1)*2, "", info->base_str);
+    }
+
+    // Check Children (TYPE_LIST)
+    LTI *children = LTI_resolve(type, TYPE_LIST, false);
+    if (children) {
+        auto child_op = [&](CLL *lnk) {
+            LTV *child = ((LTVR *)lnk)->ltv;
+            diagnose_type_hierarchy(ofile, child, depth + 1);
+            return (void*)NULL;
+        };
+        CLL_map(&children->ltvs, FWD, child_op);
+    }
+    return 1;
+}
+
 int dot_type_info(FILE *ofile, LTV *ltv) {
     int status = 0;
 
@@ -721,6 +761,7 @@ int populate_type_info(Dwarf_Debug dbg, Dwarf_Die die, TYPE_INFO_LTV *type_info,
     STRY(dwarf_dieoffset(die, &goff, &error), "get global die offset");
     DWARF_ID(type_info->id_str, goff);
     STRY(dwarf_tag(die, &type_info->tag, &error), "get die tag");
+    if (type_info->tag == 0x50) type_info->tag = DW_TAG_subroutine_type;
 
     if (dwarf_get_die_infotypes_flag(die))
         type_info->flags |= TYPEF_IS_INFO;
@@ -1319,7 +1360,7 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                             return (int) 0;
                         };
                         bufloc += sprintf(bufloc, "%s(*)(", base_symb);
-                        STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshall ffi args");  // pre-
+                        STRY(cif_args_marshal(&type_info->ltv, FWD, marshaller), "marshall ffi args for %s", type_name ? type_name : type_info->id_str);
                         bufloc += sprintf(bufloc - (count ? 1 : 0), ")");
                         
                         TYPE_INFO_LTV *cvar_type = categorize_symbolic(signature);  // GLOBAL!
@@ -1560,9 +1601,11 @@ static int cif_curate_module(LTV *module, int bootstrap) {
 
                     switch (type_info->tag) {
                         case DW_TAG_subprogram:
-                        case DW_TAG_subroutine_type:
                             if (!(type_info->flags & TYPEF_HAS_NAME))
                                 goto done;
+                            break;
+                        case DW_TAG_subroutine_type:
+                            break;
                     }
 
                     if ((name = get_diename(dbg, die)))  // name is allocated from heap...
@@ -1618,37 +1661,6 @@ static int cif_curate_module(LTV *module, int bootstrap) {
                 int            tried     = 0;
                 if ((type_info->flags & TYPEF_BASE) && type_info->base) {  // base is offset
                     base  = LT_get(index[(type_info->flags & TYPEF_IS_INFO) != 0], type_info->base_str, HEAD, KEEP);
-
-                    if (!base) {
-                        Dwarf_Debug dbg;
-                        Dwarf_Error error;
-                        char *fname = (char *) module->data;
-                        int fd = open(fname, O_RDONLY);
-                        if (fd >= 0) {
-                            if (dwarf_init_b(fd, DW_GROUPNUMBER_ANY, NULL, NULL, &dbg, &error) == DW_DLV_OK) {
-                                Dwarf_Die die;
-                                Dwarf_Bool is_info = (type_info->flags & TYPEF_IS_INFO) != 0;
-                                if (dwarf_offdie_b(dbg, type_info->base, is_info, &die, &error) == DW_DLV_OK) {
-                                    TYPE_INFO_LTV *new_info = NEW(TYPE_INFO_LTV);
-                                    CU_DATA dummy_cu = {0};
-                                    dummy_cu.header_cu_type = DW_UT_compile;
-                                    
-                                    LTV_init(&new_info->ltv, new_info, sizeof(TYPE_INFO_LTV), (LTV_FLAGS)(LT_BIN | LT_CVAR | LT_TYPE));
-
-                                    if (populate_type_info(dbg, die, new_info, &dummy_cu)) {
-                                        if (new_info->tag == 0x50) new_info->tag = DW_TAG_subroutine_type;
-                                        LT_put(index[is_info], new_info->id_str, TAIL, &new_info->ltv);
-                                        base = (LTV*)new_info;
-                                        fprintf(stderr, "Recovered missing DIE %s (tag %x)\n", new_info->id_str, new_info->tag);
-                                    }
-                                    dwarf_dealloc(dbg, die, DW_DLA_DIE);
-                                }
-                                dwarf_finish(dbg);
-                            }
-                            close(fd);
-                        }
-                    }
-
                     tried = 1;
                 } else if ((type_info->flags & TYPEF_BASE) ||  // base is signature
                            ((type_info->flags & TYPEF_SIGNATURE) && !(type_info->flags & TYPEF_IS_DECL))) {
@@ -2259,16 +2271,21 @@ int cif_args_marshal(LTV *lambda, int dir, CIF_MARSHAL_OP marshal) {
         LTV  *arg_type = LT_get(arg, FFI_TYPE, HEAD, KEEP);
         char *name     = attr_get(arg_type, TYPE_SYMB);
         LTV  *type     = cif_find_symbolic(((LTVR *) lnk)->ltv);
-        STRY(!type, "failed to resolve symbolic type for arg");
+        if (!type) {
+             fprintf(stderr, "Type resolution failed for arg '%s'. Hierarchy:\n", name ? name : "?");
+             diagnose_type_hierarchy(stderr, ((LTVR *) lnk)->ltv, 1);
+        }
+        STRY(!type, "failed to resolve symbolic type for arg %s", name ? name : "?");
         STRY(marshal(name, type), "retrieve ffi arg from environment");
     done:
         return status ? (void *) NON_NULL : (void *) NULL;
     };
 
     LTI *children = NULL;
+    char *func_name = attr_get(lambda, TYPE_NAME);
     TRYCATCH(!(children = LTI_resolve(lambda, TYPE_LIST, false)), 0, done, "retrieve ffi args");
     ;
-    STRY(CLL_map(&children->ltvs, dir, marshal_arg) != NULL, "marshall ffi args");
+    STRY(CLL_map(&children->ltvs, dir, marshal_arg) != NULL, "marshall ffi args for %s", func_name ? func_name : "?");
 done:
     return status;
 }
